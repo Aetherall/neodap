@@ -1,0 +1,50 @@
+{
+  // Use IntelliSense to learn about possible attributes.
+  // Hover to view descriptions of existing attributes.
+  // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "lua-local",
+      "request": "launch",
+      "name": "local",
+      "program": {
+        "lua": "${workspaceFolder}/.vscode/debug.lua",
+        "file": "${workspaceFolder}/lua/neodap/init.lua",
+      },
+      "env": {
+        "DEBUG": "true",
+        "FILE": "${workspaceFolder}/lua/neodap/init.lua",
+      },
+      // "verbose": true
+    },
+    {
+      "type": "lua-local",
+      "request": "launch",
+      "name": "playground",
+      "program": {
+        "lua": "${workspaceFolder}/.vscode/debug.lua",
+        "file": "${workspaceFolder}/lua/neodap/playground.lua",
+      },
+      "env": {
+        "DEBUG": "true",
+        "FILE": "${workspaceFolder}/lua/neodap/playground.lua",
+      },
+      // "verbose": true
+    },
+    {
+      "type": "lua-local",
+      "request": "launch",
+      "name": "integration-test",
+      "program": {
+        "lua": "${workspaceFolder}/.vscode/debug.lua",
+        "file": "${workspaceFolder}/run-integration-test.lua",
+      },
+      "env": {
+        "DEBUG": "false",
+        "FILE": "${workspaceFolder}/run-integration-test.lua",
+      },
+      // "verbose": true
+    }
+  ]
+}

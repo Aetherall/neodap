@@ -1,0 +1,18 @@
+{
+    "Lua.runtime.version": "Lua 5.1",
+    "Lua.workspace.library": [
+        "${3rd}/luv/library",
+        "${3rd}/busted/library",
+        "${3rd}/luassert/library"
+    ],
+    "Lua.diagnostics.globals": [
+        "vim"
+    ],
+    "Lua.diagnostics.disable": [
+        "discard-returns"
+    ],
+    "Lua.workspace.checkThirdParty": false,
+    "Lua.type.inferParamType": true,
+    "Lua.type.weakUnionCheck": false,
+    "nix.formatterPath": "alejandra"
+}
