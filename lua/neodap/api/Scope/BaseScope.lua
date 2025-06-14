@@ -1,0 +1,145 @@
+local Class = require('neodap.tools.class')
+
+local Variable = require('neodap.api.Variable')
+local RangedScopeTrait = require('neodap.api.Scope.traits.RangedScopeTrait')
+
+---@class api.ScopeProps
+---@field frame api.Frame
+---@field ref dap.Scope
+---@field _variables api.Variable[] | nil
+---@field protected _source api.Source | nil
+
+---@class api.Scope: api.ScopeProps, api.RangedScopeTrait
+---@field new Constructor<api.ScopeProps>
+local Scope = RangedScopeTrait.extend(Class())
+
+---@return {[integer]: api.Variable} | nil
+function Scope:variables()
+  if self._variables then
+    return self._variables
+  end
+
+  local response = self.frame.stack.thread.session.ref.calls:variables({
+    variablesReference = self.ref.variablesReference,
+    threadId = self.frame.stack.thread.id,
+  }):wait()
+
+  self._variables = vim.tbl_map(function(variable)
+    return Variable.instanciate(self, variable)
+  end, response.variables)
+
+  return self._variables
+end
+
+function Scope:source()
+  if not self._source then
+    return nil
+  end
+
+  return self._source
+end
+
+
+function Scope:toStringDescription()
+  local source = self:source()
+
+  if self:hasRange() then
+    local rangeString = self:rangeLinkSuffix()
+
+    if not source then
+      return string.format("%s %s", self.ref.name, rangeString)
+    end
+
+    local virtualSource = source:asVirtual()
+    if virtualSource then
+      return string.format("%s (%s:%s) (%s)", self.ref.name, virtualSource.origin, virtualSource.reference, rangeString)
+    end
+
+    local relativePath = source.ref.path and vim.fn.fnamemodify(source.ref.path, ':~:.') or 'unknown'
+    return string.format("%s (%s:%s) %s", self.ref.name, relativePath, rangeString, source.ref.name or 'unknown')
+
+
+  end
+
+  if not source then
+    return self.ref.name
+  end
+
+  local virtualSource = source:asVirtual()
+  if virtualSource then
+    return string.format("%s (%s:%s)", self.ref.name, virtualSource.origin, virtualSource.reference)
+  end
+  local relativePath = source.ref.path and vim.fn.fnamemodify(source.ref.path, ':~:.') or 'unknown'
+  return string.format("%s (%s:%s)", self.ref.name, relativePath, source.ref.name or 'unknown')
+end
+
+function Scope:toString()
+  local description = self:toStringDescription()
+
+  if self.ref.expensive then
+    return description .. " (expensive)"
+  end
+
+  local variables = self:variables()
+  if not variables or vim.tbl_isempty(variables) then
+    return description
+  end
+
+  local variableStrings = vim.tbl_map(function(variable)
+    return variable:toString()
+  end, variables)
+
+  return string.format("%s\n    Variables:\n      %s", description, table.concat(variableStrings, "\n      "))
+end
+
+-- ---Type guard to check if this scope has range information
+-- ---@return boolean
+-- ---@return_cast self api.RangedScopeImpl
+-- function Scope:hasRange()
+--   return self.ref.line ~= nil or self.ref.endLine ~= nil
+-- end
+
+-- ---Check if a line number falls within this scope's range
+-- ---Only available if hasRange() returns true
+-- ---@param line number
+-- ---@return boolean
+-- function Scope:containsLine(line)
+--   if not self:hasRange() then
+--     return false
+--   end
+
+--   local start, finish = self:region()
+--   return line >= start[1] and line <= finish[1]
+-- end
+
+-- ---Check if a position (line, column) falls within this scope's range
+-- ---Only available if hasRange() returns true
+-- ---@param line number
+-- ---@param column number
+-- ---@return boolean
+-- function Scope:containsPosition(line, column)
+--   if not self:hasRange() then
+--     return false
+--   end
+
+--   local start, finish = self:region()
+
+--   -- Check if line is within range
+--   if line < start[1] or line > finish[1] then
+--     return false
+--   end
+
+--   -- If on start line, check column is after start column
+--   if line == start[1] and column < start[2] then
+--     return false
+--   end
+
+--   -- If on end line, check column is before end column
+--   if line == finish[1] and column > finish[2] then
+--     return false
+--   end
+
+--   return true
+-- end
+
+return Scope

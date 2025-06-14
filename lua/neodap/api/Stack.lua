@@ -5,7 +5,7 @@ local Hookable = require("neodap.transport.hookable")
 
 ---@class api.StackProps
 ---@field thread api.Thread
----@field _frames { [integer]: api.Frame } | nil
+---@field _frames { [integer]: api.Frame? } | nil
 ---@field _index table<integer, integer> | nil
 ---@field hookable Hookable
 ---@field valid boolean
@@ -33,7 +33,7 @@ function Stack.instanciate(thread, stack)
   return stack
 end
 
----@return { [integer]: api.Frame } | nil
+---@return { [integer]: api.Frame? } | nil
 function Stack:frames()
   if not self.valid then
     return nil

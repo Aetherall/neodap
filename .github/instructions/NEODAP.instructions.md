@@ -12,5 +12,5 @@ It provides a comprehensive api for interacting with the lifecycle of dap sessio
 To run the tests, you can use the following command:
 
 ```bash
-nix run .#test spec/file_spec.lua --verbose
+nix run .#test spec/core/neodap_core.spec.lua -- --filter <part of the test name>
 ```

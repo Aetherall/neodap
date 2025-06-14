@@ -8,7 +8,7 @@ local Source = require('neodap.api.Source.Source')
 ---@field ref dap.StackFrame
 
 ---@class api.Frame: api.FrameProps
----@field _scopes api.Scope[] | nil
+---@field _scopes { [integer]: api.Scope? } | nil
 ---@field _source api.Source | nil
 ---@field new Constructor<api.FrameProps>
 local Frame = Class()
@@ -42,7 +42,7 @@ function Frame.indexAll(stack, stackFrames)
   return frames, index
 end
 
----@return api.Scope[]
+---@return { [integer]: api.Frame? } | nil
 function Frame:scopes()
   if self._scopes then
     return self._scopes

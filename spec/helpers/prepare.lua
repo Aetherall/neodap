@@ -4,7 +4,7 @@ local Session              = require("neodap.session.session")
 local nio                  = require("nio")
 local Api                  = require("neodap.api.Api")
 
-
+---@return Api, fun(fixture: string): Session
 local function prepare()
   local manager = Manager.create()
   local adapter = ExecutableTCPAdapter.create({
