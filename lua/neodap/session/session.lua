@@ -63,11 +63,17 @@ function Session:start(opts)
   local send, close = self.adapter:start({
     onMessage = function(message)
       if message.type == "event" then
-        -- print("DEBUG: Received event: " .. message.event .. " with body: " .. vim.inspect(message.body or {}))
+        -- Log all events, with special attention to breakpoint events
+        if message.event == "breakpoint" then
+          -- print("DEBUG: RAW BREAKPOINT EVENT:", vim.inspect(message))
+        else
+          -- print("DEBUG: Received event:", message.event, "body:", vim.inspect(message.body or {}))
+        end
         self.events:push(message)
       elseif message.type == "request" then
         self.handlers:receive(message)
       elseif message.type == "response" then
+        -- print("DEBUG: Received response:", vim.inspect(message))
         self.calls:receive(message)
       else
         print("Unknown message type: " .. message.type)

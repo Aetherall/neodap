@@ -1,16 +1,18 @@
 local Class = require("neodap.tools.class")
-local Stack = require("neodap.api.Stack")
+local Stack = require("neodap.api.Session.Stack")
 local Hookable = require("neodap.transport.hookable")
 
 ---@class api.ThreadProps
 ---@field id integer
 ---@field session api.Session
----@field _stack? api.Stack | nil
 ---@field hookable Hookable
 ---@field stopped boolean
+---@field public _stack? api.Stack
 
 ---@class api.Thread: api.ThreadProps
 ---@field new Constructor<api.ThreadProps>
+---@field public _stack? api.Stack
+---@field stopped boolean
 local Thread = Class();
 
 
@@ -31,40 +33,51 @@ function Thread.instanciate(session, id)
 end
 
 function Thread:listen()
-  self:onPaused(function(body)
+  local uniqueId = "Thread(" .. self.id .. ")"
+
+  self:onStopped(function(body)
     self.stopped = true
     if self._stack then
       self._stack:invalidate() -- Invalidate existing stack if paused again
     end
     self._stack = nil          -- Clear stack when stopped
-  end, { priority = 1, name = "clear-stack" })
+  end, { priority = 1, name = uniqueId .. ".InvalidateStackOnStopped" })
 
-  self:onContinued(function(body)
-    if self.stopped then
-      if self._stack then
-        self._stack:invalidate() -- Invalidate existing stack if paused again
-      end
-      self._stack = nil        -- Clear stack when continued after a stop
-    end
-  end, { priority = 1, name = "clear-stack-continued" })
+  -- self:onContinued(function(body)
+  --   -- if self.stopped then
+  --     if self._stack then
+  --       self._stack:invalidate() -- Invalidate existing stack if paused again
+  --     end
+  --     self._stack = nil          -- Clear stack when continued after a stop
+  --   -- end
+  -- end, { priority = 1, name = uniqueId .. ".InvalidateStackOnContinued" })
 
 
   self:onContinued(function(body)
     -- print("Thread " .. self.id .. " continued\n")
+    if self._stack then
+      self._stack:invalidate() -- Invalidate existing stack if paused again
+    end
+    self._stack = nil          -- Clear stack when continued after a stop
     if self.stopped then
       self.stopped = false
       self.hookable:emit('resumed', body)
     end
-  end, { priority = 2, name = "emit-thread-resumed" })
+  end, { priority = 1, name = uniqueId .. ".EmitResume" })
 end
 
 ---@param listener fun(body: dap.StoppedEventBody)
 ---@param opts? HookOptions
 ---@return fun()
-function Thread:onPaused(listener, opts)
+function Thread:onStopped(listener, opts)
+  print("DEBUG: Thread", self.id, "registering onStopped listener")
   return self.session.ref.events:on('stopped', function(body)
+    print("DEBUG: Thread", self.id, "received stopped event for threadId:", body.threadId, "reason:", body.reason)
     if body.threadId == self.id then
+      print("DEBUG: Thread", self.id, "matched - calling listener")
       listener(body)
+    else
+      print("DEBUG: Thread", self.id, "no match - ignoring")
     end
   end, opts)
 end
@@ -83,7 +96,7 @@ end
 ---@param listener fun(body: dap.ThreadEventBody)
 ---@param opts? HookOptions
 ---@return fun()
-function Thread:onStopped(listener, opts)
+function Thread:onExited(listener, opts)
   return self.session.ref.events:on('thread', function(body)
     if body.reason == 'exited' and body.threadId == self.id then
       listener(body)

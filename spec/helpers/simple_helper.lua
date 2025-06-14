@@ -4,7 +4,7 @@ local Manager = require("neodap.session.manager")
 local ExecutableTCPAdapter = require("neodap.adapter.executable_tcp")
 local Session = require("neodap.session.session")
 local nio = require("nio")
-local Api = require("neodap.api.Api")
+local Api = require("neodap.api.SessionApi")
 
 local SimpleHelper = {}
 
@@ -39,6 +39,7 @@ function SimpleHelper.prepare(plugins)
     })
 
     nio.run(function()
+    ---@diagnostic disable-next-line
       session:start({
         configuration = {
           type = "pwa-node",

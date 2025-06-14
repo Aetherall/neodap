@@ -1,11 +1,14 @@
 local Class = require("neodap.tools.class")
 local Sequence = require("neodap.tools.sequence")
+local BreakpointManager = require("neodap.api.Breakpoint.BreakpointManager")
+local Session = require("neodap.api.Session.Session")
 
 ---@class ManagerProps
 ---@field sessions { [integer]: Session }
 ---@field root_sessions { [integer]: Session }
 ---@field listeners { [string]: fun(session: Session) }
 ---@field sequence Sequence
+---@field breakpoints api.BreakpointManager
 
 ---@class Manager: ManagerProps
 ---@field new Constructor<ManagerProps>
@@ -19,6 +22,7 @@ function Manager.create()
     sessions = {},
     root_sessions = {},
     listeners = {},
+    breakpoints = nil, -- Will be initialized by Api
   })
 
   return instance

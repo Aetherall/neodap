@@ -1,6 +1,5 @@
 local Class = require('neodap.tools.class')
-local Scope = require('neodap.api.Scope.BaseScope')
-local Source = require("neodap.api.Source.Source")
+local Scope = require('neodap.api.Session.Scope.BaseScope')
 
 ---@class api.ReturnValueScope: api.Scope
 local ReturnValueScope = Class(Scope)
@@ -13,9 +12,10 @@ function ReturnValueScope.instanciate(frame, scope)
     frame = frame,
     --- State
     _variables = nil,
-    _source = scope.source and Source.instanciate(frame.stack.thread, scope.source),
+    _source = scope.source and frame.stack.thread.session:getSourceFor(scope.source),
     --- DAP
     ref = scope,
+    type = 'returnValue',
   })
   return instance
 end

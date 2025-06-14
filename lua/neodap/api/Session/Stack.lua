@@ -1,36 +1,39 @@
 local Class = require('neodap.tools.class')
 
-local Frame = require('neodap.api.Frame')
+local Frame = require('neodap.api.Session.Frame')
 local Hookable = require("neodap.transport.hookable")
 
 ---@class api.StackProps
 ---@field thread api.Thread
----@field _frames { [integer]: api.Frame? } | nil
 ---@field _index table<integer, integer> | nil
 ---@field hookable Hookable
----@field valid boolean
 
 ---@class api.Stack: api.StackProps
 ---@field new Constructor<api.StackProps>
+---@field valid boolean
+---@field _frames { [integer]: api.Frame? } | nil
 local Stack = Class()
 
 ---@param thread api.Thread
 ---@param stack dap.StackTraceResponseBody
 function Stack.instanciate(thread, stack)
-  local stack = Stack:new(function(self)
-    local frames, index = Frame.indexAll(self, stack.stackFrames)
-    return {
-      thread = thread,
-      --- State
-      _frames = frames,
-      _index = index,
-      hookable = Hookable.create(),
-      valid = true,
-      --- DAP
-      totalFrames = stack.totalFrames,
-    }
-  end)
-  return stack
+  local instance = Stack:new({
+    thread = thread,
+    --- State
+    _frames = nil,
+    _index = nil,
+    hookable = Hookable.create(),
+    valid = true,
+    --- DAP
+    totalFrames = stack.totalFrames,
+  })
+
+  -- Initialize frames after the stack is created
+  local frames, index = Frame.indexAll(instance, stack.stackFrames)
+  instance._frames = frames
+  instance._index = index
+
+  return instance
 end
 
 ---@return { [integer]: api.Frame? } | nil
@@ -72,7 +75,13 @@ function Stack:upOf(frameId)
     return nil
   end
 
-  return self._frames[index - 1]
+  if not self._frames then
+    return nil
+  end
+
+  local previous = index - 1
+
+  return self._frames[previous]
 end
 
 function Stack:downOf(frameId)
@@ -81,7 +90,13 @@ function Stack:downOf(frameId)
     return nil
   end
 
-  return self._frames[index + 1]
+  if not self._frames then
+    return nil
+  end
+
+  local next = index + 1
+
+  return self._frames[next]
 end
 
 ---@param listener fun()

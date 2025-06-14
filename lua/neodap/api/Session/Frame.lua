@@ -1,6 +1,5 @@
 local Class = require('neodap.tools.class')
-local Scope = require('neodap.api.Scope')
-local Source = require('neodap.api.Source.Source')
+local Scope = require('neodap.api.Session.Scope')
 
 
 ---@class api.FrameProps
@@ -20,7 +19,7 @@ function Frame.instanciate(stack, frame)
     stack = stack,
     --- DAP
     _scopes = nil,
-    _source = frame.source and Source.instanciate(stack.thread, frame.source),
+    _source = frame.source and stack.thread.session:getSourceFor(frame.source),
     --- State
     ref = frame,
   })

@@ -1,5 +1,7 @@
 #!/usr/bin/env -S nvim -u NONE -U NONE -N -i NONE -V1 --headless -l
 
+---@diagnostic disable
+
 -- Neovim Lua interpreter for busted tests
 -- This file acts as both an executable script and a Lua interpreter
 

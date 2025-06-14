@@ -17,6 +17,22 @@ Current neovim DAP clients provide similar experience to the DAP clients found i
 - Support for multiple DAP servers
 - Support for multiple concurrent DAP sessions
 
+- [x] Executable&TCP Adapter
+- [x] Pause/Continue
+- [x] Multiple Sessions
+- [x] Session Hierarchy
+- [x] Multiple Threads
+- [x] Loaded Sources
+- [x] Stack exploration
+- [x] Breakpoints
+- [x] Frame exploration
+- [ ] Variable exploration
+- [ ] Blocking hooks
+- [ ] Async in Vim context transparently
+
+
+
+
 ## Non-features
 
 - Not a client, but can be used to build a client
@@ -25,7 +41,6 @@ Current neovim DAP clients provide similar experience to the DAP clients found i
 ## Usage
 
 ```lua
-
 local neodap = require('neodap')
 
 ---@param api neodap.api
@@ -53,11 +68,8 @@ local function JumpToStoppedFramePlugin(api)
         -- async support using nio library
         local stack = thread:stack()
         local frame = stack:top()
-
-        if frame then
-          -- extensible convenience API for neovim integration
-          frame:jump()
-        end
+        -- extensible convenience API for neovim integration
+        frame:jump()
       end)
     end)
   end)
@@ -66,6 +78,25 @@ end
 
 
 
+```lua
+local neodap = require('neodap')
+
+---@param api neodap.api
+local function HighlightTopFrame(api)
+  api:onSession(function (session)
+    session:onThread(function (thread)
+      thread:onStopped(function (event)
+        local stack = thread:stack()
+        local frame = stack:top()
+        local clear = frame:highlight()
+
+        -- for exemple, there are many alternatives
+        thread:onResumed(clear, { once = true })
+      end)
+    end)
+  end)
+end
+```
 
 ## Development
 

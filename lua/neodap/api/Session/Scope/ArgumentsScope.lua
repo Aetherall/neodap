@@ -1,6 +1,5 @@
 local Class = require('neodap.tools.class')
-local Scope = require('neodap.api.Scope.BaseScope')
-local Source = require("neodap.api.Source.Source")
+local Scope = require('neodap.api.Session.Scope.BaseScope')
 
 ---@class api.ArgumentsScope: api.Scope
 local ArgumentsScope = Class(Scope)
@@ -13,9 +12,10 @@ function ArgumentsScope.instanciate(frame, scope)
     frame = frame,
     --- State
     _variables = nil,
-    _source = scope.source and Source.instanciate(frame.stack.thread, scope.source),
+    _source = scope.source and frame.stack.thread.session:getSourceFor(scope.source),
     --- DAP
     ref = scope,
+    type = 'arguments',
   })
   return instance
 end

@@ -229,7 +229,7 @@ return {
       session:onThread(function(thread)
         print("DebugMode: Thread registered " .. tostring(thread))
 
-        thread:onPaused(function(body)
+        thread:onStopped(function(body)
           print("DebugMode: onStopped handler called")
           print("  - Reason: " .. tostring(body.reason))
           print("  - Thread ID: " .. tostring(body.threadId))

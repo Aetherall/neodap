@@ -1,17 +1,17 @@
-local BaseScope = require('neodap.api.Scope.BaseScope')
-local ArgumentsScope = require('neodap.api.Scope.ArgumentsScope')
-local LocalsScope = require('neodap.api.Scope.LocalsScope')
-local GlobalsScope = require('neodap.api.Scope.GlobalsScope')
-local ReturnValueScope = require('neodap.api.Scope.ReturnValueScope')
-local RegistersScope = require('neodap.api.Scope.RegistersScope')
-local GenericScope = require('neodap.api.Scope.GenericScope')
+local BaseScope = require('neodap.api.Session.Scope.BaseScope')
+local ArgumentsScope = require('neodap.api.Session.Scope.ArgumentsScope')
+local LocalsScope = require('neodap.api.Session.Scope.LocalsScope')
+local GlobalsScope = require('neodap.api.Session.Scope.GlobalsScope')
+local ReturnValueScope = require('neodap.api.Session.Scope.ReturnValueScope')
+local RegistersScope = require('neodap.api.Session.Scope.RegistersScope')
+local GenericScope = require('neodap.api.Session.Scope.GenericScope')
 
 -- Create a factory module that exports the instanciate method
 local ScopeFactory = {}
 
 ---@param frame api.Frame
 ---@param scope dap.Scope
----@return api.Scope
+---@return api.ArgumentsScope | api.LocalsScope | api.GlobalsScope | api.ReturnValueScope | api.RegistersScope | api.GenericScope
 function ScopeFactory.instanciate(frame, scope)
   -- Determine scope type based on presentationHint
   local presentationHint = scope.presentationHint

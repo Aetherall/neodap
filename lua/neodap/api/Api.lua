@@ -1,11 +1,10 @@
 local Class = require("neodap.tools.class")
-local Session = require("neodap.api.Session")
-
-
+local Session = require("neodap.api.Session.Session")
+local BreakpointManager = require("neodap.api.Breakpoint.BreakpointManager")
 
 ---@class ApiProps
----@field sessions { [integer]: Session }
----@field listeners { [string]: fun(session: Session) }
+---@field sessions { [integer]: api.Session }
+---@field listeners { [string]: fun(session: api.Session) }
 ---@field manager Manager
 
 ---@class Api: ApiProps
@@ -20,8 +19,11 @@ function Api.register(manager)
     listeners = {},
   })
 
+  -- Initialize the breakpoint manager
+  manager.breakpoints = BreakpointManager.create(instance)
+
   manager:onSession(function(session)
-    instance.sessions[session.id] = Session.wrap(session)
+    instance.sessions[session.id] = Session.wrap(session, manager)
     for _, listener in pairs(instance.listeners) do
       listener(instance.sessions[session.id])
     end
@@ -38,6 +40,31 @@ function Api:onSession(listener, opts)
   self.listeners[id] = listener
   return function()
     self.listeners[id] = nil
+  end
+end
+
+function Api:breakpoints()
+  return self.manager.breakpoints
+end
+
+---@param listener fun(breakpoint: api.SourceBreakpoint)
+---@param opts? HookOptions
+function Api:onBreakpoint(listener, opts)
+  return self.manager.breakpoints:onBreakpointAdded(listener, opts)
+end
+
+--- Iterable over all sessions
+--- @return fun(): api.Session
+function Api:eachSession()
+  local sessions = self.sessions
+  local keys = vim.tbl_keys(sessions)
+  local index = 0
+
+  return function()
+    index = index + 1
+    if index <= #keys then
+      return sessions[keys[index]]
+    end
   end
 end
 
