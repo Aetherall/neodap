@@ -68,7 +68,7 @@ describe("DebugMode plugin", function()
       end, { once = true })
 
       session:onThread(function(thread)
-        thread:onStopped(function(body)
+        thread:onPaused(function(body)
           if body.reason == "breakpoint" then
             nio.run(function()
               nio.sleep(100) -- Give plugin time to set up
@@ -165,7 +165,7 @@ describe("DebugMode plugin", function()
       end, { once = true })
 
       session:onThread(function(thread)
-        thread:onStopped(function(body)
+        thread:onPaused(function(body)
           if body.reason == "breakpoint" then
             nio.run(function()
               nio.sleep(100)
@@ -260,7 +260,7 @@ describe("DebugMode plugin", function()
       end, { once = true })
 
       session:onThread(function(thread)
-        thread:onStopped(function(body)
+        thread:onPaused(function(body)
           if body.reason == "breakpoint" then
             nio.run(function()
               nio.sleep(100)
@@ -353,7 +353,7 @@ describe("DebugMode plugin", function()
         end, { once = true })
 
         session:onThread(function(thread)
-          thread:onStopped(function(body)
+          thread:onPaused(function(body)
             if body.reason == "breakpoint" then
               nio.run(function()
                 nio.sleep(100)
@@ -430,7 +430,7 @@ describe("DebugMode plugin", function()
         end, { once = true })
 
         session:onThread(function(thread)
-          thread:onStopped(function(body)
+          thread:onPaused(function(body)
             if body.reason == "breakpoint" then
               stepCount = stepCount + 1
               nio.run(function()
@@ -523,7 +523,7 @@ describe("DebugMode plugin", function()
         end, { once = true })
 
         session:onThread(function(thread)
-          thread:onStopped(function(body)
+          thread:onPaused(function(body)
             if body.reason == "breakpoint" then
               nio.run(function()
                 nio.sleep(100)
@@ -605,7 +605,7 @@ describe("DebugMode plugin", function()
         end, { once = true })
 
         session:onThread(function(thread)
-          thread:onStopped(function(body)
+          thread:onPaused(function(body)
             if body.reason == "breakpoint" then
               nio.run(function()
                 nio.sleep(100)
@@ -663,7 +663,7 @@ describe("DebugMode plugin", function()
         end, { once = true })
 
         session:onThread(function(thread)
-          thread:onStopped(function(body)
+          thread:onPaused(function(body)
             if body.reason == "breakpoint" then
               nio.run(function()
                 nio.sleep(100)
@@ -721,7 +721,7 @@ describe("DebugMode plugin", function()
         end, { once = true })
 
         session:onThread(function(thread)
-          thread:onStopped(function(body)
+          thread:onPaused(function(body)
             if body.reason == "breakpoint" then
               nio.run(function()
                 nio.sleep(100)
@@ -757,7 +757,7 @@ describe("DebugMode plugin", function()
           end)
 
           -- Track the stepped location
-          thread:onStopped(function(body)
+          thread:onPaused(function(body)
             print("Debug: onStopped called with reason: " .. (body.reason or "unknown"))
             if body.reason == "step" then
               nio.run(function()
@@ -854,7 +854,7 @@ describe("DebugMode plugin", function()
         end, { once = true })
 
         session:onThread(function(thread)
-          thread:onStopped(function(body)
+          thread:onPaused(function(body)
             if body.reason == "breakpoint" then
               nio.run(function()
                 nio.sleep(100)
@@ -892,7 +892,7 @@ describe("DebugMode plugin", function()
           end)
 
           -- Track the stepped location
-          thread:onStopped(function(body)
+          thread:onPaused(function(body)
             print("Debug: onStopped called with reason: " .. (body.reason or "unknown"))
             if body.reason == "step" then
               nio.run(function()
@@ -986,7 +986,7 @@ describe("DebugMode plugin", function()
         end, { once = true })
 
         session:onThread(function(thread)
-          thread:onStopped(function(body)
+          thread:onPaused(function(body)
             if body.reason == "breakpoint" then
               nio.run(function()
                 nio.sleep(100)

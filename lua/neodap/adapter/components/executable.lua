@@ -47,18 +47,18 @@ function Executable.spawn(opts)
     return nil
   end
 
-  print("Process spawned with PID: " .. tostring(instance.process.pid))
+  -- print("Process spawned with PID: " .. tostring(instance.process.pid))
 
   ---@async
   nio.run(function()
     local result = instance.process.result(true)
-    print("Process exited with code: " .. tostring(result))
+    -- print("Process exited with code: " .. tostring(result))
   end)
 
   instance.stdout:read_start(function(err, chunk)
     assert(not err, err)
     if chunk then
-      print("stdout: " .. chunk)
+      -- print("stdout: " .. chunk)
     end
   end)
 
@@ -92,7 +92,7 @@ function Executable:close()
     self.stderr = nil
   end
 
-  print("Executable closed")
+  -- print("Executable closed")
 end
 
 return Executable

@@ -1,55 +1,10 @@
--- Tests for neodap functionality
--- This file tests the actual neodap modules and functionality
+local prepare = require("spec.helpers.prepare")
+local nio = require("nio")
 
 describe("neodap", function()
-  local Manager              = require("neodap.session.manager")
-  local ExecutableTCPAdapter = require("neodap.adapter.executable_tcp")
-  local Session              = require("neodap.session.session")
-  local nio                  = require("nio")
-  local Api                  = require("neodap.api.Api")
-  local JumpToStoppedFrame   = require("neodap.plugins.JumpToStoppedFrame")
-
-
-  local function prepare()
-    local manager = Manager.create()
-    local adapter = ExecutableTCPAdapter.create({
-      executable = {
-        cmd = "js-debug",
-        cwd = vim.fn.getcwd(),
-      },
-      connection = {
-        host = "::1",
-      },
-    })
-
-    local api = Api.register(manager)
-
-
-    local function start(fixture)
-      local session = Session.create({
-        manager = manager,
-        adapter = adapter,
-      })
-
-      ---@async
-      nio.run(function()
-        session:start({
-          configuration = {
-            type = "pwa-node",
-            program = vim.fn.fnamemodify("spec/fixtures/" .. fixture, ":p"),
-            cwd = vim.fn.getcwd(),
-          },
-          request = "launch",
-        })
-      end)
-
-      return session
-    end
-
-    return api, start
-  end
-
-  it("start and exits", function()
+  print("\nSuite: neodap")
+  it("boots", function()
+    print("\n\tTest: neodap boots\t")
     local api, start = prepare()
 
     local initialized = nio.control.future()
@@ -64,27 +19,447 @@ describe("neodap", function()
       session:onExited(exited.set, { once = true })
     end)
 
-    start("hello-world.js")
+    start("second.js")
 
     assert.is_true(vim.wait(10000, initialized.is_set), "Session should be initialized")
     assert.is_true(vim.wait(10000, terminated.is_set), "Session should be terminated")
     assert.is_true(vim.wait(10000, exited.is_set), "Session should be exited")
   end)
 
-  it('pauses execution', function()
+  it('pauses thread', function()
+    print("\n\tTest: neodap pauses\t")
     local api, start = prepare()
 
     local paused = nio.control.future()
+    local continues = 0;
+    local resumes = 0;
 
     api:onSession(function(session)
+      if session.ref.id == 1 then return end
       session:onThread(function(thread)
-        thread:onStopped(paused.set, { once = true })
+        thread:onPaused(paused.set, { once = true })
+
+        thread:onContinued(function()
+          continues = continues + 1
+        end)
+
+        thread:onResumed(function()
+          resumes = resumes + 1
+        end)
+
         thread:pause()
       end)
     end)
 
-    start("hello-world.js")
+    start("loop.js")
 
     assert.is_true(vim.wait(10000, paused.is_set), "Session should be paused")
+    assert.is_equal(resumes, 0, "Thread should not have resumed yet")
+    assert.is_true(continues > 1, "Thread emits continue events until paused")
+  end)
+
+  it('resumes thread', function()
+    print("\n\tTest: neodap resumes\t")
+    local api, start = prepare()
+
+    local resumed = nio.control.future()
+
+    api:onSession(function(session)
+      if session.ref.id == 1 then return end
+      session:onThread(function(thread)
+        thread:onPaused(function() thread:continue() end)
+        thread:onResumed(function() resumed.set(true) end)
+        thread:pause()
+      end)
+    end)
+
+    start("loop.js")
+
+    assert.is_true(vim.wait(10000, resumed.is_set), "Session should be resumed")
+  end)
+
+  -- todo: use a debugee that supports stopping a single thread
+  -- it('stops thread', function()
+  --   print("\n\tTest: neodap stops\t")
+  --   local api, start = prepare()
+
+  --   local stopped = nio.control.future()
+
+  --   api:onSession(function(session)
+  --     session:onThread(function(thread)
+  --       thread:onPaused(stopped.set, { once = true })
+  --       thread:stop()
+  --     end)
+  --   end)
+
+  --   start("hello-world.js")
+
+  --   assert.is_true(vim.wait(10000, stopped.is_set), "Session should be stopped")
+  -- end)
+
+  describe('stack', function()
+    print("\n\t\tSuite: neodap stack\t")
+
+
+    it('accesses stack', function()
+      print("\n\t\t\tTest: neodap accesses stack\t")
+
+      local api, start = prepare()
+
+      local stackAccessed = nio.control.future()
+
+      api:onSession(function(session)
+        if session.ref.id == 1 then return end
+        session:onThread(function(thread)
+          thread:onPaused(function()
+            local stack = thread:stack()
+
+            assert.is_not_nil(stack, "Stack should not be nil")
+
+            local frames = stack:frames()
+
+            assert.is_true(#frames > 0, "Stack should have frames")
+
+            stackAccessed.set(true)
+          end)
+
+          thread:pause()
+        end)
+      end)
+
+      start("loop.js")
+
+      assert.is_true(vim.wait(10000, stackAccessed.is_set), "Stack should be accessed")
+    end)
+
+    it('clears stack on continue', function()
+      print("\n\t\t\tTest: neodap clears stack on continue\t")
+
+      local api, start = prepare()
+
+      local stackCleared = nio.control.future()
+
+      api:onSession(function(session)
+        if session.ref.id == 1 then return end
+        session:onThread(function(thread)
+          thread:onPaused(function()
+            local stack = thread:stack()
+            assert.is_not_nil(stack, "Stack should not be nil")
+            assert.is_true(#stack:frames() > 0, "Stack should have frames")
+
+            thread:continue()
+          end)
+
+          thread:onResumed(function()
+            local stack = thread:stack()
+            assert.is_nil(stack, "Stack should be cleared on continue")
+            stackCleared.set(true)
+          end)
+
+          thread:pause()
+        end)
+      end)
+
+      start("loop.js")
+
+      assert.is_true(vim.wait(10000, stackCleared.is_set), "Stack should be cleared on continue")
+    end)
+
+    it('refreshes the stack on pause > continue', function()
+      print("\n\t\t\tTest: neodap refreshes stack on pause > continue\t")
+
+      local api, start = prepare()
+
+      local stackRefreshed = nio.control.future()
+
+      api:onSession(function(session)
+        if session.ref.id == 1 then return end
+        session:onThread(function(thread)
+          thread:onPaused(function()
+            local stack = thread:stack()
+            assert.is_not_nil(stack, "Stack should not be nil")
+            assert.is_true(#stack:frames() > 0, "Stack should have frames")
+
+            thread:continue()
+          end, { once = true })
+
+          thread:onResumed(function()
+            thread:onPaused(function()
+              local stack = thread:stack()
+              assert.is_not_nil(stack, "Stack should not be nil after resume")
+              assert.is_true(#stack:frames() > 0, "Stack should have frames after resume")
+              stackRefreshed.set(true)
+            end)
+
+            thread:pause()
+          end)
+
+          thread:pause()
+        end)
+      end)
+
+      start("loop.js")
+
+      assert.is_true(vim.wait(10000, stackRefreshed.is_set), "Stack should be refreshed on pause > continue")
+    end)
+
+
+    it('triggers stack invalidation hooks on continue', function()
+      print("\n\t\t\tTest: neodap triggers stack invalidation hooks on continue\t")
+
+      local api, start = prepare()
+
+      local stackInvalidated = nio.control.future()
+
+      api:onSession(function(session)
+        if session.ref.id == 1 then return end
+        session:onThread(function(thread)
+          thread:onPaused(function()
+            local stack = thread:stack()
+
+            assert.is_not_nil(stack, "Stack should not be nil on pause")
+
+            stack:onInvalidated(function()
+              stackInvalidated.set(true)
+            end, { once = true })
+
+
+            thread:continue()
+          end)
+
+          thread:pause()
+        end)
+      end)
+
+      start("loop.js")
+
+      assert.is_true(vim.wait(10000, stackInvalidated.is_set), "Stack invalidation hook should be triggered on continue")
+    end)
+  end)
+
+  describe('frame', function()
+    it('accesses frame', function()
+      print("\n\t\t\tTest: neodap accesses frame\t")
+
+      local api, start = prepare()
+
+      local frameAccessed = nio.control.future()
+
+      api:onSession(function(session)
+        if session.ref.id == 1 then return end
+        session:onThread(function(thread)
+          thread:onPaused(function()
+            local stack = thread:stack()
+
+            assert.is_not_nil(stack, "Stack should not be nil")
+
+            local frames = stack:frames()
+
+            assert.is_true(#frames > 0, "Stack should have frames")
+
+            local frame = frames[1]
+
+            assert.is_not_nil(frame, "Frame should not be nil")
+
+            frameAccessed.set(true)
+          end)
+
+          thread:pause()
+        end)
+      end)
+
+      start("loop.js")
+
+      assert.is_true(vim.wait(10000, frameAccessed.is_set), "Frame should be accessed")
+    end)
+
+    it('navigate frames', function()
+      print("\n\t\t\tTest: neodap navigate frames\t")
+
+      local api, start = prepare()
+
+      local upperFrameAccessed = nio.control.future()
+      local lowerFrameAccessed = nio.control.future()
+      local backToTop = nio.control.future()
+
+      api:onSession(function(session)
+        if session.ref.id == 1 then return end
+        session:onThread(function(thread)
+          thread:onPaused(function()
+            local stack = thread:stack()
+
+            assert.is_not_nil(stack, "Stack should not be nil")
+
+            local top = stack:top()
+
+            assert.is_not_nil(top, "Top frame should not be nil")
+
+            local lowerFrame = top:down()
+            assert.is_not_nil(lowerFrame, "Lower frame should not be nil")
+            lowerFrameAccessed.set(true)
+
+            local upperFrame = lowerFrame:up()
+            assert.is_not_nil(upperFrame, "Upper frame should not be nil")
+            upperFrameAccessed.set(true)
+
+            assert.is_equal(top, upperFrame, "Upper frame should be the top frame")
+            backToTop.set(true)
+          end)
+
+          thread:pause()
+        end)
+      end)
+
+      start("loop.js")
+
+      assert.is_true(vim.wait(10000, upperFrameAccessed.is_set), "Upper frame should be accessed")
+      assert.is_true(vim.wait(10000, lowerFrameAccessed.is_set), "Lower frame should be accessed")
+      assert.is_true(vim.wait(10000, backToTop.is_set), "Back to top frame should be successful")
+    end)
+  end)
+
+  describe('scope', function()
+    it('accesses scope', function()
+      print("\n\t\t\tTest: neodap accesses scope\t")
+
+      local api, start = prepare()
+
+      local scopeAccessed = nio.control.future()
+
+      api:onSession(function(session)
+        if session.ref.id == 1 then return end
+        session:onThread(function(thread)
+          thread:onPaused(function()
+            local stack = thread:stack()
+
+            assert.is_not_nil(stack, "Stack should not be nil")
+
+            local frame = stack:top()
+            assert.is_not_nil(frame, "Frame should not be nil")
+
+            local scopes = frame:scopes()
+            assert.is_true(#scopes > 0, "Frame should have scopes")
+
+            scopeAccessed.set(true)
+          end)
+
+          thread:pause()
+        end)
+      end)
+
+      start("loop.js")
+
+      assert.is_true(vim.wait(10000, scopeAccessed.is_set), "Scope should be accessed")
+    end)
+
+    it('accesses scope location', function()
+      print("\n\t\t\tTest: neodap accesses scope location\t")
+
+      local api, start = prepare()
+
+      local scopeLocationAccessed = nio.control.future()
+
+      api:onSession(function(session)
+        if session.ref.id == 1 then return end
+        session:onThread(function(thread)
+          thread:onPaused(function()
+            local stack = thread:stack()
+
+            assert.is_not_nil(stack, "Stack should not be nil")
+
+            local frame = stack:top()
+            assert.is_not_nil(frame, "Frame should not be nil")
+
+            local scopes = frame:scopes()
+            assert.is_true(#scopes > 0, "Frame should have scopes")
+
+            local scope = scopes[1]
+            assert.is_not_nil(scope, "Scope should not be nil")
+
+            local source = scope:source()
+            assert.is_not_nil(source, "Scope source should not be nil")
+
+            local filesource = source:asFile()
+            assert.is_not_nil(filesource, "Scope source should be a file")
+
+            local filename = filesource:filename()
+            assert.is_equal(filename, "loop.js", "Scope source filename should be 'loop.js'")
+
+            local start, finish = scope:region()
+            assert.is_not_nil(start, "Scope region should not be nil")
+            assert.is_not_nil(finish, "Scope region should not be nil")
+
+            assert.is_equal(start[1], 2, "Scope start line should be 2")
+            assert.is_equal(start[2], 13, "Scope start column should be 13")
+
+            assert.is_equal(finish[1], 7, "Scope finish line should be 7")
+            assert.is_equal(finish[2], 2, "Scope finish column should be 2")
+
+            scopeLocationAccessed.set(true)
+          end)
+
+          thread:pause()
+        end)
+      end)
+
+      start("loop.js")
+
+      assert.is_true(vim.wait(10000, scopeLocationAccessed.is_set), "Scope location should be accessed")
+    end)
+
+    -- TODO: Have different Scope types:
+
+    -- -> Unique scopes, there is up to one of each type per frame
+    -- ArgumentsScope
+    -- LocalsScope
+    -- GlobalsScope
+    -- ReturnValueScope
+    -- RegistersScope
+
+    -- -> Standard scopes, there can be multiple of each type per frame
+    -- RangedScope -> will be used for scopes that have a range, like blocks, to provide additional functionality
+    -- GenericScope -> will be used when no other scope type fits
+
+    -- it('accesses scope variables', function()
+    --   print("\n\t\t\tTest: neodap accesses scope variables\t")
+
+    --   local api, start = prepare()
+
+    --   local scopeVariablesAccessed = nio.control.future()
+
+    --   api:onSession(function(session)
+    --     if session.ref.id == 1 then return end
+    --     session:onThread(function(thread)
+    --       thread:onPaused(function()
+    --         local stack = thread:stack()
+
+    --         assert.is_not_nil(stack, "Stack should not be nil")
+
+    --         local frame = stack:top()
+    --         assert.is_not_nil(frame, "Frame should not be nil")
+
+    --         local scopes = frame:scopes()
+    --         assert.is_true(#scopes > 0, "Frame should have scopes")
+
+    --         local scope = scopes[1]
+    --         assert.is_not_nil(scope, "Scope should not be nil")
+
+    --         local variables = scope:variables()
+    --         print(vim.inspect(variables))
+
+    --         assert.is_not_nil(variables, "Scope variables should not be nil")
+    --         assert.is_true(#variables > 0, "Scope should have variables")
+
+    --         scopeVariablesAccessed.set(true)
+    --       end)
+
+    --       thread:pause()
+    --     end)
+    --   end)
+
+    --   start("loop.js")
+
+    --   assert.is_true(vim.wait(10000, scopeVariablesAccessed.is_set), "Scope variables should be accessed")
+    -- end)
   end)
 end)

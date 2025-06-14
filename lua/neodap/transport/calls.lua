@@ -20,7 +20,7 @@ local nio = require("nio")
 ---@field exceptionInfo fun(self: Calls, args: dap.ExceptionInfoArguments): { wait: fun(): dap.ExceptionInfoResponseBody }
 ---@field goto fun(self: Calls, args: dap.GotoArguments): { wait: fun(): nil }
 ---@field gotoTargets fun(self: Calls, args: dap.GotoTargetsArguments): { wait: fun(): dap.GotoTargetsResponseBody }
----@field senderinitialize fun(self: Calls, args: dap.InitializeRequestArguments): { wait: fun(): dap.Capabilities }
+---@field initialize fun(self: Calls, args: dap.InitializeRequestArguments): { wait: fun(): dap.Capabilities }
 ---@field launch fun(self: Calls, args: dap.LaunchRequestArguments): { wait: fun(): nil }
 ---@field loadedSources fun(self: Calls, args: dap.LoadedSourcesArguments): { wait: fun(): dap.LoadedSourcesResponseBody }
 ---@field locations fun(self: Calls, args: dap.LocationsArguments): { wait: fun(): dap.LocationsResponseBody }

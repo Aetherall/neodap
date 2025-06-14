@@ -24,6 +24,21 @@ function Frame.instanciate(stack, frame)
   return instance
 end
 
+---@param stack api.Stack
+---@param stackFrames dap.StackFrame[]
+---@return api.Frame[], table<integer, integer>
+function Frame.indexAll(stack, stackFrames)
+  local frames = {}
+  local index = {}
+
+  for i, frame in ipairs(stackFrames) do
+    frames[i] = Frame.instanciate(stack, frame)
+    index[frame.id] = i
+  end
+
+  return frames, index
+end
+
 ---@return api.Scope[]
 function Frame:scopes()
   if self._scopes then
@@ -51,24 +66,12 @@ function Frame:variables(variablesReference)
   return response.variables
 end
 
-function Frame:next()
-  local context = self.stack:frames()
-  local current_index = vim.tbl_index_of(context, self)
-  if current_index == -1 or current_index == 1 then
-    return nil
-  end
-
-  return context[current_index - 1]
+function Frame:up()
+  return self.stack:upOf(self.ref.id)
 end
 
-function Frame:previous()
-  local context = self.stack:frames()
-  local current_index = vim.tbl_index_of(context, self)
-  if current_index == -1 or current_index == #context then
-    return nil
-  end
-
-  return context[current_index + 1]
+function Frame:down()
+  return self.stack:downOf(self.ref.id)
 end
 
 function Frame:jump()

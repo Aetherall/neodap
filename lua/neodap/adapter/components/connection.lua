@@ -39,7 +39,7 @@ function Connection.start(opts)
       opts.onMessage(payload)
     end,
     function()
-      print("Connection ended")
+      -- print("Connection ended")
     end
   )
 

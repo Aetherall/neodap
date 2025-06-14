@@ -1,49 +1,8 @@
--- Simple test for public API stack access
+local prepare = require("spec.helpers.prepare")
+local nio = require("nio")
+
 describe("neodap public API", function()
-  local Manager              = require("neodap.session.manager")
-  local ExecutableTCPAdapter = require("neodap.adapter.executable_tcp")
-  local Session              = require("neodap.session.session")
-  local nio                  = require("nio")
-  local Api                  = require("neodap.api.Api")
-  local JumpToStoppedFrame   = require("neodap.plugins.JumpToStoppedFrame")
-
-  local function prepare()
-    local manager = Manager.create()
-    local adapter = ExecutableTCPAdapter.create({
-      executable = {
-        cmd = "js-debug",
-        cwd = vim.fn.getcwd(),
-      },
-      connection = {
-        host = "::1",
-      },
-    })
-
-    local api = Api.register(manager)
-
-    local function start(fixture)
-      local session = Session.create({
-        manager = manager,
-        adapter = adapter,
-      })
-
-      ---@async
-      nio.run(function()
-        session:start({
-          configuration = {
-            type = "pwa-node",
-            program = vim.fn.getcwd() .. "/spec/fixtures/" .. fixture,
-            cwd = vim.fn.getcwd(),
-          },
-          request = "launch",
-        })
-      end)
-
-      return session
-    end
-
-    return api, start
-  end
+  local JumpToStoppedFrame = require("neodap.plugins.JumpToStoppedFrame")
 
   it('can access variables via public API', function()
     local api, start = prepare()
@@ -65,7 +24,7 @@ describe("neodap public API", function()
       end, { once = true })
 
       session:onThread(function(thread)
-        thread:onStopped(function(body)
+        thread:onPaused(function(body)
           if body.reason == "breakpoint" then
             -- Use public API to access variables
             local stack = thread:stack()
@@ -123,7 +82,7 @@ describe("neodap public API", function()
 
     api:onSession(function(session)
       session:onThread(function(thread)
-        thread:onStopped(function()
+        thread:onPaused(function()
           nio.run(function()
             nio.sleep(200)
             local current_buffer = vim.api.nvim_get_current_buf()
@@ -155,7 +114,7 @@ describe("neodap public API", function()
 
     api:onSession(function(session)
       session:onThread(function(thread)
-        thread:onStopped(function()
+        thread:onPaused(function()
           nio.run(function()
             nio.sleep(200)
             local current_buffer = vim.api.nvim_get_current_buf()

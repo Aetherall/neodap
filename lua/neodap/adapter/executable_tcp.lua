@@ -69,7 +69,7 @@ function ExecutableTCPAdapter:start(opts)
 
   self.executable.usage = self.executable.usage + 1
 
-  print("Connected to " .. self.connectionOptions.host .. ":" .. self.connectionOptions.port)
+  -- print("Connected to " .. self.connectionOptions.host .. ":" .. self.connectionOptions.port)
 
 
   local close = function()

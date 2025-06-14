@@ -6,7 +6,7 @@ return {
   plugin = function(api)
     api:onSession(function(session)
       session:onThread(function(thread)
-        thread:onStopped(function()
+        thread:onPaused(function()
           local stack = thread:stack()
           local frames = stack:frames()
 

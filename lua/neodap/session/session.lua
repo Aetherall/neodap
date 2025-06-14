@@ -100,7 +100,7 @@ function Session:start(opts)
       self.parent.children[self.id] = nil
     end
     self.manager:removeSession(self)
-    print("Session " .. self.id .. " terminated")
+    -- print("Session " .. self.id .. " terminated")
 
     -- Some debug adapters (like js-debug) don't send an 'exited' event
     -- Generate a synthetic one to maintain consistency with DAP spec
@@ -122,8 +122,11 @@ function Session:start(opts)
     supportsVariableType = true,
     supportsVariablePaging = true,
     supportsRunInTerminalRequest = false,
+    supportsStartDebuggingRequest = true,
     locale = "en-US",
   }):wait()
+
+  -- print(vim.inspect(self.capabilities))
 
   if self.capabilities.supportsConfigurationDoneRequest then
     self.calls:configurationDone({}):wait()
