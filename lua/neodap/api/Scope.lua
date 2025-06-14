@@ -61,4 +61,47 @@ function Scope:region()
   return start, finish
 end
 
+function Scope:rangeLinkSuffix()
+  local start, finish = self:region()
+  return string.format("%d:%d-%d:%d", start[1], start[2], finish[1], finish[2])
+end
+
+function Scope:toStringDescription()
+  local source = self:source()
+
+  local rangeString = self:rangeLinkSuffix()
+
+  if not source then
+    return string.format("%s %s", self.ref.name, rangeString)
+  end
+
+  local virtualSource = source:asVirtual()
+  if virtualSource then
+    return string.format("%s (%s:%s) (%s)", self.ref.name, virtualSource.origin, virtualSource.reference, rangeString)
+  end
+
+  local relativePath = source.ref.path and vim.fn.fnamemodify(source.ref.path, ':~:.') or 'unknown'
+  return string.format("%s (%s:%s)", self.ref.name, relativePath, rangeString)
+end
+
+function Scope:toString()
+  local description = self:toStringDescription()
+
+  if self.ref.expensive then
+    return description .. " (expensive)"
+  end
+
+  local variables = self:variables()
+  if not variables or vim.tbl_isempty(variables) then
+    return description
+  end
+
+
+  local variableStrings = vim.tbl_map(function(variable)
+    return variable:toString()
+  end, variables)
+
+  return string.format("%s\n    Variables:\n      %s", description, table.concat(variableStrings, "\n      "))
+end
+
 return Scope

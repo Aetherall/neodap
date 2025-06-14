@@ -32,6 +32,19 @@ function FileSource:matchesChecksums(checksums)
   return self.source:matchesChecksums(checksums)
 end
 
+function FileSource:content()
+  local response = self.thread.session.ref.calls:source({
+    source = { path = self.path, sourceReference = self.source.ref.sourceReference },
+    threadId = self.thread.id,
+  }):wait()
+
+  if not response.content then
+    return nil
+  end
+
+  return response.content
+end
+
 ---@param other api.Source | api.FileSource
 function FileSource:is(other)
   if other.type == 'file' then
@@ -52,6 +65,11 @@ end
 
 function FileSource:filename()
   return vim.fn.fnamemodify(self.path, ':t')
+end
+
+---@return string
+function FileSource:relativePath()
+  return vim.fn.fnamemodify(self.path, ':~:.')
 end
 
 return FileSource

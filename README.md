@@ -52,7 +52,7 @@ local function JumpToStoppedFramePlugin(api)
         -- cached accessors with managed lifetime
         -- async support using nio library
         local stack = thread:stack()
-        local frame = stack[1]
+        local frame = stack:top()
 
         if frame then
           -- extensible convenience API for neovim integration

@@ -370,6 +370,8 @@ describe("neodap", function()
             local frame = stack:top()
             assert.is_not_nil(frame, "Frame should not be nil")
 
+            print(frame:toString())
+
             local scopes = frame:scopes()
             assert.is_true(#scopes > 0, "Frame should have scopes")
 

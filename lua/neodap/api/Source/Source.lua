@@ -116,4 +116,18 @@ function Source:equals(other)
   return true
 end
 
+function Source:toString()
+  local virtual = self:asVirtual()
+  if virtual then
+    return string.format("VirtualSource(%s, %s)", virtual.origin, self.ref.name or 'unnamed')
+  end
+
+  local file = self:asFile()
+  if file then
+    return string.format("FileSource(%s)", file:relativePath())
+  end
+
+  return string.format("Source(%s)", self.ref.name or 'unnamed')
+end
+
 return Source

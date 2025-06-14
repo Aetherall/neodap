@@ -20,4 +20,16 @@ function Variable.instanciate(scope, variable)
   return instance
 end
 
+function Variable:toString()
+  if self.ref.evaluateName and self.ref.value then
+    return string.format('%s: %s', self.ref.evaluateName, self.ref.value)
+  elseif self.ref.name and self.ref.value then
+    return string.format('%s: %s', self.ref.name, self.ref.value)
+  elseif self.ref.name then
+    return self.ref.name
+  else
+    return ''
+  end
+end
+
 return Variable

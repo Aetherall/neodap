@@ -5,6 +5,7 @@ local Thread = require("neodap.api.Thread")
 ---@class api.SessionProps
 ---@field ref Session
 ---@field threads { [integer]: api.Thread }
+---@field sources { [integer]: api.Source }
 
 ---@class api.Session: api.SessionProps
 ---@field new Constructor<api.SessionProps>
@@ -16,6 +17,7 @@ function Session.wrap(ref)
   local instance = Session:new({
     ref = ref,
     threads = {},
+    sources = {},
   })
 
   instance:listen()

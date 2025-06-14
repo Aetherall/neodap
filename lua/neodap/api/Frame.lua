@@ -1,5 +1,6 @@
 local Class = require('neodap.tools.class')
 local Scope = require('neodap.api.Scope')
+local Source = require('neodap.api.Source.Source')
 
 
 ---@class api.FrameProps
@@ -8,6 +9,7 @@ local Scope = require('neodap.api.Scope')
 
 ---@class api.Frame: api.FrameProps
 ---@field _scopes api.Scope[] | nil
+---@field _source api.Source | nil
 ---@field new Constructor<api.FrameProps>
 local Frame = Class()
 
@@ -18,6 +20,7 @@ function Frame.instanciate(stack, frame)
     stack = stack,
     --- DAP
     _scopes = nil,
+    _source = frame.source and Source.instanciate(stack.thread, frame.source),
     --- State
     ref = frame,
   })
@@ -134,6 +137,16 @@ function Frame:highlight(namespace, hl_group)
       vim.api.nvim_buf_clear_namespace(bufnr, namespace, 0, -1)
     end)
   end
+end
+
+function Frame:toString()
+  local pretty = self._source and self._source:toString() or 'unknown source'
+
+  for _, scope in ipairs(self:scopes()) do
+    pretty = pretty .. "\n  " .. scope:toString()
+  end
+
+  return string.format("Frame(%s) %s", self.ref.id, pretty)
 end
 
 return Frame
