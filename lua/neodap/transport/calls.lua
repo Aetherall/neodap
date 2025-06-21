@@ -146,6 +146,8 @@ function Calls:call(command, params)
     end
   end
 
+  -- print("Sending " .. message.command, vim.inspect(message.arguments))
+
   self.send(message)
 
   return future

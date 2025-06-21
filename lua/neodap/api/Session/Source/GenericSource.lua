@@ -1,7 +1,7 @@
 local Class = require('neodap.tools.class')
 local BaseSource = require('neodap.api.Session.Source.BaseSource')
 
----@class api.GenericSource: api.Source
+---@class api.GenericSource: api.BaseSource
 local GenericSource = Class(BaseSource)
 
 ---@param session api.Session

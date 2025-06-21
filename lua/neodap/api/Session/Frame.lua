@@ -8,7 +8,7 @@ local Scope = require('neodap.api.Session.Scope')
 
 ---@class api.Frame: api.FrameProps
 ---@field _scopes { [integer]: api.Scope? } | nil
----@field _source api.Source | nil
+---@field _source api.BaseSource | nil
 ---@field new Constructor<api.FrameProps>
 local Frame = Class()
 
@@ -41,7 +41,7 @@ function Frame.indexAll(stack, stackFrames)
   return frames, index
 end
 
----@return { [integer]: api.Frame? } | nil
+---@return { [integer]: api.Scope? } | nil
 function Frame:scopes()
   if self._scopes then
     return self._scopes
@@ -103,20 +103,36 @@ function Frame:highlight(namespace, hl_group)
       return
     end
 
+    -- Ensure line is within buffer bounds for extmark
+
     local uri = vim.uri_from_fname(source.path)
+
+    print(uri)
     local bufnr = vim.uri_to_bufnr(uri)
+    print(bufnr)
     if bufnr == -1 then
       return
     end
 
+    local line_count = vim.api.nvim_buf_line_count(0)
+    local safe_extmark_line = math.min(self.ref.line - 1, line_count - 1)
+    safe_extmark_line = math.max(0, safe_extmark_line)
+
+    -- Use a safe end_col value
+    local line_content = vim.api.nvim_buf_get_lines(0, safe_extmark_line, safe_extmark_line + 1, false)[1] or ""
+    local safe_end_col = math.max(0, #line_content)
+
     local current_line = vim.api.nvim_buf_get_lines(bufnr, self.ref.line - 1, self.ref.line, false)[1]
     local end_col = #current_line
+
+    print("Debug: Highlighting frame at line " ..
+      self.ref.line .. ", column " .. self.ref.column .. ", end_col " .. end_col)
 
     vim.api.nvim_buf_set_extmark(bufnr, namespace, self.ref.line - 1, self.ref.column - 1, {
       end_row = self.ref.line - 1,
       end_col = end_col,
       hl_group = hl_group,
-      id = self.ref.id,
+      id = 112882
     })
   end)
 

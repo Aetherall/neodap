@@ -7,7 +7,7 @@ local RangedScopeTrait = require('neodap.api.Session.Scope.traits.RangedScopeTra
 ---@field frame api.Frame
 ---@field ref dap.Scope
 ---@field _variables api.Variable[] | nil
----@field protected _source api.Source | nil
+---@field protected _source api.BaseSource | nil
 
 ---@class api.Scope: api.ScopeProps, api.RangedScopeTrait
 ---@field new Constructor<api.ScopeProps>

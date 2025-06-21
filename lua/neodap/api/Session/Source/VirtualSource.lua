@@ -1,7 +1,7 @@
 local Class = require('neodap.tools.class')
 local BaseSource = require('neodap.api.Session.Source.BaseSource')
 
----@class api.VirtualSource: api.Source
+---@class api.VirtualSource: api.BaseSource
 local VirtualSource = Class(BaseSource)
 
 ---@param session api.Session
@@ -19,6 +19,21 @@ function VirtualSource.instanciate(session, source)
     type = 'virtual',
   })
   return instance
+end
+
+---@return_cast self api.VirtualSource
+function BaseSource:isVirtual()
+  return self.type == 'virtual'
+end
+
+---@return_cast self api.FileSource
+function BaseSource:isFile()
+  return self.type == 'file'
+end
+
+---@return_cast self api.GenericSource
+function BaseSource:isGeneric()
+  return self.type == 'generic'
 end
 
 function VirtualSource:reference()

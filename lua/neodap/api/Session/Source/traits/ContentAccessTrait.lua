@@ -4,16 +4,16 @@ local ContentAccessTrait = {}
 ---@return boolean
 ---@return_cast self api.ContentAccessImpl
 function ContentAccessTrait:hasContent()
-  ---@cast self api.Source
+  ---@cast self api.BaseSource
   return self.ref.sourceReference and self.ref.sourceReference > 0 or
       self.ref.path and self.ref.path ~= ''
 end
 
----@class api.ContentAccessImpl: api.Source
+---@class api.ContentAccessImpl: api.BaseSource
 local ContentAccessImpl = {}
 
 function ContentAccessImpl:content()
-  ---@cast self api.Source
+  ---@cast self api.BaseSource
 
   if self._content then
     return self._content
@@ -40,7 +40,7 @@ function ContentAccessImpl:content()
 end
 
 function ContentAccessImpl:clearContentCache()
-  ---@cast self api.Source
+  ---@cast self api.BaseSource
   self._content = nil
 end
 

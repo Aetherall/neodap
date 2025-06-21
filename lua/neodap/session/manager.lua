@@ -1,7 +1,5 @@
 local Class = require("neodap.tools.class")
 local Sequence = require("neodap.tools.sequence")
-local BreakpointManager = require("neodap.api.Breakpoint.BreakpointManager")
-local Session = require("neodap.api.Session.Session")
 
 ---@class ManagerProps
 ---@field sessions { [integer]: Session }

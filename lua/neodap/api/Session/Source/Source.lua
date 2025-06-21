@@ -1,13 +1,15 @@
-local BaseSource = require('neodap.api.Session.Source.BaseSource')
 local FileSource = require('neodap.api.Session.Source.FileSource')
 local VirtualSource = require('neodap.api.Session.Source.VirtualSource')
 local GenericSource = require('neodap.api.Session.Source.GenericSource')
 
 local SourceFactory = {}
 
+---@alias api.Source api.FileSource | api.VirtualSource
+
+
 ---@param session api.Session
 ---@param source dap.Source
----@return api.FileSource | api.VirtualSource | api.GenericSource
+---@return api.Source
 function SourceFactory.instanciate(session, source)
   local instance
 

@@ -11,6 +11,11 @@ function RangedScopeTrait:hasRange()
   return false
 end
 
+---@return api.RangedScopeImpl|nil
+function RangedScopeTrait:isRanged()
+  return self:hasRange() and self
+end
+
 ---@class api.RangedScopeImpl: api.Scope
 local RangedScopeImpl = {}
 
@@ -30,7 +35,6 @@ function RangedScopeTrait.extend(target)
 
   return target
 end
-
 
 ---@return [integer, integer], [integer, integer]
 function RangedScopeImpl:region()

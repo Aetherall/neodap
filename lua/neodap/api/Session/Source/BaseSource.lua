@@ -1,5 +1,6 @@
 local Class = require('neodap.tools.class')
 local ContentAccessTrait = require('neodap.api.Session.Source.traits.ContentAccessTrait')
+local Location = require("neodap.api.Breakpoint.Location")
 
 ---@class api.BaseSourceProps
 ---@field type 'file' | 'virtual' | 'generic'
@@ -7,7 +8,7 @@ local ContentAccessTrait = require('neodap.api.Session.Source.traits.ContentAcce
 ---@field ref dap.Source
 ---@field _content string | nil
 
----@class api.Source: api.BaseSourceProps, api.ContentAccessTrait
+---@class api.BaseSource: api.BaseSourceProps, api.ContentAccessTrait
 ---@field new Constructor<api.BaseSourceProps>
 local BaseSource = ContentAccessTrait.extend(Class())
 
@@ -16,14 +17,41 @@ function BaseSource:isVirtual()
   return self.type == 'virtual'
 end
 
+---@return api.VirtualSource?
+function BaseSource:asVirtual()
+  if not self:isVirtual() then
+    return nil
+  end
+  ---@cast self api.VirtualSource
+  return self
+end
+
 ---@return_cast self api.FileSource
 function BaseSource:isFile()
   return self.type == 'file'
 end
 
+---@return api.FileSource?
+function BaseSource:asFile()
+  if not self:isFile() then
+    return nil
+  end
+  ---@cast self api.FileSource
+  return self
+end
+
 ---@return_cast self api.GenericSource
 function BaseSource:isGeneric()
   return self.type == 'generic'
+end
+
+---@return api.GenericSource?
+function BaseSource:asGeneric()
+  if not self:isGeneric() then
+    return nil
+  end
+  ---@cast self api.GenericSource
+  return self
 end
 
 ---Create a unique identifier for this source, or nil if unidentifiable
@@ -95,7 +123,7 @@ function BaseSource:matchesChecksums(checksums)
   return true
 end
 
----@param other api.Source
+---@param other api.BaseSource
 function BaseSource:is(other)
   if not other or not other.ref then
     error("Other source must be a valid Source instance")
@@ -112,7 +140,7 @@ function BaseSource:is(other)
   return false
 end
 
----@param other api.Source
+---@param other api.BaseSource
 function BaseSource:equals(other)
   if not self:is(other) then
     return false
@@ -156,22 +184,11 @@ function BaseSource.dap_identifier(dap)
   return nil
 end
 
-function BaseSource:listBreakpoints()
-  return self.session.manager.breakpoints:getSourceBreakpoints(self)
-end
 
-
----@param sourceBreakpoints dap.SourceBreakpoint[]
-function BaseSource:setBreakpoints(sourceBreakpoints)
-  -- FIXED: Route through BreakpointManager for global consistency
-  -- Accept dap.SourceBreakpoint[] format directly (line, column, condition, etc.)
-  return self.session.manager.breakpoints:setSourceBreakpoints(self.session, self, sourceBreakpoints)
-end
-
-function BaseSource:addBreakpoint(sourceBreakpoint)
-  -- FIXED: Route through BreakpointManager for global consistency
-  -- Accept dap.SourceBreakpoint format directly (line, column, condition, etc.)
-  return self.session.manager.breakpoints:addSourceBreakpoint(self.session, self, sourceBreakpoint)
+---@return api.FileSourceBreakpoint
+function BaseSource:addBreakpoint(opts)
+  local location = Location.SourceFile.fromSource(self, opts)
+  return self.session.manager.breakpoints:addBreakpoint(location)
 end
 
 return BaseSource

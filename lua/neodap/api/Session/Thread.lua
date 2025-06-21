@@ -70,14 +70,14 @@ end
 ---@param opts? HookOptions
 ---@return fun()
 function Thread:onStopped(listener, opts)
-  print("DEBUG: Thread", self.id, "registering onStopped listener")
+  -- print("DEBUG: Thread", self.id, "registering onStopped listener")
   return self.session.ref.events:on('stopped', function(body)
-    print("DEBUG: Thread", self.id, "received stopped event for threadId:", body.threadId, "reason:", body.reason)
+    -- print("DEBUG: Thread", self.id, "received stopped event for threadId:", body.threadId, "reason:", body.reason)
     if body.threadId == self.id then
-      print("DEBUG: Thread", self.id, "matched - calling listener")
+      -- print("DEBUG: Thread", self.id, "matched - calling listener")
       listener(body)
     else
-      print("DEBUG: Thread", self.id, "no match - ignoring")
+      -- print("DEBUG: Thread", self.id, "no match - ignoring")
     end
   end, opts)
 end

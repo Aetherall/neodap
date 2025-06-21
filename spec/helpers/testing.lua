@@ -32,7 +32,9 @@ return function(describe, it)
     ---@param ms number?
     local function wait(ms)
       -- assert(vim.wait(ms or 1000, future.is_set), name)
-      future:wait()
+      local result = future:wait()
+      print("=====> Waited for " .. name )
+      return result
     end
 
     ---@param ms number?
@@ -41,16 +43,19 @@ return function(describe, it)
       future:wait()
     end
 
-    local function trigger()
+    local function trigger(value)
       if not future.is_set() then
-        future.set(true)
+        future.set(value or true)
       end
     end
 
     return {
+      set = trigger,
       wait = wait,
       wait_longer = wait_longer,
-      trigger = trigger
+      trigger = trigger,
+      is_set = future.is_set,
+
     }
   end
 

@@ -8,11 +8,13 @@ return {
       session:onThread(function(thread)
         thread:onStopped(function()
           local stack = thread:stack()
-          local frames = stack:frames()
+          if not stack then
+            return
+          end
 
-          local frame = frames[1] -- Get the first frame (the stopped frame)
+          local frame = stack:top()
+
           if not frame then
-            print("No stopped frame found.")
             return
           end
 
@@ -21,5 +23,4 @@ return {
       end, { name = name .. ".onThread" })
     end, { name = name .. ".onSession" })
   end
-
 }

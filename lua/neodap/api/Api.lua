@@ -38,6 +38,12 @@ function Api:onSession(listener, opts)
   local id = opts.name or math.random(1, 1000000) .. "_session_listener"
 
   self.listeners[id] = listener
+
+  for _, session in pairs(self.sessions) do
+    -- print("Calling existing session listener for session: " .. session.id)
+    listener(session)
+  end
+
   return function()
     self.listeners[id] = nil
   end
@@ -47,10 +53,13 @@ function Api:breakpoints()
   return self.manager.breakpoints
 end
 
----@param listener fun(breakpoint: api.SourceBreakpoint)
+---@param listener fun(breakpoint: api.FileSourceBreakpoint)
 ---@param opts? HookOptions
 function Api:onBreakpoint(listener, opts)
-  return self.manager.breakpoints:onBreakpointAdded(listener, opts)
+  return self.manager.breakpoints:onBreakpointAdded(listener, {
+    name = opts and opts.name or "api_breakpoint_listener",
+    priority = opts and opts.priority or 5,
+  })
 end
 
 --- Iterable over all sessions

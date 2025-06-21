@@ -34,24 +34,37 @@ function Hookable.create()
   return instance
 end
 
+---@return { wait: fun() }
 function Hookable:emit(key, event)
+  -- print("Emitting event: " .. key)
+
   local listeners = self.listeners[key]
+  local done = nio.control.future()
   if listeners then
     for priority, group in pairs(listeners) do
       for name, hook in pairs(group) do
         nio.run(function()
+        if key == "loadedSource" or key == "SourceLoaded" then
           hook.handler(event)
+        else 
+          -- print(">>>>> Calling hook: " .. name .. " for event: " .. key)
+            hook.handler(event)
+            -- print("<<<<< Hook " .. name .. " executed for event: " .. key)
+          end
         end)
-
-        if hook.once then
-          group[name] = nil
+          
+          if hook.once then
+            group[name] = nil
+          end
         end
       end
     end
-  end
+    done.set(true)
+  return done
 end
 
 function Hookable:on(key, handler, opts)
+  -- print("+++++ Registering hook for event: " .. key .. " with handler: " .. (opts or { name = "anonymous"}).name)
   opts = opts or {}
   local name = opts.name or math.random(1, 1000000) .. "_" .. key
   local priority = opts.priority or 10
