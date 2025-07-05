@@ -26,6 +26,12 @@ local FileSourceBinding = Class()
 ---@param breakpoint api.FileSourceBreakpoint
 ---@return api.FileSourceBinding
 function FileSourceBinding.unverified(manager, session, source, breakpoint)
+  local Logger = require("neodap.tools.logger")
+  local log = Logger.get()
+  
+  log:info("FileSourceBinding.unverified - Creating binding for breakpoint:", breakpoint.id)
+  log:debug("Binding details - session:", session.id, "source:", source:identifier(), "line:", breakpoint.location.line, "column:", breakpoint.location.column)
+  
   return FileSourceBinding:new({
     breakpointId = breakpoint.id,
     manager = manager,
@@ -43,6 +49,16 @@ end
 ---Update binding from DAP breakpoint response
 ---@param dapBreakpoint dap.Breakpoint
 function FileSourceBinding:update(dapBreakpoint)
+  local Logger = require("neodap.tools.logger")
+  local log = Logger.get()
+  
+  log:info("FileSourceBinding:update - Updating binding for breakpoint:", self.breakpointId)
+  log:debug("Update details - DAP ID:", dapBreakpoint.id, "verified:", dapBreakpoint.verified, "actual line:", dapBreakpoint.line, "actual column:", dapBreakpoint.column)
+  
+  if self.line ~= dapBreakpoint.line or self.column ~= dapBreakpoint.column then
+    log:warn("Binding location mismatch - requested:", self.line, self.column, "actual:", dapBreakpoint.line, dapBreakpoint.column)
+  end
+  
   self.id = dapBreakpoint.id
   self.verified = dapBreakpoint.verified
   self.actualLine = dapBreakpoint.line

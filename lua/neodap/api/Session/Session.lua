@@ -3,6 +3,7 @@ local Thread = require("neodap.api.Session.Thread")
 local Source = require('neodap.api.Session.Source.Source')
 local BaseSource = require('neodap.api.Session.Source.BaseSource')
 local Hookable = require("neodap.transport.hookable")
+local Logger = require("neodap.tools.logger")
 
 ---@class api.SessionProps
 ---@field id integer
@@ -11,6 +12,7 @@ local Hookable = require("neodap.transport.hookable")
 ---@field _sources { [string]: api.Source? }
 ---@field hookable Hookable
 ---@field manager Manager
+---@field api Api
 
 ---@class api.Session: api.SessionProps
 ---@field new Constructor<api.SessionProps>
@@ -18,7 +20,9 @@ local Session = Class();
 
 ---@param ref Session
 ---@param manager Manager
-function Session.wrap(ref, manager)
+---@param parentHookable? Hookable
+---@param api? Api
+function Session.wrap(ref, manager, parentHookable, api)
   ---@type api.Session
   local instance = Session:new({
     id = ref.id,
@@ -26,11 +30,21 @@ function Session.wrap(ref, manager)
     _threads = {},
     _sources = {},
     _sessionBreakpoints = {},
-    hookable = Hookable.create(),
-    manager = manager
+    hookable = Hookable.create(parentHookable),
+    manager = manager,
+    api = api
   })
 
   instance:listen()
+  
+  -- Register cleanup on session termination and exit
+  ref.events:on('terminated', function()
+    instance:destroy()
+  end, { name = "SessionCleanup_terminated_" .. instance.id, priority = 999 })
+  
+  ref.events:on('exited', function()
+    instance:destroy()
+  end, { name = "SessionCleanup_exited_" .. instance.id, priority = 999 })
 
   return instance
 end
@@ -43,7 +57,7 @@ function Session:listen()
   self.ref.events:on('thread', function(body)
     if body.reason == 'started' then
       -- print("DEBUG: Session creating thread for threadId:", body.threadId)
-      local thread = Thread.instanciate(self, body.threadId)
+      local thread = Thread.instanciate(self, body.threadId, self.hookable)
       self._threads[body.threadId] = thread
       -- print("DEBUG: Thread created, stored in _threads[" .. body.threadId .. "]")
     end
@@ -51,6 +65,10 @@ function Session:listen()
 
   self.ref.events:on('thread', function(body)
     if body.reason == 'exited' then
+      local thread = self._threads[body.threadId]
+      if thread and thread.destroy then
+        thread:destroy()
+      end
       self._threads[body.threadId] = nil
     end
   end, { name = "SessionThreadExited_" .. uniqueId, priority = 98 })
@@ -276,9 +294,10 @@ function Session:onBindingNew(listener, opts)
   return self.ref.events:on('breakpoint',
     ---@param body dap.BreakpointEventBody
     function(body)
-      print("DEBUG: Session received breakpoint event - reason:", body.reason, "breakpoint:")
+      local log = Logger.get()
+      log:debug("Session", self.id, "- Received breakpoint event - reason:", body.reason, "breakpoint:", body.breakpoint)
       if body.reason == "new" then
-        print("DEBUG: Session forwarding 'new' breakpoint to listener")
+        log:debug("Session", self.id, "- Forwarding 'new' breakpoint to listener")
         listener(body.breakpoint)
       end
     end
@@ -291,10 +310,10 @@ function Session:onBindingChanged(listener, opts)
   return self.ref.events:on('breakpoint',
     ---@param body dap.BreakpointEventBody
     function(body)
-      -- print("DEBUG: Session received breakpoint event - reason:", body.reason, "breakpoint:",
-        -- vim.inspect(body.breakpoint))
+      local log = Logger.get()
+      log:debug("Session", self.id, "- Received breakpoint event - reason:", body.reason, "breakpoint:", body.breakpoint)
       if body.reason == "changed" then
-        -- print("DEBUG: Session forwarding 'changed' breakpoint to listener")
+        log:debug("Session", self.id, "- Forwarding 'changed' breakpoint to listener")
         listener(body.breakpoint)
       end
     end
@@ -315,7 +334,9 @@ end
 
 ---@param listener fun(binding: api.FileSourceBinding)
 function Session:onBinding(listener, opts)
-  return self.manager.breakpoints:onBound(function(binding)
+  local BreakpointManager = require("neodap.plugins.BreakpointManager")
+  local breakpoint_service = BreakpointManager.for_api(self.api)
+  return breakpoint_service:onBound(function(binding)
     if binding.session.id == self.id then
       listener(binding)
     end
@@ -330,6 +351,41 @@ function Session:onBindingHit(listener, opts)
       listener(binding, hit)
     end, opts)
   end, opts)
+end
+
+--- Destroys this session and all its child resources
+--- This method ensures complete cleanup of threads, sources, and handlers
+function Session:destroy()
+  local log = Logger.get()
+  log:debug("Session", self.id, "destroy() called - cleaning up child resources")
+  
+  -- Clean up all threads first
+  for threadId, thread in pairs(self._threads) do
+    if thread and thread.destroy then
+      log:debug("Session", self.id, "destroying thread", threadId)
+      thread:destroy()
+    end
+  end
+  
+  -- Clean up all sources
+  for sourceId, source in pairs(self._sources) do
+    if source and source.destroy then
+      log:debug("Session", self.id, "destroying source", sourceId)
+      source:destroy()
+    end
+  end
+  
+  -- Clean up our hookable (and all handlers registered on it)
+  if self.hookable and not self.hookable.destroyed then
+    log:debug("Session", self.id, "destroying hookable and all handlers")
+    self.hookable:destroy()
+  end
+  
+  -- Clear references
+  self._threads = {}
+  self._sources = {}
+  
+  log:info("Session", self.id, "destroyed successfully")
 end
 
 return Session

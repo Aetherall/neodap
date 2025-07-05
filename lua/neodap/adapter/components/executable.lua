@@ -1,4 +1,5 @@
 local Class = require("neodap.tools.class")
+local Logger = require("neodap.tools.logger")
 local uv = vim.uv
 local nio = require("nio")
 
@@ -43,7 +44,8 @@ function Executable.spawn(opts)
   if not instance.process then
     instance.stdout:close()
     instance.stderr:close()
-    print("Failed to spawn process")
+    local log = Logger.get()
+    log:error("Failed to spawn process")
     return nil
   end
 
@@ -65,7 +67,8 @@ function Executable.spawn(opts)
   instance.stderr:read_start(function(err, chunk)
     assert(not err, err)
     if chunk then
-      print("stderr: " .. chunk)
+      local log = Logger.get()
+      log:debug("Process stderr:", chunk)
     end
   end)
 

@@ -16,13 +16,14 @@ local Stack = Class()
 
 ---@param thread api.Thread
 ---@param stack dap.StackTraceResponseBody
-function Stack.instanciate(thread, stack)
+---@param parentHookable? Hookable
+function Stack.instanciate(thread, stack, parentHookable)
   local instance = Stack:new({
     thread = thread,
     --- State
     _frames = nil,
     _index = nil,
-    hookable = Hookable.create(),
+    hookable = Hookable.create(parentHookable),
     valid = true,
     --- DAP
     totalFrames = stack.totalFrames,
@@ -108,6 +109,29 @@ end
 function Stack:invalidate()
   self.valid = false
   self.hookable:emit('invalidated')
+end
+
+--- Destroys this stack and all its child resources
+--- This method ensures complete cleanup of frames and handlers
+function Stack:destroy()
+  -- Clean up all frames
+  if self._frames then
+    for _, frame in pairs(self._frames) do
+      if frame and frame.destroy then
+        frame:destroy()
+      end
+    end
+  end
+  
+  -- Clean up our hookable (and all handlers registered on it)
+  if self.hookable and not self.hookable.destroyed then
+    self.hookable:destroy()
+  end
+  
+  -- Clear references
+  self._frames = nil
+  self._index = nil
+  self.valid = false
 end
 
 return Stack

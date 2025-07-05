@@ -9,7 +9,7 @@ local function setup_runtime_paths()
     local ok = pcall(require, "nio")
     if not ok then
       -- If nio is not found, we can still function for basic operations
-      vim.notify("nvim-nio not found, some async features may not work", vim.log.levels.WARN)
+      -- vim.notify("nvim-nio not found, some async features may not work", vim.log.levels.WARN)
     end
   end
 
@@ -48,12 +48,21 @@ local function go()
   local namespace = vim.api.nvim_create_namespace("neodap")
   vim.api.nvim_set_hl(namespace, "Default", { fg = "#ffffff", bg = "#000000" })
 
+  
+
 
   local api = Api.register(manager)
 
-  require("neodap.plugins.JumpToStoppedFrame").plugin(api)
-  require("neodap.plugins.HighlightCurrentFrame").plugin(api)
-  require("neodap.plugins.VirtualTextValues").plugin(api)
+  local JumpToStoppedFrame = require("neodap.plugins.JumpToStoppedFrame")
+  local HighlightCurrentFrame = require("neodap.plugins.HighlightCurrentFrame")
+  local BreakpointVirtualText = require("neodap.plugins.BreakpointVirtualText")
+  local BreakpointManager = require("neodap.plugins.BreakpointManager")
+
+  api:getPluginInstance(JumpToStoppedFrame)
+  api:getPluginInstance(HighlightCurrentFrame)
+  api:getPluginInstance(BreakpointVirtualText)
+  local breakpoints = api:getPluginInstance(BreakpointManager)
+
 
   -- DebugMode.plugin(api)
 
@@ -78,7 +87,9 @@ local function go()
   end)
 
   vim.keymap.set("n", "<leader>db", function()
-    api:breakpoints():addBreakpoint(Location.SourceFile.fromCursor())
+    nio.run(function()
+      breakpoints:toggleBreakpoint(Location.SourceFile.fromCursor())
+    end)
   end, { noremap = true, silent = true, desc = "Toggle Breakpoint" })
 
   vim.keymap.set("n", "<leader>dc", function()
@@ -99,25 +110,13 @@ local function go()
     end
   end, { noremap = true, silent = true, desc = "Step Over" })
 
-
-  -- api:onBreakpoint(function (breakpoint)
-  --   breakpoint:onHit(function (hit)
-  --     local stack = hit.thread:stack()
-  --     if not stack then
-  --       return -- No stack, nothing to do
-  --     end
-
-  --     local top = stack:top()
-
-  --     if not top then
-  --       return -- No top frame, nothing to do
-  --     end
-
-  --     top:jump()
-  --     top:highlight(namespace, 'Default')
-  --   end)
-  -- end)
-
+  -- Add command to show log file path
+  vim.keymap.set("n", "<leader>dl", function()
+    local get_log_path = require('neodap.tools.get_log_path')
+    local log_path = get_log_path()
+    -- Write to cmdline instead of notify to avoid prompt
+    vim.api.nvim_echo({{"Log file: " .. log_path, "Normal"}}, false, {})
+  end, { noremap = true, silent = true, desc = "Show Debug Log Path" })
 
   api:onSession(function(session)
     session:onSourceLoaded(function(source)

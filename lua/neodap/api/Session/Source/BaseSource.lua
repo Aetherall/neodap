@@ -1,6 +1,8 @@
 local Class = require('neodap.tools.class')
 local ContentAccessTrait = require('neodap.api.Session.Source.traits.ContentAccessTrait')
 local Location = require("neodap.api.Breakpoint.Location")
+local nio = require('nio')
+local Logger = require("neodap.tools.logger")
 
 ---@class api.BaseSourceProps
 ---@field type 'file' | 'virtual' | 'generic'
@@ -8,7 +10,7 @@ local Location = require("neodap.api.Breakpoint.Location")
 ---@field ref dap.Source
 ---@field _content string | nil
 
----@class api.BaseSource: api.BaseSourceProps, api.ContentAccessTrait
+---@class (partial) api.BaseSource: api.BaseSourceProps, api.ContentAccessTrait
 ---@field new Constructor<api.BaseSourceProps>
 local BaseSource = ContentAccessTrait.extend(Class())
 
@@ -184,11 +186,39 @@ function BaseSource.dap_identifier(dap)
   return nil
 end
 
+---@return { wait: fun(): number | nil }
+function BaseSource:bufnr()
+  local future = nio.control.future()
+  if not self.ref or not self.ref.path then
+    return nil
+  end
 
----@return api.FileSourceBreakpoint
-function BaseSource:addBreakpoint(opts)
-  local location = Location.SourceFile.fromSource(self, opts)
-  return self.session.manager.breakpoints:addBreakpoint(location)
+  -- vim.schedule(function()
+    local bufnr = vim.uri_to_bufnr(vim.uri_from_fname(self.ref.path))
+    if bufnr == -1 then
+      future.set(nil)
+    else
+      future.set(bufnr)
+    end
+  -- end)
+
+  return future
 end
+
+-- ---@return api.FileSourceBreakpoint
+-- function BaseSource:addBreakpoint(opts)
+--   local log = Logger.get()
+--   log:info("BaseSource:addBreakpoint - Adding breakpoint to source:", self:identifier(), "opts:", opts)
+  
+--   local location = Location.SourceFile.fromSource(self, opts)
+--   log:debug("BaseSource:addBreakpoint - Created location:", location)
+  
+--   local BreakpointManager = require("neodap.plugins.BreakpointManager")
+--   local breakpoint_service = BreakpointManager.for_api(self.session.api)
+--   local breakpoint = breakpoint_service:addBreakpoint(location)
+--   log:info("BaseSource:addBreakpoint - Breakpoint created with ID:", breakpoint.id)
+  
+--   return breakpoint
+-- end
 
 return BaseSource

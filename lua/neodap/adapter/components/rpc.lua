@@ -1,4 +1,5 @@
 -- local utils = require('dap.utils')
+local Logger = require('neodap.tools.logger')
 local M = {}
 
 ---@param header string
@@ -84,7 +85,8 @@ function M.create_read_loop(handle_body, on_no_chunk)
   parse_chunk()
   return function(err, chunk)
     if err then
-      print("Error in read loop: " .. err)
+      local log = Logger.get()
+      log:error("Error in read loop:", err)
       -- utils.notify(err, vim.log.levels.ERROR)
       return
     end

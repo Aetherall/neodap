@@ -1,5 +1,7 @@
 local Class = require("neodap.tools.class")
 local nio = require("nio")
+local NvimAsync = require("neodap.tools.async")
+-- local uv = nio.uv
 
 
 ---@class HookOptions
@@ -20,16 +22,28 @@ local Hook = Class()
 
 ---@class HookableProps<T>
 ---@field listeners { [string]?: { [number]?: { [string]?: Hook } } }
+---@field parent? Hookable
+---@field children { [Hookable]: boolean }
+---@field destroyed boolean
 
 ---@class Hookable: HookableProps
 ---@field new Constructor<HookableProps>
 local Hookable = Class()
 
 
-function Hookable.create()
+---@param parent? Hookable Optional parent Hookable for hierarchical cleanup
+function Hookable.create(parent)
   local instance = Hookable:new({
     listeners = {},
+    parent = parent,
+    children = {},
+    destroyed = false,
   })
+
+  -- Register with parent if provided
+  if parent and not parent.destroyed then
+    parent.children[instance] = true
+  end
 
   return instance
 end
@@ -37,34 +51,43 @@ end
 ---@return { wait: fun() }
 function Hookable:emit(key, event)
   -- print("Emitting event: " .. key)
+  
+  -- Don't emit events on destroyed hookables
+  if self.destroyed then
+    local done = nio.control.future()
+    done.set(true)
+    return done
+  end
 
   local listeners = self.listeners[key]
-  local done = nio.control.future()
   if listeners then
     for priority, group in pairs(listeners) do
       for name, hook in pairs(group) do
-        nio.run(function()
-        if key == "loadedSource" or key == "SourceLoaded" then
-          hook.handler(event)
-        else 
-          -- print(">>>>> Calling hook: " .. name .. " for event: " .. key)
-            hook.handler(event)
-            -- print("<<<<< Hook " .. name .. " executed for event: " .. key)
-          end
-        end)
-          
-          if hook.once then
-            group[name] = nil
-          end
+          -- Use NvimAsync by default for all new handlers
+        -- NvimAsync.run(hook.handler, event)
+        if hook.once then
+          group[name] = nil
         end
+        -- Use simplified NvimAsync that preserves NIO context
+        NvimAsync.run(hook.handler, event)
       end
     end
-    done.set(true)
+  end
+  
+  -- Return a pre-resolved future for compatibility
+  local done = nio.control.future()
+  done.set(true)
   return done
 end
 
 function Hookable:on(key, handler, opts)
   -- print("+++++ Registering hook for event: " .. key .. " with handler: " .. (opts or { name = "anonymous"}).name)
+  
+  -- Prevent registration on destroyed hookables
+  if self.destroyed then
+    return function() end -- Return no-op cleanup function
+  end
+  
   opts = opts or {}
   local name = opts.name or math.random(1, 1000000) .. "_" .. key
   local priority = opts.priority or 10
@@ -112,6 +135,40 @@ function Hookable:off(key, name)
   if next(self.listeners[key]) == nil then
     self.listeners[key] = nil
   end
+end
+
+function Hookable:clearAll()
+  self.listeners = {}
+end
+
+--- Destroys this Hookable and all its children, cleaning up all handlers
+--- This method ensures complete cleanup of the handler hierarchy
+function Hookable:destroy()
+  if self.destroyed then
+    return -- Already destroyed, avoid double cleanup
+  end
+  
+  -- Mark as destroyed early to prevent new registrations
+  self.destroyed = true
+  
+  -- Clean up all children first (depth-first cleanup)
+  for child in pairs(self.children) do
+    if not child.destroyed then
+      child:destroy()
+    end
+  end
+  
+  -- Clear all our own listeners
+  self:clearAll()
+  
+  -- Remove from parent's children list
+  if self.parent and not self.parent.destroyed then
+    self.parent.children[self] = nil
+  end
+  
+  -- Clear references to prevent memory leaks
+  self.children = {}
+  self.parent = nil
 end
 
 return Hookable

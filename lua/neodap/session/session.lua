@@ -3,6 +3,7 @@ local Events   = require("neodap.transport.events")
 local Calls    = require("neodap.transport.calls")
 local Handlers = require("neodap.transport.handlers")
 local nio      = require("nio")
+local Logger   = require("neodap.tools.logger")
 
 
 ---@class SessionProps
@@ -76,7 +77,8 @@ function Session:start(opts)
         -- print("DEBUG: Received response:", vim.inspect(message))
         self.calls:receive(message)
       else
-        print("Unknown message type: " .. message.type)
+        local log = Logger.get()
+        log:warn("Unknown message type:", message.type)
       end
     end,
   })

@@ -5,11 +5,9 @@ function Class(parent)
 
   -- process the parent
   if parent then
-    -- create a shallow copy of the parent class
-    for i, v in pairs(parent) do
-      class[i] = v
-    end
-
+    -- Use metatable delegation instead of shallow copying
+    -- This allows dynamic method addition to parent classes
+    setmetatable(class, { __index = parent })
     class.__parent = parent
   end
 
@@ -19,6 +17,7 @@ function Class(parent)
 
   function class:new(opts)
     local instance = {}
+
     if type(opts) == "function" then
       -- if opts is a function, we call it with self as the context
       -- and it should return a table with the instance properties
@@ -34,7 +33,6 @@ function Class(parent)
       instance = opts or {}
     end
     setmetatable(instance, self)
-    self.__index = self
     return instance
   end
 

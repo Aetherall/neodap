@@ -1,9 +1,13 @@
-local prepare = require("spec.helpers.prepare")
+local Test = require("spec.helpers.testing")(describe, it)
+local PrepareHelper = require("spec.helpers.prepare")
+local prepare = PrepareHelper.prepare
+
+-- local prepare = require("spec.helpers.prepare")
 local nio = require("nio")
 
-describe("neodap", function()
+Test.Describe("neodap", function()
   print("\nSuite: neodap")
-  it("boots", function()
+  Test.It("boots", function()
     print("\n\tTest: neodap boots\t")
     local api, start = prepare()
 
@@ -26,10 +30,12 @@ describe("neodap", function()
     assert(vim.wait(10000, exited.is_set), "Session should be exited")
   end)
 
-  it('pauses thread', function()
+  Test.It('pauses thread', function()
     print("\n\tTest: neodap pauses\t")
     local api, start = prepare()
 
+    -- Use unique test identifier to avoid cross-test interference
+    local test_id = "pauses_" .. math.random(1000000, 9999999)
     local paused = nio.control.future()
     local continues = 0;
     local resumes = 0;
@@ -41,11 +47,11 @@ describe("neodap", function()
 
         thread:onContinued(function()
           continues = continues + 1
-        end)
+        end, { once = true })
 
         thread:onResumed(function()
           resumes = resumes + 1
-        end)
+        end, { once = true })
 
         thread:pause()
       end)
@@ -59,7 +65,7 @@ describe("neodap", function()
     -- The important thing is that we can successfully pause the thread
   end)
 
-  it('resumes thread', function()
+  Test.It('resumes thread', function()
     print("\n\tTest: neodap resumes\t")
     local api, start = prepare()
 
@@ -68,8 +74,8 @@ describe("neodap", function()
     api:onSession(function(session)
       if session.ref.id == 1 then return end
       session:onThread(function(thread)
-        thread:onStopped(function() thread:continue() end)
-        thread:onResumed(function() resumed.set(true) end)
+        thread:onStopped(function() thread:continue() end, { once = true })
+        thread:onResumed(function() resumed.set(true) end, { once = true })
         thread:pause()
       end)
     end)
@@ -80,7 +86,7 @@ describe("neodap", function()
   end)
 
   -- todo: use a debugee that supports stopping a single thread
-  -- it('stops thread', function()
+  -- Test.it('stops thread', function()
   --   print("\n\tTest: neodap stops\t")
   --   local api, start = prepare()
 
@@ -98,11 +104,11 @@ describe("neodap", function()
   --   assert.is_true(vim.wait(10000, stopped.is_set), "Session should be stopped")
   -- end)
 
-  describe('stack', function()
+  Test.Describe('stack', function()
     print("\n\t\tSuite: neodap stack\t")
 
 
-    it('accesses stack', function()
+    Test.It('accesses stack', function()
       print("\n\t\t\tTest: neodap accesses stack\t")
 
       local api, start = prepare()
@@ -133,7 +139,7 @@ describe("neodap", function()
       assert(vim.wait(10000, stackAccessed.is_set), "Stack should be accessed")
     end)
 
-    it('clears stack on continue', function()
+   Test.It('clears stack on continue', function()
       print("\n\t\t\tTest: neodap clears stack on continue\t")
 
       local api, start = prepare()
@@ -166,7 +172,7 @@ describe("neodap", function()
       assert(vim.wait(10000, stackCleared.is_set), "Stack should be cleared on continue")
     end)
 
-    it('refreshes the stack on pause > continue', function()
+    Test.It('refreshes the stack on pause > continue', function()
       print("\n\t\t\tTest: neodap refreshes stack on pause > continue\t")
 
       local api, start = prepare()
@@ -205,7 +211,7 @@ describe("neodap", function()
     end)
 
 
-    it('triggers stack invalidation hooks on continue', function()
+    Test.It('triggers stack invalidation hooks on continue', function()
       print("\n\t\t\tTest: neodap triggers stack invalidation hooks on continue\t")
 
       local api, start = prepare()
@@ -238,8 +244,8 @@ describe("neodap", function()
     end)
   end)
 
-  describe('frame', function()
-    it('accesses frame', function()
+  Test.Describe('frame', function()
+    Test.It('accesses frame', function()
       print("\n\t\t\tTest: neodap accesses frame\t")
 
       local api, start = prepare()
@@ -274,7 +280,7 @@ describe("neodap", function()
       assert(vim.wait(10000, frameAccessed.is_set), "Frame should be accessed")
     end)
 
-    it('navigate frames', function()
+    Test.It('navigate frames', function()
       print("\n\t\t\tTest: neodap navigate frames\t")
 
       local api, start = prepare()
@@ -319,8 +325,8 @@ describe("neodap", function()
     end)
   end)
 
-  describe('scope', function()
-    it('accesses scope', function()
+  Test.Describe('scope', function()
+    Test.It('accesses scope', function()
       print("\n\t\t\tTest: neodap accesses scope\t")
 
       local api, start = prepare()
@@ -353,7 +359,7 @@ describe("neodap", function()
       assert(vim.wait(10000, scopeAccessed.is_set), "Scope should be accessed")
     end)
 
-    it('accesses scope location', function()
+    Test.It('accesses scope location', function()
       print("\n\t\t\tTest: neodap accesses scope location\t")
 
       local api, start = prepare()

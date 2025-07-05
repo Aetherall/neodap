@@ -30,7 +30,6 @@ function BreakpointCollection:remove(breakpoint)
   end
 end
 
-
 function BreakpointCollection:first()
   return self.breakpoints[1]
 end
@@ -94,12 +93,35 @@ function BreakpointCollection:atLocation(location)
   end)
 end
 
+---@param location api.SourceFileLocation
+---@param bindings_collection api.BindingCollection
+---@return api.FileSourceBreakpoint?
+function BreakpointCollection:findByAnyLocation(location, bindings_collection)
+  for _, breakpoint in ipairs(self.breakpoints) do
+    -- Check requested location
+    if breakpoint.location:matches(location) then
+      return breakpoint
+    end
+    
+    -- Check actual binding locations if bindings_collection provided
+    if bindings_collection then
+      for binding in bindings_collection:forBreakpoint(breakpoint):each() do
+        if binding.verified and 
+           binding.actualLine == location.line and 
+           (binding.actualColumn or 0) == (location.column or 0) then
+          return breakpoint
+        end
+      end
+    end
+  end
+  return nil
+end
+
 function BreakpointCollection:atSourceId(sourceId)
   return self:filter(function(breakpoint)
     return breakpoint.location:isAtSourceId(sourceId)
   end)
 end
-
 
 ---@param dapBreakpoint dap.Breakpoint
 function BreakpointCollection:match(dapBreakpoint)

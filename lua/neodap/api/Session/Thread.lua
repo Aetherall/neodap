@@ -16,14 +16,14 @@ local Hookable = require("neodap.transport.hookable")
 local Thread = Class();
 
 
-function Thread.instanciate(session, id)
+function Thread.instanciate(session, id, parentHookable)
   -- TODO: listen for thread events and clear stack when continued or exited
   -- TODO: add a virtual listener onResumed that allows to hook to a continue only once, ignoring subsequent continues until the next stopped
   local instance = Thread:new({
     id = id,
     session = session,
     _stack = nil,
-    hookable = Hookable.create(),
+    hookable = Hookable.create(parentHookable),
     stopped = false,
   })
 
@@ -162,9 +162,26 @@ function Thread:stack()
     -- levels = 1,
   }):wait()
 
-  self._stack = Stack.instanciate(self, stack)
+  self._stack = Stack.instanciate(self, stack, self.hookable)
 
   return self._stack
+end
+
+--- Destroys this thread and all its child resources
+--- This method ensures complete cleanup of stack and handlers
+function Thread:destroy()
+  -- Clean up stack if it exists
+  if self._stack and self._stack.destroy then
+    self._stack:destroy()
+  end
+  
+  -- Clean up our hookable (and all handlers registered on it)
+  if self.hookable and not self.hookable.destroyed then
+    self.hookable:destroy()
+  end
+  
+  -- Clear references
+  self._stack = nil
 end
 
 return Thread

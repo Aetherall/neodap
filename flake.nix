@@ -101,7 +101,7 @@
 
       # Run Neovim Init
       packages.test-nvim = pkgs.writeShellScriptBin "neodap-test-nvim" ''
-        nvim -u NONE -U NONE -N -i NONE -V1 -S ./lua/neodap/init.lua
+        NEODAP_PLAYGROUND=1 nvim -u NONE -U NONE -N -i NONE -V1 -S ./lua/neodap/playground.lua
       '';
 
       # Linter runner

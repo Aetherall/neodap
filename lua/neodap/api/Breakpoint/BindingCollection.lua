@@ -1,4 +1,5 @@
 local Class = require('neodap.tools.class')
+local Logger = require('neodap.tools.logger')
 
 ---@class api.BindingCollectionProps
 ---@field bindings api.FileSourceBinding[]
@@ -138,30 +139,81 @@ function BindingCollection:toDapSourceBreakpoints()
 end
 
 function BindingCollection:push()
+  local log = Logger.get()
+  log:info("BindingCollection:push - Starting to push breakpoints to debug adapter")
+  
   for session, bindings in self:bySession() do
     for source, bindings in bindings:bySource() do
       
       local array = bindings:toArray()
+      log:debug("Session", session.id, "- Pushing", #array, "breakpoints for source:", source:identifier())
 
       local dapBreakpoints = vim.tbl_map(function(binding) return binding:toDapSourceBreakpoint() end, array)
+      
+      log:info("Session", session.id, "- Calling setBreakpoints with", #dapBreakpoints, "breakpoints for source:", source:identifier())
+      for i, dapBp in ipairs(dapBreakpoints) do
+        log:info("  Breakpoint", i, "- line:", dapBp.line, "column:", dapBp.column or 0)
+      end
 
       local result = session.ref.calls:setBreakpoints({
         source = source.ref,
         breakpoints = dapBreakpoints
       }):wait()
+      
+      log:debug("Session", session.id, "- setBreakpoints returned:", result)
 
       for i, breakpoint in ipairs(result.breakpoints) do
         local binding = array[i]
         if binding then
+          log:debug("Session", session.id, "- Updating binding", i, "with DAP response")
           binding:update(breakpoint)
         end
       end
     end
   end
+  
+  log:info("BindingCollection:push - Completed pushing breakpoints")
 end
 
+---Push breakpoints for a specific session and source to the debug adapter
+---This method handles empty collections by sending an empty array to clear breakpoints
+---@param session api.Session
+---@param source api.Source
+function BindingCollection:pushForSource(session, source)
+  local log = Logger.get()
+  log:info("BindingCollection:pushForSource - Pushing breakpoints for session", session.id, "source:", source:identifier())
+  
+  -- Get all bindings for this specific session and source
+  local bindings = self:forSession(session):forSource(source)
+  local array = bindings:toArray()
+  
+  log:info("Session", session.id, "- Pushing", #array, "breakpoints for source:", source:identifier())
+  
+  local dapBreakpoints = vim.tbl_map(function(binding) return binding:toDapSourceBreakpoint() end, array)
+  
+  log:info("Session", session.id, "- Calling setBreakpoints with", #dapBreakpoints, "breakpoints for source:", source:identifier())
+  for i, dapBp in ipairs(dapBreakpoints) do
+    log:info("  Breakpoint", i, "- line:", dapBp.line, "column:", dapBp.column or 0)
+  end
 
+  local result = session.ref.calls:setBreakpoints({
+    source = source.ref,
+    breakpoints = dapBreakpoints
+  }):wait()
+  
+  log:debug("Session", session.id, "- setBreakpoints returned:", result)
 
+  -- Update bindings with DAP response
+  for i, breakpoint in ipairs(result.breakpoints) do
+    local binding = array[i]
+    if binding then
+      log:debug("Session", session.id, "- Updating binding", i, "with DAP response")
+      binding:update(breakpoint)
+    end
+  end
+  
+  log:info("BindingCollection:pushForSource - Completed pushing breakpoints for source:", source:identifier())
+end
 
 ---@param dapBinding dap.Breakpoint
 function BindingCollection:match(dapBinding)

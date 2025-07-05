@@ -1,5 +1,6 @@
 local Class = require('neodap.tools.class')
 local Scope = require('neodap.api.Session.Scope')
+local Logger = require('neodap.tools.logger')
 
 
 ---@class api.FrameProps
@@ -77,7 +78,7 @@ function Frame:down()
 end
 
 function Frame:jump()
-  vim.schedule(function()
+  -- vim.schedule(function()
     local source = self.ref.source
     if not source then
       return
@@ -91,13 +92,13 @@ function Frame:jump()
 
     vim.api.nvim_set_current_buf(bufnr)
     vim.api.nvim_win_set_cursor(0, { self.ref.line, self.ref.column - 1 })
-  end)
+  -- end)
 end
 
 ---@param namespace integer
 ---@param hl_group string
 function Frame:highlight(namespace, hl_group)
-  vim.schedule(function()
+  -- vim.schedule(function()
     local source = self.ref.source
     if not source then
       return
@@ -107,9 +108,10 @@ function Frame:highlight(namespace, hl_group)
 
     local uri = vim.uri_from_fname(source.path)
 
-    print(uri)
+    local log = Logger.get()
+    log:debug("Frame jump - URI:", uri)
     local bufnr = vim.uri_to_bufnr(uri)
-    print(bufnr)
+    log:debug("Frame jump - Buffer number:", bufnr)
     if bufnr == -1 then
       return
     end
@@ -125,8 +127,8 @@ function Frame:highlight(namespace, hl_group)
     local current_line = vim.api.nvim_buf_get_lines(bufnr, self.ref.line - 1, self.ref.line, false)[1]
     local end_col = #current_line
 
-    print("Debug: Highlighting frame at line " ..
-      self.ref.line .. ", column " .. self.ref.column .. ", end_col " .. end_col)
+    local log = Logger.get()
+    log:debug("Highlighting frame at line", self.ref.line, "column", self.ref.column, "end_col", end_col)
 
     vim.api.nvim_buf_set_extmark(bufnr, namespace, self.ref.line - 1, self.ref.column - 1, {
       end_row = self.ref.line - 1,
@@ -134,10 +136,10 @@ function Frame:highlight(namespace, hl_group)
       hl_group = hl_group,
       id = 112882
     })
-  end)
+  -- end)
 
   return function()
-    vim.schedule(function()
+    -- vim.schedule(function()
       local source = self.ref.source
       if not source then
         return
@@ -150,7 +152,7 @@ function Frame:highlight(namespace, hl_group)
       end
 
       vim.api.nvim_buf_clear_namespace(bufnr, namespace, 0, -1)
-    end)
+    -- end)
   end
 end
 

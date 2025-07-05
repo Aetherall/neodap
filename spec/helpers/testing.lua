@@ -1,4 +1,5 @@
 local nio = require("nio")
+local NvimAsync = require("neodap.tools.async")
 
 return function(describe, it)
   local T = {}
@@ -18,7 +19,7 @@ return function(describe, it)
     it(name, function()
       print("\t>>>[ " .. name .. " ]>>>\n")
       local future = nio.control.future()
-      nio.run(function()
+      NvimAsync.run(function()
         fn()
         future.set()
       end)

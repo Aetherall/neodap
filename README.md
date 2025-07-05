@@ -28,7 +28,7 @@ Current neovim DAP clients provide similar experience to the DAP clients found i
 - [x] Frame exploration
 - [ ] Variable exploration
 - [ ] Blocking hooks
-- [ ] Async in Vim context transparently
+- [x] Async in Vim context transparently
 
 
 
