@@ -1,5 +1,6 @@
 local Test = require("spec.helpers.testing")(describe, it)
-local prepare = require("spec.helpers.prepare")
+local P = require("spec.helpers.prepare")
+local prepare = P.prepare
 
 Test.Describe("breakpoints", function()
   Test.It("should hit", function()
