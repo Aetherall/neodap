@@ -1,0 +1,193 @@
+local Class = require('neodap.tools.class')
+local Logger = require('neodap.tools.logger')
+
+---@class api.NewBindingCollectionProps
+---@field bindings api.NewFileSourceBinding[]
+
+---@class api.NewBindingCollection: api.NewBindingCollectionProps
+---@field new Constructor<api.NewBindingCollectionProps>
+local BindingCollection = Class()
+
+---@return api.NewBindingCollection
+function BindingCollection.create()
+  return BindingCollection:new({
+    bindings = {},
+  })
+end
+
+---@param binding api.NewFileSourceBinding
+function BindingCollection:add(binding)
+  table.insert(self.bindings, binding)
+end
+
+---@param binding api.NewFileSourceBinding
+function BindingCollection:remove(binding)
+  for i, b in ipairs(self.bindings) do
+    if b == binding then
+      table.remove(self.bindings, i)
+      return
+    end
+  end
+end
+
+---@return api.NewFileSourceBinding?
+function BindingCollection:first()
+  return self.bindings[1]
+end
+
+---@param predicate fun(binding: api.NewFileSourceBinding): boolean
+---@return api.NewBindingCollection
+function BindingCollection:filter(predicate)
+  local filtered = BindingCollection.create()
+  for _, binding in ipairs(self.bindings) do
+    if predicate(binding) then
+      filtered:add(binding)
+    end
+  end
+  return filtered
+end
+
+---@param session api.Session
+---@return api.NewBindingCollection
+function BindingCollection:forSession(session)
+  return self:filter(function(binding)
+    return binding.session.id == session.id
+  end)
+end
+
+---@param source api.FileSource
+---@return api.NewBindingCollection
+function BindingCollection:forSource(source)
+  return self:filter(function(binding)
+    return binding.source:identifier() == source:identifier()
+  end)
+end
+
+---@param breakpoint api.NewFileSourceBreakpoint
+---@return api.NewBindingCollection
+function BindingCollection:forBreakpoint(breakpoint)
+  return self:filter(function(binding)
+    return binding.breakpointId == breakpoint.id
+  end)
+end
+
+---@param ids integer[]
+---@return api.NewBindingCollection
+function BindingCollection:forIds(ids)
+  return self:filter(function(binding)
+    return vim.tbl_contains(ids, binding.id)
+  end)
+end
+
+---@param dapBinding dap.Breakpoint
+---@return api.NewBindingCollection
+function BindingCollection:match(dapBinding)
+  return self:filter(function(binding)
+    return binding:matches(dapBinding)
+  end)
+end
+
+---@return fun(): api.NewFileSourceBinding?
+function BindingCollection:each()
+  local index = 0
+  return function()
+    index = index + 1
+    if index > #self.bindings then
+      return nil
+    end
+    return self.bindings[index]
+  end
+end
+
+---@return api.NewFileSourceBinding[]
+function BindingCollection:toArray()
+  return vim.tbl_map(function(b) return b end, self.bindings or {})
+end
+
+---@return integer
+function BindingCollection:count()
+  return #self.bindings
+end
+
+---@return boolean
+function BindingCollection:isEmpty()
+  return #self.bindings == 0
+end
+
+-- DAP synchronization methods
+
+---@return dap.SourceBreakpoint[]
+function BindingCollection:toDapSourceBreakpoints()
+  local dapBreakpoints = {}
+  for _, binding in ipairs(self.bindings) do
+    local dapBreakpoint = binding:toDapSourceBreakpoint()
+    table.insert(dapBreakpoints, dapBreakpoint)
+  end
+  return dapBreakpoints
+end
+
+---@return dap.SourceBreakpoint[]
+function BindingCollection:toDapSourceBreakpointsWithIds()
+  local dapBreakpoints = {}
+  for _, binding in ipairs(self.bindings) do
+    local dapBreakpoint = binding:toDapSourceBreakpointWithId()
+    table.insert(dapBreakpoints, dapBreakpoint)
+  end
+  return dapBreakpoints
+end
+
+---Group bindings by session
+---@return fun(): api.Session?, api.NewBindingCollection?
+function BindingCollection:bySession()
+  local groups = {}
+  for _, binding in ipairs(self.bindings) do
+    local sessionId = binding.session.id
+    if not groups[sessionId] then
+      groups[sessionId] = { 
+        session = binding.session, 
+        collection = BindingCollection.create() 
+      }
+    end
+    groups[sessionId].collection:add(binding)
+  end
+
+  local keys = vim.tbl_keys(groups)
+  local index = 0
+  return function()
+    index = index + 1
+    if index > #keys then
+      return nil, nil
+    end
+    local group = groups[keys[index]]
+    return group.session, group.collection
+  end
+end
+
+---Group bindings by source
+---@return fun(): api.FileSource?, api.NewBindingCollection?
+function BindingCollection:bySource()
+  local groups = {}
+  for _, binding in ipairs(self.bindings) do
+    local sourceId = binding.source:identifier()
+    if not groups[sourceId] then
+      groups[sourceId] = { 
+        source = binding.source, 
+        collection = BindingCollection.create() 
+      }
+    end
+    groups[sourceId].collection:add(binding)
+  end
+
+  local keys = vim.tbl_keys(groups)
+  local index = 0
+  return function()
+    index = index + 1
+    if index > #keys then
+      return nil, nil
+    end
+    local group = groups[keys[index]]
+    return group.source, group.collection
+  end
+end
+
+return BindingCollection
