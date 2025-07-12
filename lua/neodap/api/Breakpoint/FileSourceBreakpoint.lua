@@ -26,6 +26,8 @@ function FileSourceBreakpoint.atLocation(manager, location)
   })
 end
 
+---@param listener fun(binding: api.FileSourceBinding)
+---@param opts? HookOptions
 function FileSourceBreakpoint:onBound(listener, opts)
   return self.manager:onBound(function (binding)
     if binding.breakpointId == self.id then
@@ -35,6 +37,7 @@ function FileSourceBreakpoint:onBound(listener, opts)
 end
 
 ---@param listener fun(hit: { thread: api.Thread, body: dap.StoppedEventBody, binding: api.FileSourceBinding })
+---@param opts? HookOptions
 function FileSourceBreakpoint:onHit(listener, opts)
   return self:onBound(function (binding)
     binding:onHit(function(hit)

@@ -69,7 +69,10 @@ function Hookable:emit(key, event)
           group[name] = nil
         end
         -- Use simplified NvimAsync that preserves NIO context
+        vim.schedule(function ()
+        
         NvimAsync.run(hook.handler, event)
+      end)
       end
     end
   end

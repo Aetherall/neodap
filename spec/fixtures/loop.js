@@ -5,4 +5,3 @@ setInterval(() => {
 	console.log("CLoop iteration: ", i++);
 	console.log("DLoop iteration: ", i++);
 }, 1000)
-

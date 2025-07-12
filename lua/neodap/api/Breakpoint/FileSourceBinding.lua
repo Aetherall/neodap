@@ -1,5 +1,6 @@
 local Class = require('neodap.tools.class')
 local Hookable = require("neodap.transport.hookable")
+local Location = require("neodap.api.Breakpoint.Location")
 
 ---@class api.FileSourceBindingProps
 ---@field manager api.BreakpointManager
@@ -98,6 +99,13 @@ function FileSourceBinding:toDapSourceBreakpoint()
     line = self.actualLine or self.line,
     column = self.actualColumn or self.column or 0,
   }
+end
+
+function FileSourceBinding:location()
+  return Location.SourceFile.fromSource(self.source, {
+    line = self.actualLine or self.line,
+    column = self.actualColumn or self.column,
+  })
 end
 
 

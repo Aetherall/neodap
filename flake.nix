@@ -59,6 +59,10 @@
           export NVIM_NIO_PATH="${pkgs.vimPlugins.nvim-nio}"
 
           echo "🧪 Neodap development environment ready!"
+          echo "📚 Library paths for .luarc.json:"
+          echo "  Neovim runtime: ${pkgs.neovim}/share/nvim/runtime/lua"
+          echo "  nvim-nio: ${pkgs.vimPlugins.nvim-nio}/lua"
+          echo "  busted: ${pkgs.luajitPackages.busted}/share/lua/5.1"
 
           echo "Run 'nix run .#test-all' to run tests"
           echo "Run 'nix run .#test spec/$file' to run a specific test file"

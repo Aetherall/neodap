@@ -57,11 +57,13 @@ local function go()
   local HighlightCurrentFrame = require("neodap.plugins.HighlightCurrentFrame")
   local BreakpointVirtualText = require("neodap.plugins.BreakpointVirtualText")
   local BreakpointManager = require("neodap.plugins.BreakpointManager")
+  local FrameVariables = require("neodap.plugins.FrameVariables")
 
   api:getPluginInstance(JumpToStoppedFrame)
   api:getPluginInstance(HighlightCurrentFrame)
   api:getPluginInstance(BreakpointVirtualText)
   local breakpoints = api:getPluginInstance(BreakpointManager)
+  api:getPluginInstance(FrameVariables)
 
 
   -- DebugMode.plugin(api)
@@ -117,6 +119,11 @@ local function go()
     -- Write to cmdline instead of notify to avoid prompt
     vim.api.nvim_echo({{"Log file: " .. log_path, "Normal"}}, false, {})
   end, { noremap = true, silent = true, desc = "Show Debug Log Path" })
+
+  -- Add keybinding for frame variables
+  vim.keymap.set("n", "<leader>dv", function()
+    vim.cmd("NeodapVariablesFloat")
+  end, { noremap = true, silent = true, desc = "Show Frame Variables" })
 
   api:onSession(function(session)
     session:onSourceLoaded(function(source)

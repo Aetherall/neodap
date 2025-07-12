@@ -33,18 +33,20 @@
     ]
   },
   "runtime": {
-    "version": "Lua 5.1",
-    "pathStrict": true
+    "version": "LuaJIT"
   },
   "workspace": {
     "maxPreload": 1600,
-    "preloadFileSize": 1000,
-    "checkThirdParty": false,
+    "preloadFileSize": 10000,
+    "checkThirdParty": true,
     "ignoreDir": [
       ".old"
     ],
     "library": [
       "./lua",
+      "/nix/store/5rnsqz84mlj0d1rrfnpbphmwramcs6gj-neovim-0.11.2/share/nvim/runtime/lua",
+      "/nix/store/y78ri890hql30kcyrwa0688fs8r0k0g4-vimplugin-luajit2.1-nvim-nio-1.10.1-1-unstable-1.10.1-1/lua",
+      "/nix/store/7w7pggh8vz5fx6daamb42q84ny14175a-luajit2.1-busted-2.2.0-1/share/lua/5.1"
     ]
   },
   "typeFormat": {

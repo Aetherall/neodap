@@ -130,34 +130,35 @@ end
 ---@param bufnr number Buffer number to capture
 ---@param label string? Optional label for the snapshot
 function Logger:snapshot(bufnr, label)
-  if not self.enabled then return end
+  return
+  -- if not self.enabled then return end
   
-  -- Import buffer snapshot functionality
-  local BufferSnapshot = require("spec.helpers.buffer_snapshot")
+  -- -- Import buffer snapshot functionality
+  -- local BufferSnapshot = require("spec.helpers.buffer_snapshot")
   
-  local snapshot_label = label or "Buffer Snapshot"
-  self:info("=== " .. snapshot_label .. " ===")
-  self:info("Buffer ID:", bufnr)
+  -- local snapshot_label = label or "Buffer Snapshot"
+  -- self:info("=== " .. snapshot_label .. " ===")
+  -- self:info("Buffer ID:", bufnr)
   
-  -- Check if buffer is valid
-  if not bufnr or bufnr == -1 or not vim.api.nvim_buf_is_valid(bufnr) then
-    self:warn("Invalid buffer for snapshot:", bufnr)
-    return
-  end
+  -- -- Check if buffer is valid
+  -- if not bufnr or bufnr == -1 or not vim.api.nvim_buf_is_valid(bufnr) then
+  --   self:warn("Invalid buffer for snapshot:", bufnr)
+  --   return
+  -- end
   
-  -- Capture the snapshot
-  local snapshot = BufferSnapshot.capture_buffer_snapshot(bufnr)
-  if snapshot then
-    -- Log each line of the snapshot
-    local lines = vim.split(snapshot, "\n")
-    for i, line in ipairs(lines) do
-      self:info(string.format("L%d: %s", i, line))
-    end
-  else
-    self:warn("Failed to capture buffer snapshot")
-  end
+  -- -- Capture the snapshot
+  -- local snapshot = BufferSnapshot.capture_buffer_snapshot(bufnr)
+  -- if snapshot then
+  --   -- Log each line of the snapshot
+  --   local lines = vim.split(snapshot, "\n")
+  --   for i, line in ipairs(lines) do
+  --     self:info(string.format("L%d: %s", i, line))
+  --   end
+  -- else
+  --   self:warn("Failed to capture buffer snapshot")
+  -- end
   
-  self:info("=== End " .. snapshot_label .. " ===")
+  -- self:info("=== End " .. snapshot_label .. " ===")
 end
 
 ---Enable logging

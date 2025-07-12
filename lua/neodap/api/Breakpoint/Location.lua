@@ -1,6 +1,8 @@
 local Class = require('neodap.tools.class')
 local Hookable = require("neodap.transport.hookable")
 
+local set = vim.api.nvim_buf_set_extmark
+
 ---@class api.SourceFileLocationProps
 ---@field key string
 ---@field path string
@@ -65,6 +67,34 @@ end
 
 function SourceFileLocation:isAtSourceId(sourceId)
   return sourceId  == ("path:".. self.path)
+end
+
+function SourceFileLocation:bufnr()
+  local bufnr = vim.uri_to_bufnr(vim.uri_from_fname(self.path))
+  if bufnr == -1 then
+    return nil
+  end
+  return bufnr
+end
+
+---@param ns integer
+---@param opts vim.treesitter.languagetree.InjectionElem
+function SourceFileLocation:mark(ns, opts)
+  local bufnr = self:bufnr()
+  if not bufnr then
+    return nil
+  end
+
+  -- Check if there is an existing extmark at this location for the same namespace
+  local existing_extmarks = vim.api.nvim_buf_get_extmarks(bufnr, ns, {self.line, self.column}, {self.line, self.column}, { details = true })
+  if #existing_extmarks > 0 then
+    -- If an extmark already exists, update it instead of creating a new one
+    local id = existing_extmarks[1][1]
+    vim.api.nvim_buf_set_extmark(bufnr, ns, self.line, self.column, vim.tbl_extend("force", opts, { id = id }))
+    return id
+  end
+
+  vim.api.nvim_buf_set_extmark(bufnr, ns, self.line, self.column, opts)
 end
 
 ---@class api.VirtualFileLocation: api.VirtualFileLocationProps

@@ -37,7 +37,7 @@ vim.opt.shortmess:append("c") -- Don't show completion messages
 vim.opt.cmdheight = 1
 
 -- Set up global environment
-_G.vim = vim
+-- _G.vim = vim
 
 -- Ensure package.path includes Lua paths
 local lua_paths = {

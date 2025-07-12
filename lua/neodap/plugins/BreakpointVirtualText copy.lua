@@ -51,6 +51,25 @@ return {
       api_hash = tostring(api):match("0x%x+") or "unknown"
     })
 
+
+    breakpoint_manager.onBreakpoint(function (breakpoint)
+      breakpoint.location:mark(namespace, {
+        
+      })
+      
+      breakpoint:onBound(function (binding)
+        local bindingLocation = binding:location()
+        local mark = vim.api.nvim_buf_set_extmark(bindingLocation:bufnr(), namespace, bindingLocation.line, bindingLocation.column, {
+          
+        })
+        binding:onHit(function (hit)
+          
+        end)    
+      end)
+
+    end)
+
+
     -- Track virtual text for cleanup - each breakpoint can have multiple extmarks due to timing issues
     local virtual_texts = {}
     
