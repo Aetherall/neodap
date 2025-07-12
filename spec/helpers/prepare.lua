@@ -96,7 +96,7 @@ local function prepare()
   -- Register cleanup globally for automatic cleanup on next prepare() call
   _global_cleanup = cleanup
 
-  return api, start, cleanup
+  return api, start
 end
 
 -- Global cleanup function for manual cleanup without prepare()

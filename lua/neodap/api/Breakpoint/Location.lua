@@ -1,5 +1,6 @@
 local Class = require('neodap.tools.class')
 local Hookable = require("neodap.transport.hookable")
+local logger = require("neodap.tools.logger")
 
 local set = vim.api.nvim_buf_set_extmark
 
@@ -77,25 +78,67 @@ function SourceFileLocation:bufnr()
   return bufnr
 end
 
+
 ---@param ns integer
----@param opts vim.treesitter.languagetree.InjectionElem
+---@param opts vim.api.keyset.set_extmark
 function SourceFileLocation:mark(ns, opts)
+  local bufnr = self:bufnr()
+  if not bufnr then
+    return
+  end
+
+  if not vim.api.nvim_buf_is_loaded(bufnr) then
+    return
+  end
+
+  
+  local line = math.max(0, (self.line or 0) - 1)
+  local column = math.max(0, (self.column or 0) - 1)
+  local bufpos = { line, column }
+
+  -- Check if there is an existing extmark at this location for the same namespace
+  local existing_extmarks = vim.api.nvim_buf_get_extmarks(bufnr, ns, bufpos, bufpos, { details = true })
+  if #existing_extmarks > 0 then
+    -- If an extmark already exists, update it instead of creating a new one
+    local id = existing_extmarks[1][1]
+    vim.api.nvim_buf_set_extmark(bufnr, ns, line, column, vim.tbl_extend("force", opts, { id = id }))
+    return id
+  end
+
+  logger.get():error("SourceFileLocation:mark", bufnr, line, column )
+  vim.api.nvim_buf_set_extmark(bufnr, ns, line, column, opts)
+end
+
+
+function SourceFileLocation:unmark(ns)
   local bufnr = self:bufnr()
   if not bufnr then
     return nil
   end
 
-  -- Check if there is an existing extmark at this location for the same namespace
-  local existing_extmarks = vim.api.nvim_buf_get_extmarks(bufnr, ns, {self.line, self.column}, {self.line, self.column}, { details = true })
-  if #existing_extmarks > 0 then
-    -- If an extmark already exists, update it instead of creating a new one
-    local id = existing_extmarks[1][1]
-    vim.api.nvim_buf_set_extmark(bufnr, ns, self.line, self.column, vim.tbl_extend("force", opts, { id = id }))
-    return id
+  if not vim.api.nvim_buf_is_loaded(bufnr) then
+    return
   end
 
-  vim.api.nvim_buf_set_extmark(bufnr, ns, self.line, self.column, opts)
+  local line = math.max(0, (self.line or 0) - 1)
+  local column = math.max(0, (self.column or 0) - 1)
+  local bufpos = { line, column }
+
+  -- Get all extmarks at this location for the given namespace
+  local extmarks = vim.api.nvim_buf_get_extmarks(bufnr, ns, bufpos, bufpos, { details = true })
+  logger.get():error("SourceFileLocation:unmark", bufnr, line, column, extmarks)
+
+  for _, extmark in ipairs(extmarks) do
+    local id = extmark[1]
+    local found = vim.api.nvim_buf_del_extmark(bufnr, ns, id)
+    if not found then
+      logger.get():warn("SourceFileLocation:unmark - Failed to delete extmark", id, "at", bufnr, line, column)
+    else
+      logger.get():debug("SourceFileLocation:unmark - Deleted extmark", id, "at", bufnr, line, column)
+    end
+  end
 end
+
 
 ---@class api.VirtualFileLocation: api.VirtualFileLocationProps
 ---@field new Constructor<api.VirtualFileLocationProps>

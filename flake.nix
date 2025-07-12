@@ -20,7 +20,7 @@
           luajit
           luarocks
           stylua # Lua formatter
-
+          
           # Testing framework with LuaJIT compatibility
           luajitPackages.busted
           luajitPackages.luafilesystem

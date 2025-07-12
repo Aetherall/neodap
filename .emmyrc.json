@@ -1,0 +1,59 @@
+{
+	"$schema": "https://raw.githubusercontent.com/EmmyLuaLs/emmylua-analyzer-rust/refs/heads/main/crates/emmylua_code_analysis/resources/schema.json",
+	"diagnostics": {
+		"disable": [
+			"incomplete-signature-doc",
+			"missing-global-doc",
+			"missing-return",
+			"type-not-found"
+		],
+		"groupFileStatus": {
+			"ambiguity": "Any",
+			"await": "Any",
+			"duplicate": "Any",
+			"global": "Any",
+			"luadoc": "Any",
+			"redefined": "Any",
+			"strict": "Any",
+			"type-check": "Any",
+			"unbalanced": "Any",
+			"unused": "Any"
+		},
+		"globalsRegex": ["^_G$"],
+
+		"globals": ["describe", "it", "assert", "vim"]
+	},
+	"runtime": {
+		"version": "LuaJIT"
+	},
+	"codeAction": {
+		"insertSpace": false
+	},
+  "codeLens": {
+    "enable": true
+  },
+
+	"workspace": {
+		"library": [
+			"./lua",
+			"/nix/store/q570k9f80p21sbr4x74vbggjxhg82brz-neovim-unwrapped-0.11.2/share/nvim/runtime/lua",
+			"/nix/store/y78ri890hql30kcyrwa0688fs8r0k0g4-vimplugin-luajit2.1-nvim-nio-1.10.1-1-unstable-1.10.1-1/lua",
+			"/nix/store/7w7pggh8vz5fx6daamb42q84ny14175a-luajit2.1-busted-2.2.0-1/share/lua/5.1"
+		]
+	},
+	"typeFormat": {
+		"config": {
+			"format_line": "false"
+		}
+	},
+	"type": {
+		"castNumberToInteger": false,
+		"checkTableShape": true,
+		"inferParamType": true,
+		"weakNilCheck": false,
+		"weakUnionCheck": false
+	},
+	"strict": {
+		"typeCall": true
+	}
+}
