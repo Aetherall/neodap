@@ -1,26 +1,26 @@
 local Class = require('neodap.tools.class')
 local nio = require('nio')
 local Hookable = require("neodap.transport.hookable")
-local FileSourceBreakpoint = require('neodap.api.NewBreakpoint.FileSourceBreakpoint')
-local FileSourceBinding = require('neodap.api.NewBreakpoint.FileSourceBinding')
-local Location = require('neodap.api.NewBreakpoint.Location')
-local BreakpointCollection = require("neodap.api.NewBreakpoint.BreakpointCollection")
-local BindingCollection = require("neodap.api.NewBreakpoint.BindingCollection")
+local FileSourceBreakpoint = require('neodap.api.Breakpoint.FileSourceBreakpoint')
+local FileSourceBinding = require('neodap.api.Breakpoint.FileSourceBinding')
+local Location = require('neodap.api.Breakpoint.Location')
+local BreakpointCollection = require("neodap.api.Breakpoint.BreakpointCollection")
+local BindingCollection = require("neodap.api.Breakpoint.BindingCollection")
 local Logger = require("neodap.tools.logger")
 
----@class api.NewBreakpointManagerProps
+---@class api.BreakpointManagerProps
 ---@field api Api
----@field breakpoints api.NewBreakpointCollection
----@field bindings api.NewBindingCollection
+---@field breakpoints api.BreakpointCollection
+---@field bindings api.BindingCollection
 ---@field hookable Hookable
 ---@field pendingOperations table<string, any>
 
----@class api.NewBreakpointManager: api.NewBreakpointManagerProps
----@field new Constructor<api.NewBreakpointManagerProps>
+---@class api.BreakpointManager: api.BreakpointManagerProps
+---@field new Constructor<api.BreakpointManagerProps>
 local BreakpointManager = Class()
 
 ---@param api Api
----@return api.NewBreakpointManager
+---@return api.BreakpointManager
 function BreakpointManager.create(api)
   local instance = BreakpointManager:new({
     api = api,
@@ -36,9 +36,9 @@ end
 
 -- Core Breakpoint Operations
 
----@param location api.NewSourceFileLocation
+---@param location api.SourceFileLocation
 ---@param opts? { condition?: string, logMessage?: string }
----@return api.NewFileSourceBreakpoint
+---@return api.FileSourceBreakpoint
 function BreakpointManager:addBreakpoint(location, opts)
   local log = Logger.get()
   log:info("BreakpointManager:addBreakpoint called for location:", location.path, location.line)
@@ -68,7 +68,7 @@ function BreakpointManager:addBreakpoint(location, opts)
   return breakpoint
 end
 
----@param breakpoint api.NewFileSourceBreakpoint
+---@param breakpoint api.FileSourceBreakpoint
 function BreakpointManager:removeBreakpoint(breakpoint)
   local log = Logger.get()
   log:info("BreakpointManager:removeBreakpoint called for:", breakpoint.id)
@@ -95,8 +95,8 @@ function BreakpointManager:removeBreakpoint(breakpoint)
   breakpoint:destroy()  -- Breakpoint emits its own 'Removed' event
 end
 
----@param location api.NewSourceFileLocation
----@return api.NewFileSourceBreakpoint?
+---@param location api.SourceFileLocation
+---@return api.FileSourceBreakpoint?
 function BreakpointManager:toggleBreakpoint(location)
   local existing = self.breakpoints:atLocation(location):first()
   
@@ -108,7 +108,7 @@ function BreakpointManager:toggleBreakpoint(location)
   end
 end
 
----@param breakpoint api.NewFileSourceBreakpoint
+---@param breakpoint api.FileSourceBreakpoint
 function BreakpointManager:resyncBreakpoint(breakpoint)
   -- Queue sync for all sessions that have this source
   for session in self.api:eachSession() do
@@ -211,9 +211,9 @@ end
 
 ---@param source api.FileSource
 ---@param session api.Session
----@param breakpoints api.NewBreakpointCollection
+---@param breakpoints api.BreakpointCollection
 ---@param dapResponses dap.Breakpoint[]
----@param existingBindingsMap table<string, api.NewFileSourceBinding>
+---@param existingBindingsMap table<string, api.FileSourceBinding>
 function BreakpointManager:reconcileBindings(source, session, breakpoints, dapResponses, existingBindingsMap)
   local log = Logger.get()
   local breakpointArray = breakpoints:toArray()
@@ -269,7 +269,7 @@ end
 
 -- Event Registration API (Hierarchical)
 
----@param listener fun(breakpoint: api.NewFileSourceBreakpoint)
+---@param listener fun(breakpoint: api.FileSourceBreakpoint)
 ---@param opts? HookOptions
 ---@return fun() unsubscribe
 function BreakpointManager:onBreakpoint(listener, opts)
@@ -284,7 +284,7 @@ function BreakpointManager:onBreakpoint(listener, opts)
   return unsubscribe1
 end
 
----@param listener fun(breakpoint: api.NewFileSourceBreakpoint)
+---@param listener fun(breakpoint: api.FileSourceBreakpoint)
 ---@param opts? HookOptions
 ---@return fun() unsubscribe
 function BreakpointManager:onBreakpointRemoved(listener, opts)
@@ -296,14 +296,14 @@ function BreakpointManager:onBreakpointRemoved(listener, opts)
   end, opts)
 end
 
----@param listener fun(binding: api.NewFileSourceBinding)
+---@param listener fun(binding: api.FileSourceBinding)
 ---@param opts? HookOptions
 ---@return fun() unsubscribe
 function BreakpointManager:onBound(listener, opts)
   return self.hookable:on('BindingBound', listener, opts)
 end
 
----@param listener fun(binding: api.NewFileSourceBinding)
+---@param listener fun(binding: api.FileSourceBinding)
 ---@param opts? HookOptions
 ---@return fun() unsubscribe
 function BreakpointManager:onUnbound(listener, opts)
@@ -315,7 +315,7 @@ function BreakpointManager:onUnbound(listener, opts)
   end, opts)
 end
 
----@param listener fun(binding: api.NewFileSourceBinding)
+---@param listener fun(binding: api.FileSourceBinding)
 ---@param opts? HookOptions
 ---@return fun() unsubscribe
 function BreakpointManager:onUpdated(listener, opts)
@@ -327,7 +327,7 @@ function BreakpointManager:onUpdated(listener, opts)
   end, opts)
 end
 
----@param listener fun(event: { source: api.FileSource, session: api.Session, breakpoints: api.NewFileSourceBreakpoint[] })
+---@param listener fun(event: { source: api.FileSource, session: api.Session, breakpoints: api.FileSourceBreakpoint[] })
 ---@param opts? HookOptions
 ---@return fun() unsubscribe
 function BreakpointManager:onSourceSyncPending(listener, opts)

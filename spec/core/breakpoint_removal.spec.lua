@@ -1,8 +1,8 @@
 local Test = require("spec.helpers.testing")(describe, it)
 local P = require("spec.helpers.prepare")
 local prepare = P.prepare
-local NewBreakpointManager = require("neodap.api.NewBreakpoint.BreakpointManager")
-local Location = require("neodap.api.NewBreakpoint.Location")
+local NewBreakpointManager = require("neodap.api.Breakpoint.BreakpointManager")
+local Location = require("neodap.api.Breakpoint.Location")
 
 Test.Describe("new breakpoint manager - removal events", function()
   Test.It("should properly trigger Unbound and Removed hooks when breakpoint is deleted", function()

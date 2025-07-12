@@ -1,22 +1,22 @@
 local Class = require('neodap.tools.class')
 local Hookable = require("neodap.transport.hookable")
 
----@class api.NewFileSourceBreakpointProps
+---@class api.FileSourceBreakpointProps
 ---@field id string
----@field manager api.NewBreakpointManager
----@field location api.NewSourceFileLocation
+---@field manager api.BreakpointManager
+---@field location api.SourceFileLocation
 ---@field condition? string
 ---@field logMessage? string
 ---@field hookable Hookable
 
----@class api.NewFileSourceBreakpoint: api.NewFileSourceBreakpointProps
----@field new Constructor<api.NewFileSourceBreakpointProps>
+---@class api.FileSourceBreakpoint: api.FileSourceBreakpointProps
+---@field new Constructor<api.FileSourceBreakpointProps>
 local FileSourceBreakpoint = Class()
 
----@param manager api.NewBreakpointManager
----@param location api.NewSourceFileLocation
+---@param manager api.BreakpointManager
+---@param location api.SourceFileLocation
 ---@param opts? { condition?: string, logMessage?: string }
----@return api.NewFileSourceBreakpoint
+---@return api.FileSourceBreakpoint
 function FileSourceBreakpoint.atLocation(manager, location, opts)
   opts = opts or {}
   
@@ -30,7 +30,7 @@ function FileSourceBreakpoint.atLocation(manager, location, opts)
   })
 end
 
----@return api.NewSourceFileLocation
+---@return api.SourceFileLocation
 function FileSourceBreakpoint:getLocation()
   return self.location
 end
@@ -64,7 +64,7 @@ end
 
 -- API Methods: Hierarchical Event Registration
 
----@param listener fun(binding: api.NewFileSourceBinding)
+---@param listener fun(binding: api.FileSourceBinding)
 ---@param opts? HookOptions
 ---@return fun() unsubscribe
 function FileSourceBreakpoint:onBinding(listener, opts)
@@ -83,7 +83,7 @@ function FileSourceBreakpoint:onBinding(listener, opts)
   return unsubscribe1
 end
 
----@param listener fun(hit: { thread: api.Thread, body: dap.StoppedEventBody, binding: api.NewFileSourceBinding })
+---@param listener fun(hit: { thread: api.Thread, body: dap.StoppedEventBody, binding: api.FileSourceBinding })
 ---@param opts? HookOptions
 ---@return fun() unsubscribe
 function FileSourceBreakpoint:onHit(listener, opts)
@@ -121,19 +121,19 @@ end
 
 -- Query Methods (Read-only access to bindings)
 
----@return api.NewBindingCollection
+---@return api.BindingCollection
 function FileSourceBreakpoint:getBindings()
   -- Delegate to manager - maintain architectural purity
   return self.manager.bindings:forBreakpoint(self)
 end
 
 ---@param session api.Session
----@return api.NewFileSourceBinding?
+---@return api.FileSourceBinding?
 function FileSourceBreakpoint:getBindingForSession(session)
   return self.manager.bindings:forBreakpoint(self):forSession(session):first()
 end
 
----@return api.NewFileSourceBinding[]
+---@return api.FileSourceBinding[]
 function FileSourceBreakpoint:getAllBindings()
   return self:getBindings():toArray()
 end

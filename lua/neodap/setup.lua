@@ -1,5 +1,5 @@
 local SessionManager = require("neodap.session.manager")
-local BreakpointManager = require("neodap.api.NewBreakpoint.BreakpointManager")
+local BreakpointManager = require("neodap.api.Breakpoint.BreakpointManager")
 local Api = require("neodap.api.Session.Api")
 
 function setup()

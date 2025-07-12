@@ -29,7 +29,7 @@ local ExecutableTCPAdapter = require("neodap.adapter.executable_tcp")
 local Session              = require("neodap.session.session")
 local nio                  = require("nio")
 local Api                  = require("neodap.api.Api")
-local Location             = require("neodap.api.NewBreakpoint.Location")
+local Location             = require("neodap.api.Breakpoint.Location")
 
 
 local function go()

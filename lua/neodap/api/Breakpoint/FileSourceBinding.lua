@@ -1,8 +1,8 @@
 local Class = require('neodap.tools.class')
 local Hookable = require("neodap.transport.hookable")
 
----@class api.NewFileSourceBindingProps
----@field manager api.NewBreakpointManager
+---@class api.FileSourceBindingProps
+---@field manager api.BreakpointManager
 ---@field session api.Session
 ---@field source api.FileSource
 ---@field breakpointId string
@@ -15,17 +15,17 @@ local Hookable = require("neodap.transport.hookable")
 ---@field message? string
 ---@field hookable Hookable
 
----@class api.NewFileSourceBinding: api.NewFileSourceBindingProps
----@field new Constructor<api.NewFileSourceBindingProps>
+---@class api.FileSourceBinding: api.FileSourceBindingProps
+---@field new Constructor<api.FileSourceBindingProps>
 local FileSourceBinding = Class()
 
 ---Create a verified binding from DAP response
----@param manager api.NewBreakpointManager
+---@param manager api.BreakpointManager
 ---@param session api.Session
 ---@param source api.FileSource
----@param breakpoint api.NewFileSourceBreakpoint
+---@param breakpoint api.FileSourceBreakpoint
 ---@param dapBreakpoint dap.Breakpoint
----@return api.NewFileSourceBinding
+---@return api.FileSourceBinding
 function FileSourceBinding.verified(manager, session, source, breakpoint, dapBreakpoint)
   return FileSourceBinding:new({
     manager = manager,
@@ -105,23 +105,23 @@ end
 
 -- Query Methods
 
----@return api.NewFileSourceBreakpoint?
+---@return api.FileSourceBreakpoint?
 function FileSourceBinding:getBreakpoint()
   return self.manager.breakpoints:get(self.breakpointId)
 end
 
----@return api.NewSourceFileLocation
+---@return api.SourceFileLocation
 function FileSourceBinding:getActualLocation()
-  local Location = require('neodap.api.NewBreakpoint.Location')
+  local Location = require('neodap.api.Breakpoint.Location')
   return Location.SourceFile.fromSource(self.source, {
     line = self.actualLine,
     column = self.actualColumn,
   })
 end
 
----@return api.NewSourceFileLocation
+---@return api.SourceFileLocation
 function FileSourceBinding:getRequestedLocation()
-  local Location = require('neodap.api.NewBreakpoint.Location')
+  local Location = require('neodap.api.Breakpoint.Location')
   return Location.SourceFile.fromSource(self.source, {
     line = self.line,
     column = self.column,

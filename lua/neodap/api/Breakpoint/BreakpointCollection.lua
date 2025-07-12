@@ -1,25 +1,25 @@
 local Class = require('neodap.tools.class')
 
----@class api.NewBreakpointCollectionProps
----@field breakpoints api.NewFileSourceBreakpoint[]
+---@class api.BreakpointCollectionProps
+---@field breakpoints api.FileSourceBreakpoint[]
 
----@class api.NewBreakpointCollection: api.NewBreakpointCollectionProps
----@field new Constructor<api.NewBreakpointCollectionProps>
+---@class api.BreakpointCollection: api.BreakpointCollectionProps
+---@field new Constructor<api.BreakpointCollectionProps>
 local BreakpointCollection = Class()
 
----@return api.NewBreakpointCollection
+---@return api.BreakpointCollection
 function BreakpointCollection.create()
   return BreakpointCollection:new({
     breakpoints = {},
   })
 end
 
----@param breakpoint api.NewFileSourceBreakpoint
+---@param breakpoint api.FileSourceBreakpoint
 function BreakpointCollection:add(breakpoint)
   table.insert(self.breakpoints, breakpoint)
 end
 
----@param breakpoint api.NewFileSourceBreakpoint
+---@param breakpoint api.FileSourceBreakpoint
 function BreakpointCollection:remove(breakpoint)
   for i, b in ipairs(self.breakpoints) do
     if b == breakpoint then
@@ -29,13 +29,13 @@ function BreakpointCollection:remove(breakpoint)
   end
 end
 
----@return api.NewFileSourceBreakpoint?
+---@return api.FileSourceBreakpoint?
 function BreakpointCollection:first()
   return self.breakpoints[1]
 end
 
 ---@param id string
----@return api.NewFileSourceBreakpoint?
+---@return api.FileSourceBreakpoint?
 function BreakpointCollection:get(id)
   for _, breakpoint in ipairs(self.breakpoints) do
     if breakpoint.id == id then
@@ -45,8 +45,8 @@ function BreakpointCollection:get(id)
   return nil
 end
 
----@param predicate fun(breakpoint: api.NewFileSourceBreakpoint): boolean
----@return api.NewBreakpointCollection
+---@param predicate fun(breakpoint: api.FileSourceBreakpoint): boolean
+---@return api.BreakpointCollection
 function BreakpointCollection:filter(predicate)
   local filtered = BreakpointCollection.create()
   for _, breakpoint in ipairs(self.breakpoints) do
@@ -57,8 +57,8 @@ function BreakpointCollection:filter(predicate)
   return filtered
 end
 
----@param location api.NewSourceFileLocation
----@return api.NewBreakpointCollection
+---@param location api.SourceFileLocation
+---@return api.BreakpointCollection
 function BreakpointCollection:atLocation(location)
   return self:filter(function(breakpoint)
     return breakpoint.location:matches(location)
@@ -66,7 +66,7 @@ function BreakpointCollection:atLocation(location)
 end
 
 ---@param sourceId string
----@return api.NewBreakpointCollection
+---@return api.BreakpointCollection
 function BreakpointCollection:atSourceId(sourceId)
   return self:filter(function(breakpoint)
     return breakpoint.location:isAtSourceId(sourceId)
@@ -74,7 +74,7 @@ function BreakpointCollection:atSourceId(sourceId)
 end
 
 ---@param path string
----@return api.NewBreakpointCollection
+---@return api.BreakpointCollection
 function BreakpointCollection:atPath(path)
   return self:filter(function(breakpoint)
     return breakpoint.location.path == path
@@ -82,14 +82,14 @@ function BreakpointCollection:atPath(path)
 end
 
 ---@param dapBreakpoint dap.Breakpoint
----@return api.NewBreakpointCollection
+---@return api.BreakpointCollection
 function BreakpointCollection:match(dapBreakpoint)
   return self:filter(function(breakpoint)
     return breakpoint:matches(dapBreakpoint)
   end)
 end
 
----@return fun(): api.NewFileSourceBreakpoint?
+---@return fun(): api.FileSourceBreakpoint?
 function BreakpointCollection:each()
   local index = 0
   return function()
@@ -101,7 +101,7 @@ function BreakpointCollection:each()
   end
 end
 
----@return api.NewFileSourceBreakpoint[]
+---@return api.FileSourceBreakpoint[]
 function BreakpointCollection:toArray()
   return vim.tbl_map(function(b) return b end, self.breakpoints or {})
 end

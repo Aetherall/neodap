@@ -1,6 +1,6 @@
-local BreakpointManagerImpl = require("neodap.api.NewBreakpoint.BreakpointManager")
+local BreakpointManagerImpl = require("neodap.api.Breakpoint.BreakpointManager")
 local BaseSource = require("neodap.api.Session.Source.BaseSource")
-local Location = require("neodap.api.NewBreakpoint.Location")
+local Location = require("neodap.api.Breakpoint.Location")
 
 ---@class BreakpointManagerAPI
 ---@field onBreakpoint fun(callback: fun(breakpoint: api.FileSourceBreakpoint)): fun()

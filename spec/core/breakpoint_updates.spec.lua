@@ -1,8 +1,8 @@
 local Test = require("spec.helpers.testing")(describe, it)
 local P = require("spec.helpers.prepare")
 local prepare = P.prepare
-local NewBreakpointManager = require("neodap.api.NewBreakpoint.BreakpointManager")
-local Location = require("neodap.api.NewBreakpoint.Location")
+local NewBreakpointManager = require("neodap.api.Breakpoint.BreakpointManager")
+local Location = require("neodap.api.Breakpoint.Location")
 local nio = require("nio")
 
 Test.Describe("new breakpoint manager - binding updates", function()

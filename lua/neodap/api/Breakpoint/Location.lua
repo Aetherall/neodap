@@ -1,18 +1,18 @@
 local Class = require('neodap.tools.class')
 
----@class api.NewSourceFileLocationProps
+---@class api.SourceFileLocationProps
 ---@field key string
 ---@field path string
 ---@field line integer
 ---@field column? integer
 
----@class api.NewSourceFileLocation: api.NewSourceFileLocationProps
----@field new Constructor<api.NewSourceFileLocationProps>
+---@class api.SourceFileLocation: api.SourceFileLocationProps
+---@field new Constructor<api.SourceFileLocationProps>
 local SourceFileLocation = Class()
 
 ---@param source api.FileSource
 ---@param opts { line: integer, column?: integer }
----@return api.NewSourceFileLocation
+---@return api.SourceFileLocation
 function SourceFileLocation.fromSource(source, opts)
   local path = source:absolutePath()
   return SourceFileLocation:new({
@@ -24,7 +24,7 @@ function SourceFileLocation.fromSource(source, opts)
 end
 
 ---@param dapBinding dap.Breakpoint
----@return api.NewSourceFileLocation?
+---@return api.SourceFileLocation?
 function SourceFileLocation.fromDapBinding(dapBinding)
   if not dapBinding.source or not dapBinding.source.path or not dapBinding.line then
     return nil
@@ -38,7 +38,7 @@ function SourceFileLocation.fromDapBinding(dapBinding)
   })
 end
 
----@return api.NewSourceFileLocation
+---@return api.SourceFileLocation
 function SourceFileLocation.fromCursor()
   local cursor = vim.api.nvim_win_get_cursor(0)
   local line = cursor[1]
@@ -53,7 +53,7 @@ function SourceFileLocation.fromCursor()
   })
 end
 
----@param other api.NewSourceFileLocation
+---@param other api.SourceFileLocation
 ---@return boolean
 function SourceFileLocation:matches(other)
   return self.key == other.key
