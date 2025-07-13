@@ -312,6 +312,7 @@ Test.Describe("BreakpointVirtualText2 (New Architecture)", function()
     local _breakpoints_text = api:getPluginInstance(BreakpointVirtualText2)
     
     local binding_created = Test.spy('binding_created')
+    local breakpoint_hit = Test.spy('breakpoint_hit')
     local breakpoint_removed = Test.spy('breakpoint_removed')
     
     local breakpoint_obj = nil
@@ -325,6 +326,15 @@ Test.Describe("BreakpointVirtualText2 (New Architecture)", function()
         nio.run(function()
           nio.sleep(200)
           binding_created.trigger()
+        end)
+      end)
+      
+      breakpoint:onHit(function(_hit)
+        -- Capture after hit to see hit symbol
+        local nio = require("nio")
+        nio.run(function()
+          nio.sleep(100) -- Quick capture after hit
+          breakpoint_hit.trigger()
         end)
       end)
       
@@ -357,9 +367,23 @@ Test.Describe("BreakpointVirtualText2 (New Architecture)", function()
     ]])
     print("✓ Step 1: Adjusted symbol (◐) shown after binding")
     
-    -- Step 2: Hit functionality disabled for now - skip hit test
-    -- TODO: Re-enable when hit symbol replacement is implemented properly
-    print("✓ Step 2: Hit handling temporarily disabled - no duplicate symbols")
+    -- Step 2: Wait for hit and capture hit symbol (should replace adjusted symbol)
+    breakpoint_hit.wait()
+    
+    -- Brief wait for the unmark/mark sequence to complete
+    local nio = require("nio")
+    nio.sleep(100)
+    
+    BufferSnapshot.expectSnapshotMatching("loop.js", [[
+      let i = 0;
+      setInterval(() => {
+      	◆console.log("ALoop iteration: ", i++);
+      	console.log("BLoop iteration: ", i++);
+      	console.log("CLoop iteration: ", i++);
+      	console.log("DLoop iteration: ", i++);
+      }, 1000)
+    ]])
+    print("✓ Step 2: Hit symbol (◆) correctly replaced adjusted symbol")
     
     -- Step 3: Remove breakpoint and verify cleanup
     assert(breakpoint_obj ~= nil, "Should have captured breakpoint object")
