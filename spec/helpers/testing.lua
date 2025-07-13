@@ -23,7 +23,7 @@ return function(describe, it)
         fn()
         future.set()
       end)
-      assert(vim.wait(10000, future.is_set), "Should pass")
+      assert(vim.wait(10000, future.is_set), "Timed out after 10 seconds waiting for " .. name)
     end)
   end
 

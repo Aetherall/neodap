@@ -16,11 +16,12 @@ local SourceFileLocation = Class()
 ---@return api.SourceFileLocation
 function SourceFileLocation.fromSource(source, opts)
   local path = source:absolutePath()
+  local column = opts.column or 0  -- Normalize nil to 0
   return SourceFileLocation:new({
     path = path,
     line = opts.line,
-    column = opts.column,
-    key = path .. ":" .. (opts.line or 0) .. ":" .. (opts.column or 0),
+    column = column,
+    key = path .. ":" .. (opts.line or 0) .. ":" .. column,
   })
 end
 
@@ -31,11 +32,12 @@ function SourceFileLocation.fromDapBinding(dapBinding)
     return nil
   end
 
+  local column = dapBinding.column or 0  -- Normalize nil to 0
   return SourceFileLocation:new({
     path = dapBinding.source.path,
     line = dapBinding.line,
-    column = dapBinding.column,
-    key = dapBinding.source.path .. ":" .. (dapBinding.line or 0) .. ":" .. (dapBinding.column or 0),
+    column = column,
+    key = dapBinding.source.path .. ":" .. (dapBinding.line or 0) .. ":" .. column,
   })
 end
 
@@ -57,6 +59,13 @@ end
 ---@param other api.SourceFileLocation
 ---@return boolean
 function SourceFileLocation:matches(other)
+  if not other then
+    print("ERROR: SourceFileLocation:matches() called with nil other!")
+    print("Stack trace:")
+    print(debug.traceback())
+    print("Self location:", self.key, "line:", self.line, "column:", self.column)
+    return false
+  end
   return self.key == other.key
 end
 

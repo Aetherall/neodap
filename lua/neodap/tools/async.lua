@@ -12,7 +12,7 @@ function NvimAsync.run(coroutine_func, event, options)
   options = options or {}
   local isPreempted = options.isPreempted
   
-  print("NVIM_ASYNC: Called with isPreempted func exists:", isPreempted ~= nil)
+  -- print("NVIM_ASYNC: Called with isPreempted func exists:", isPreempted ~= nil)
   
   -- If we're already in a NvimAsync context, check preemption and run directly
   if nio.current_task() then
@@ -20,7 +20,7 @@ function NvimAsync.run(coroutine_func, event, options)
       print("NVIM_ASYNC: Preempted in nested context")
       return
     end
-    print("NVIM_ASYNC: Running in nested context")
+    -- print("NVIM_ASYNC: Running in nested context")
     coroutine_func(event)
     return
   end

@@ -210,7 +210,11 @@ Test.Describe("BreakpointVirtualText2 (New Architecture)", function()
     
     -- Remove breakpoint
     for breakpoint in breakpoints.getBreakpoints():each() do
-      breakpoints.toggleBreakpoint(breakpoint.location)
+      print("TEST_DEBUG: Removing breakpoint:", breakpoint.id)
+      print("TEST_DEBUG: breakpoint.location:", breakpoint.location and breakpoint.location.key or "NIL")
+      print("TEST_DEBUG: breakpoint:getLocation():", breakpoint:getLocation() and breakpoint:getLocation().key or "NIL")
+      
+      breakpoints:toggleBreakpoint(breakpoint:getLocation())  -- Fixed: use colon (:) instead of dot (.)
       break
     end
     
@@ -387,7 +391,20 @@ Test.Describe("BreakpointVirtualText2 (New Architecture)", function()
     
     -- Step 3: Remove breakpoint and verify cleanup
     assert(breakpoint_obj ~= nil, "Should have captured breakpoint object")
-    breakpoints.toggleBreakpoint(breakpoint_obj.location)
+    
+    -- Debug the location access issue
+    print("TEST_DEBUG: breakpoint_obj.id:", breakpoint_obj.id)
+    print("TEST_DEBUG: breakpoint_obj.location:", breakpoint_obj.location and breakpoint_obj.location.key or "NIL")
+    print("TEST_DEBUG: breakpoint_obj:getLocation():", breakpoint_obj:getLocation() and breakpoint_obj:getLocation().key or "NIL")
+    
+    local location_to_use = breakpoint_obj:getLocation()
+    print("TEST_DEBUG: Using location for toggle:", location_to_use and location_to_use.key or "NIL")
+    print("TEST_DEBUG: location_to_use type:", type(location_to_use))
+    print("TEST_DEBUG: location_to_use details - line:", location_to_use and location_to_use.line, "column:", location_to_use and location_to_use.column)
+    
+    print("TEST_DEBUG: About to call toggleBreakpoint...")
+    breakpoints:toggleBreakpoint(location_to_use)  -- Fixed: use colon (:) instead of dot (.)
+    print("TEST_DEBUG: Called toggleBreakpoint")
     
     breakpoint_removed.wait()
     

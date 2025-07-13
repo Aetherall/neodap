@@ -47,7 +47,7 @@ function Hookable.create(parent)
     parent.children[instance] = true
   end
 
-  print("HOOKABLE_CREATE: Created hookable instance", tostring(instance), "destroyed:", instance.destroyed)
+  -- print("HOOKABLE_CREATE: Created hookable instance", tostring(instance), "destroyed:", instance.destroyed)
   return instance
 end
 
@@ -72,14 +72,14 @@ function Hookable:emit(key, event)
           group[name] = nil
         end
         -- Use simplified NvimAsync that preserves NIO context
-        print("HOOKABLE_EMIT: Scheduling handler for", key, "hookable", tostring(self), "destroyed:", self.destroyed)
+        -- print("HOOKABLE_EMIT: Scheduling handler for", key, "hookable", tostring(self), "destroyed:", self.destroyed)
         vim.schedule(function ()
-          print("HOOKABLE_EXECUTE: About to run handler for", key, "hookable", tostring(self), "destroyed:", self.destroyed)
+          -- print("HOOKABLE_EXECUTE: About to run handler for", key, "hookable", tostring(self), "destroyed:", self.destroyed)
         
         NvimAsync.run(hook.handler, event, {
           isPreempted = hook.preemptible and function() 
             local is_destroyed = self.destroyed
-            print("HOOKABLE_PREEMPT_CHECK: isPreempted() called for hookable", tostring(self), "destroyed:", is_destroyed, "preemptible:", hook.preemptible)
+            -- print("HOOKABLE_PREEMPT_CHECK: isPreempted() called for hookable", tostring(self), "destroyed:", is_destroyed, "preemptible:", hook.preemptible)
             return is_destroyed
           end or nil
         })
@@ -164,10 +164,10 @@ function Hookable:destroy()
     return -- Already destroyed, avoid double cleanup
   end
   
-  print("HOOKABLE_DESTROY: Destroying hookable instance", tostring(self))
+  -- print("HOOKABLE_DESTROY: Destroying hookable instance", tostring(self))
   -- Mark as destroyed early to prevent new registrations
   self.destroyed = true
-  print("HOOKABLE_DESTROY: Set destroyed=true for", tostring(self))
+  -- print("HOOKABLE_DESTROY: Set destroyed=true for", tostring(self))
   
   -- Clean up all children first (depth-first cleanup)
   for child in pairs(self.children) do
