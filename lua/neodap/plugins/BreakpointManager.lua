@@ -22,7 +22,7 @@ local BreakpointManager = {
 
     
     ---@class (partial) api.BaseSource
-    ---@field addBreakpoint fun(self: api.BaseSource, location: api.SourceFileLocation): api.FileSourceBreakpoint
+    ---@field addBreakpoint fun(self: api.BaseSource, opts: { line: integer, column: integer? }): api.FileSourceBreakpoint
 
     function BaseSource:addBreakpoint(opts)
       local location = Location.SourceFile.fromSource(self, opts)

@@ -1,4 +1,5 @@
 local Class = require('neodap.tools.class')
+local nio = require("nio")
 
 ---@class api.SourceFileLocationProps
 ---@field key string
@@ -119,6 +120,37 @@ function SourceFileLocation:unmark(ns)
     vim.api.nvim_buf_del_extmark(bufnr, ns, id)
   end
 end
+
+function SourceFileLocation:deferUntilLoaded()
+  local bufnr = self:bufnr()
+
+  
+  if bufnr and vim.api.nvim_buf_is_loaded(bufnr) then
+    return self
+  end
+  
+  local future = nio.control.future()
+  
+  if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
+    return future.wait() -- This buffer will never load, block indefinitely
+  end
+
+  vim.api.nvim_create_autocmd({ "BufReadPost" }, {
+    buffer = bufnr,
+    once = true,
+    callback = function()
+      if not vim.api.nvim_buf_is_loaded(bufnr) then
+        future.set(nil)
+        return
+      end
+      future.set(self)
+    end
+    
+  })
+
+  return future.wait()
+end
+
 
 return {
   SourceFile = SourceFileLocation,
