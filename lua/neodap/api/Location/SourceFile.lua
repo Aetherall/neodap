@@ -18,7 +18,6 @@ function SourceFile.create(opts)
   })
 end
 
-
 ---@param source api.FileSource
 ---@return api.SourceFile
 function SourceFile.fromSource(source)
@@ -45,12 +44,6 @@ end
 ---@return_cast other api.SourceFile
 function SourceFile:equals(other)
   return self.key == other.key
-end
-
----@param sourceId string
----@return boolean
-function SourceFile:isAtSourceId(sourceId)
-  return sourceId == ("path:" .. self.path)
 end
 
 ---@return integer?

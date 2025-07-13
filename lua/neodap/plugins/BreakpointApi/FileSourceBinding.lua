@@ -1,7 +1,7 @@
 local Class = require('neodap.tools.class')
 local Hookable = require("neodap.transport.hookable")
-local Location = require("neodap.api.Location")
 local nio = require("nio")
+local SourceFilePosition = require("neodap.api.Location.SourceFilePosition")
 
 ---@class api.FileSourceBindingProps
 ---@field manager api.BreakpointManager
@@ -136,8 +136,8 @@ end
 
 ---@return api.SourceFilePosition
 function FileSourceBinding:getActualLocation()
-  local Location = require('neodap.api.Location')
-  return Location.SourceFile.fromSource(self.source, {
+  return SourceFilePosition.create({
+    path = self.source:absolutePath(),
     line = self.actualLine or self.line,
     column = self.actualColumn or self.column,
   })
@@ -145,8 +145,8 @@ end
 
 ---@return api.SourceFilePosition
 function FileSourceBinding:getRequestedLocation()
-  local Location = require('neodap.api.Location')
-  return Location.SourceFile.fromSource(self.source, {
+  return SourceFilePosition.create({
+    path = self.source:absolutePath(),
     line = self.line,
     column = self.column,
   })
@@ -169,21 +169,6 @@ function FileSourceBinding:toDapSourceBreakpoint()
     condition = breakpoint and breakpoint.condition,
     logMessage = breakpoint and breakpoint.logMessage,
   }
-end
-
----@param dapBinding dap.Breakpoint
----@return boolean
-function FileSourceBinding:matches(dapBinding)
-  if self.id and dapBinding.id then
-    return self.id == dapBinding.id
-  end
-  
-  local location = Location.fromDapBinding(dapBinding)
-  if not location then
-    return false
-  end
-
-  return location:equals(self:getActualLocation())
 end
 
 -- Hit handling (called by manager)

@@ -79,14 +79,6 @@ function BindingCollection:forIds(ids)
   end)
 end
 
----@param dapBinding dap.Breakpoint
----@return api.BindingCollection
-function BindingCollection:match(dapBinding)
-  return self:filter(function(binding)
-    return binding:matches(dapBinding)
-  end)
-end
-
 ---@return fun(): api.FileSourceBinding?
 function BindingCollection:each()
   local index = 0

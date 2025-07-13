@@ -36,21 +36,6 @@ function SourceFilePosition.fromSource(source, opts)
   })
 end
 
----@param dapBinding dap.Breakpoint
----@return api.SourceFilePosition?
-function SourceFilePosition.fromDapBinding(dapBinding)
-  if not dapBinding.source or not dapBinding.source.path or not dapBinding.line then
-    return nil
-  end
-
-  local column = dapBinding.column or 0  -- Normalize nil to 0
-  return SourceFilePosition.create({
-    path = dapBinding.source.path,
-    line = dapBinding.line,
-    column = column,
-  })
-end
-
 ---@return api.SourceFilePosition
 function SourceFilePosition.fromCursor()
   local cursor = vim.api.nvim_win_get_cursor(0)
@@ -73,11 +58,6 @@ function SourceFilePosition:equals(other)
   return self.key == other.key
 end
 
----@param sourceId string
----@return boolean
-function SourceFilePosition:isAtSourceId(sourceId)
-  return sourceId == ("path:" .. self.path)
-end
 
 ---@return integer?
 function SourceFilePosition:bufnr()
