@@ -98,26 +98,26 @@ end
 ---@param location api.SourceFileLocation
 ---@return api.FileSourceBreakpoint?
 function BreakpointManager:toggleBreakpoint(location)
-  print("TOGGLE_DEBUG: toggleBreakpoint called")
-  print("TOGGLE_DEBUG: location parameter type:", type(location))
-  print("TOGGLE_DEBUG: location parameter value:", tostring(location))
-  print("TOGGLE_DEBUG: location and location.key:", location and location.key or "NIL")
+  -- print("TOGGLE_DEBUG: toggleBreakpoint called")
+  -- print("TOGGLE_DEBUG: location parameter type:", type(location))
+  -- print("TOGGLE_DEBUG: location parameter value:", tostring(location))
+  -- print("TOGGLE_DEBUG: location and location.key:", location and location.key or "NIL")
   if location then
-    print("TOGGLE_DEBUG: location details - line:", location.line, "column:", location.column, "path:", location.path)
+    -- print("TOGGLE_DEBUG: location details - line:", location.line, "column:", location.column, "path:", location.path)
   else
-    print("TOGGLE_DEBUG: Location is nil! Stack trace:")
-    print(debug.traceback())
+    -- print("TOGGLE_DEBUG: Location is nil! Stack trace:")
+    -- print(debug.traceback())
   end
   
   local existing = self.breakpoints:atLocation(location):first()
-  print("TOGGLE_DEBUG: existing breakpoint found:", existing and existing.id or "NIL")
+  -- print("TOGGLE_DEBUG: existing breakpoint found:", existing and existing.id or "NIL")
   
   if existing then
-    print("TOGGLE_DEBUG: removing existing breakpoint:", existing.id, "at location:", existing.location and existing.location.key or "NIL")
+    -- print("TOGGLE_DEBUG: removing existing breakpoint:", existing.id, "at location:", existing.location and existing.location.key or "NIL")
     self:removeBreakpoint(existing)
     return nil
   else
-    print("TOGGLE_DEBUG: adding new breakpoint at location:", location and location.key or "NIL")
+    -- print("TOGGLE_DEBUG: adding new breakpoint at location:", location and location.key or "NIL")
     return self:addBreakpoint(location)
   end
 end

@@ -20,7 +20,7 @@ local FileSourceBreakpoint = Class()
 function FileSourceBreakpoint.atLocation(manager, location, opts)
   opts = opts or {}
   
-  print("BREAKPOINT_LIFECYCLE: Creating breakpoint with location:", location and location.key or "NIL")
+  -- print("BREAKPOINT_LIFECYCLE: Creating breakpoint with location:", location and location.key or "NIL")
   
   local instance = FileSourceBreakpoint:new({
     id = location.key,
@@ -31,19 +31,19 @@ function FileSourceBreakpoint.atLocation(manager, location, opts)
     hookable = Hookable.create(manager.hookable),
   })
   
-  print("BREAKPOINT_LIFECYCLE: Created breakpoint", instance.id, "with location:", instance.location and instance.location.key or "NIL")
+  -- print("BREAKPOINT_LIFECYCLE: Created breakpoint", instance.id, "with location:", instance.location and instance.location.key or "NIL")
   
   return instance
 end
 
 ---@return api.SourceFileLocation
 function FileSourceBreakpoint:getLocation()
-  print("BREAKPOINT_LIFECYCLE: getLocation() called for breakpoint", self.id, "location:", self.location and self.location.key or "NIL")
+  -- print("BREAKPOINT_LIFECYCLE: getLocation() called for breakpoint", self.id, "location:", self.location and self.location.key or "NIL")
   if not self.location then
-    print("ERROR: FileSourceBreakpoint:getLocation() - self.location is NIL!")
-    print("Breakpoint ID:", self.id)
-    print("Stack trace:")
-    print(debug.traceback())
+    -- print("ERROR: FileSourceBreakpoint:getLocation() - self.location is NIL!")
+    -- print("Breakpoint ID:", self.id)
+    -- print("Stack trace:")
+    -- print(debug.traceback())
   end
   return self.location
 end
@@ -176,9 +176,9 @@ end
 
 -- Internal lifecycle method (called by manager)
 function FileSourceBreakpoint:destroy()
-  print("BREAKPOINT_LIFECYCLE: Destroying breakpoint", self.id, "location before destroy:", self.location and self.location.key or "NIL")
+  -- print("BREAKPOINT_LIFECYCLE: Destroying breakpoint", self.id, "location before destroy:", self.location and self.location.key or "NIL")
   self.hookable:destroy()  -- Hookable will emit 'Dispose' event automatically
-  print("BREAKPOINT_LIFECYCLE: Destroyed breakpoint", self.id, "location after destroy:", self.location and self.location.key or "NIL")
+  -- print("BREAKPOINT_LIFECYCLE: Destroyed breakpoint", self.id, "location after destroy:", self.location and self.location.key or "NIL")
 end
 
 return FileSourceBreakpoint
