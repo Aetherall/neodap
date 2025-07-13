@@ -1,6 +1,7 @@
 local Class = require('neodap.tools.class')
 local Hookable = require("neodap.transport.hookable")
 local Location = require("neodap.api.Location")
+local nio = require("nio")
 
 ---@class api.FileSourceBindingProps
 ---@field manager api.BreakpointManager
@@ -86,11 +87,29 @@ end
 
 -- API Methods: Event Registration
 
----@param listener fun(hit: { thread: api.Thread, body: dap.StoppedEventBody })
+---@param listener async fun(hit: { thread: api.Thread, body: dap.StoppedEventBody }, resumed: nio.control.Future)
 ---@param opts? HookOptions
 ---@return fun() unsubscribe
 function FileSourceBinding:onHit(listener, opts)
-  return self.hookable:on('Hit', listener, opts)
+  return self.hookable:on('Hit', 
+  ---@param data { thread: api.Thread, body: dap.StoppedEventBody }
+  function (data)
+    local resumed = nio.control.future()
+    data.thread:onResumed(function()
+      if not self.hookable.destroyed then
+        if not resumed.is_set() then
+          resumed.set()
+        end
+      end
+    end, { once = true })
+   
+
+    listener({
+      thread = data.thread,
+      body = data.body,
+      binding = self,
+    }, resumed)
+  end, opts)
 end
 
 ---@param listener fun(dapBreakpoint: dap.Breakpoint)
