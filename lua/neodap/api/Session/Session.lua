@@ -225,35 +225,25 @@ function Session:getSourceForPath(path)
 end
 
 ---@generic T
----@param predicate fun(source: api.Source): T
+---@param predicate fun(source: api.Source): T?
 ---@return T
 function Session:findSource(predicate)
   for _, source in pairs(self._sources) do
     local result = predicate(source)
     if result then
-      return result
+      return source
     end
   end
   return nil
 end
 
 
----@param location api.SourceFileLocation
+---@param location api.SourceFilePosition|api.SourceFileLine|api.SourceFile
 ---@return api.FileSource?
 function Session:getFileSourceAt(location)
   return self:findSource(function(source)
-  local filesource = source:asFile()
-  if not filesource then
-    return false
-  end  
-  -- print("DEBUG: Checking source:", vim.inspect(filesource.id))
-
-    local samePlace = location:isAtSourceId(filesource.id)
-    if not samePlace then
-      return false
-    end
-
-    return filesource
+    local filesource = source:asFile()
+    return filesource and filesource:absolutePath() == location.path
   end)
 end
 
@@ -330,27 +320,6 @@ function Session:onBindingRemoved(listener, opts)
     end
   end
   , opts)
-end
-
----@param listener fun(binding: api.FileSourceBinding)
-function Session:onBinding(listener, opts)
-  local BreakpointManager = require("neodap.plugins.BreakpointManager")
-  local breakpoint_service = BreakpointManager.for_api(self.api)
-  return breakpoint_service:onBound(function(binding)
-    if binding.session.id == self.id then
-      listener(binding)
-    end
-  end, opts)
-end
-
----@param listener fun(binding: api.FileSourceBinding, hit: table)
----@param opts? HookOptions
-function Session:onBindingHit(listener, opts)
-  return self:onBinding(function (binding)
-    binding:onHit(function(hit)
-      listener(binding, hit)
-    end, opts)
-  end, opts)
 end
 
 --- Destroys this session and all its child resources

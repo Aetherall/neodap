@@ -1,8 +1,8 @@
 local Class = require('neodap.tools.class')
 
 ---@class api.BaseLocationProps
----@field type 'source_file_position' | 'source_file_line' | 'source_file_range' | 'source_file'
 ---@field key string
+---@field type 'source_file_position' | 'source_file_line' | 'source_file_range' | 'source_file'
 
 ---@class api.BaseLocation: api.BaseLocationProps
 ---@field new Constructor<api.BaseLocationProps>
@@ -49,6 +49,7 @@ function BaseLocation:asSourceFile()
   ---@cast self api.SourceFile
   return self
 end
+
 
 
 return BaseLocation

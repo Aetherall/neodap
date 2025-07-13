@@ -4,7 +4,7 @@ local Hookable = require("neodap.transport.hookable")
 ---@class api.FileSourceBreakpointProps
 ---@field id string
 ---@field manager api.BreakpointManager
----@field location api.SourceFileLocation
+---@field location api.SourceFilePosition
 ---@field condition? string
 ---@field logMessage? string
 ---@field hookable Hookable
@@ -14,7 +14,7 @@ local Hookable = require("neodap.transport.hookable")
 local FileSourceBreakpoint = Class()
 
 ---@param manager api.BreakpointManager
----@param location api.SourceFileLocation
+---@param location api.SourceFilePosition
 ---@param opts? { condition?: string, logMessage?: string }
 ---@return api.FileSourceBreakpoint
 function FileSourceBreakpoint.atLocation(manager, location, opts)
@@ -36,15 +36,8 @@ function FileSourceBreakpoint.atLocation(manager, location, opts)
   return instance
 end
 
----@return api.SourceFileLocation
+---@return api.SourceFilePosition
 function FileSourceBreakpoint:getLocation()
-  -- print("BREAKPOINT_LIFECYCLE: getLocation() called for breakpoint", self.id, "location:", self.location and self.location.key or "NIL")
-  if not self.location then
-    -- print("ERROR: FileSourceBreakpoint:getLocation() - self.location is NIL!")
-    -- print("Breakpoint ID:", self.id)
-    -- print("Stack trace:")
-    -- print(debug.traceback())
-  end
   return self.location
 end
 
@@ -139,29 +132,6 @@ end
 function FileSourceBreakpoint:getBindings()
   -- Delegate to manager - maintain architectural purity
   return self.manager.bindings:forBreakpoint(self)
-end
-
----@param session api.Session
----@return api.FileSourceBinding?
-function FileSourceBreakpoint:getBindingForSession(session)
-  return self.manager.bindings:forBreakpoint(self):forSession(session):first()
-end
-
----@return api.FileSourceBinding[]
-function FileSourceBreakpoint:getAllBindings()
-  return self:getBindings():toArray()
-end
-
--- Utility Methods
-
----@param dapBreakpoint dap.Breakpoint
----@return boolean
-function FileSourceBreakpoint:matches(dapBreakpoint)
-  local matchesPath = dapBreakpoint.source and dapBreakpoint.source.path == self.location.path
-  local matchesLine = dapBreakpoint.line == self.location.line
-  local matchesColumn = dapBreakpoint.column == self.location.column
-
-  return matchesPath and matchesLine and (matchesColumn or not dapBreakpoint.column)
 end
 
 ---@return dap.SourceBreakpoint

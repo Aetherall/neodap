@@ -487,7 +487,7 @@ Test.Describe("BreakpointVirtualText (New Architecture)", function()
     end)
     
     -- Create breakpoint
-    local originalLocation = require("neodap.plugins.BreakpointApi.Location").SourceFile:new({
+    local originalLocation = require("neodap.api.Location").SourceFile:new({
       path = vim.fn.getcwd() .. "/spec/fixtures/loop.js",
       line = 3,
       column = 0,

@@ -12,7 +12,7 @@ return {
   BindingCollection = require('neodap.plugins.BreakpointApi.BindingCollection'),
   
   -- Utilities
-  Location = require('neodap.plugins.BreakpointApi.Location'),
+  Location = require('neodap.api.Location'),
   
   -- Example usage
   example = require('neodap.plugins.BreakpointApi.example'),

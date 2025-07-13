@@ -3,7 +3,7 @@ local P = require("spec.helpers.prepare")
 local prepare = P.prepare
 local BreakpointApiPlugin = require("neodap.plugins.BreakpointApi")
 local ToggleBreakpoint = require("neodap.plugins.ToggleBreakpoint")
-local Location = require("neodap.plugins.BreakpointApi.Location")
+local Location = require("neodap.api.Location")
 local nio = require("nio")
 
 Test.Describe("ToggleBreakpoint plugin", function()

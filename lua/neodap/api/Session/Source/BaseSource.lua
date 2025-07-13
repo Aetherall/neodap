@@ -1,6 +1,6 @@
 local Class = require('neodap.tools.class')
 local ContentAccessTrait = require('neodap.api.Session.Source.traits.ContentAccessTrait')
-local Location = require("neodap.plugins.BreakpointApi.Location")
+local Location = require("neodap.api.Location")
 local nio = require('nio')
 local Logger = require("neodap.tools.logger")
 

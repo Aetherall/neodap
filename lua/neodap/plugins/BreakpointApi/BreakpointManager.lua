@@ -3,7 +3,7 @@ local nio = require('nio')
 local Hookable = require("neodap.transport.hookable")
 local FileSourceBreakpoint = require('neodap.plugins.BreakpointApi.FileSourceBreakpoint')
 local FileSourceBinding = require('neodap.plugins.BreakpointApi.FileSourceBinding')
-local Location = require('neodap.plugins.BreakpointApi.Location')
+local Location = require('neodap.api.Location')
 local BreakpointCollection = require("neodap.plugins.BreakpointApi.BreakpointCollection")
 local BindingCollection = require("neodap.plugins.BreakpointApi.BindingCollection")
 local Logger = require("neodap.tools.logger")
@@ -13,7 +13,7 @@ local Logger = require("neodap.tools.logger")
 ---@field breakpoints api.BreakpointCollection
 ---@field bindings api.BindingCollection
 ---@field hookable Hookable
----@field pendingOperations table<string, any>
+---@field pendingOperations table<string, any?>
 
 ---@class api.BreakpointManager: api.BreakpointManagerProps
 ---@field new Constructor<api.BreakpointManagerProps>
@@ -36,7 +36,7 @@ end
 
 -- Core Breakpoint Operations
 
----@param location api.SourceFileLocation
+---@param location api.SourceFilePosition
 ---@param opts? { condition?: string, logMessage?: string }
 ---@return api.FileSourceBreakpoint
 function BreakpointManager:addBreakpoint(location, opts)
@@ -95,7 +95,7 @@ function BreakpointManager:removeBreakpoint(breakpoint)
   breakpoint:destroy()  -- Breakpoint emits its own 'Removed' event
 end
 
----@param location api.SourceFileLocation
+---@param location api.SourceFilePosition
 ---@return api.FileSourceBreakpoint?
 function BreakpointManager:toggleBreakpoint(location)
   local existing = self.breakpoints:atLocation(location):first()
@@ -161,6 +161,7 @@ function BreakpointManager:syncSourceToSession(source, session)
   
   -- 2. Get existing bindings to preserve DAP state
   local existingBindings = self.bindings:forSession(session):forSource(source)
+  ---@type table<string, api.FileSourceBinding?>
   local bindingsByBreakpointId = {}
   for binding in existingBindings:each() do
     bindingsByBreakpointId[binding.breakpointId] = binding
@@ -180,7 +181,7 @@ function BreakpointManager:syncSourceToSession(source, session)
     
     if existingBinding then
       -- Use existing binding's verified position and ID
-      local dapBp = existingBinding:toDapSourceBreakpointWithId()
+      local dapBp = existingBinding:toDapSourceBreakpoint()
       table.insert(dapBreakpoints, dapBp)
     else
       -- New breakpoint, use requested position
@@ -213,7 +214,7 @@ end
 ---@param session api.Session
 ---@param breakpoints api.BreakpointCollection
 ---@param dapResponses dap.Breakpoint[]
----@param existingBindingsMap table<string, api.FileSourceBinding>
+---@param existingBindingsMap table<string, api.FileSourceBinding?>
 function BreakpointManager:reconcileBindings(source, session, breakpoints, dapResponses, existingBindingsMap)
   local log = Logger.get()
   local breakpointArray = breakpoints:toArray()
@@ -284,18 +285,6 @@ function BreakpointManager:onBreakpoint(listener, opts)
   return unsubscribe1
 end
 
----@param listener fun(breakpoint: api.FileSourceBreakpoint)
----@param opts? HookOptions
----@return fun() unsubscribe
-function BreakpointManager:onBreakpointRemoved(listener, opts)
-  -- Listen to breakpoint events directly through hierarchical API
-  return self:onBreakpoint(function(breakpoint)
-    breakpoint:onRemoved(function()
-      listener(breakpoint)
-    end, opts)
-  end, opts)
-end
-
 ---@param listener fun(binding: api.FileSourceBinding)
 ---@param opts? HookOptions
 ---@return fun() unsubscribe
@@ -303,29 +292,6 @@ function BreakpointManager:onBound(listener, opts)
   return self.hookable:on('BindingBound', listener, opts)
 end
 
----@param listener fun(binding: api.FileSourceBinding)
----@param opts? HookOptions
----@return fun() unsubscribe
-function BreakpointManager:onUnbound(listener, opts)
-  -- Listen to binding events directly through hierarchical API
-  return self:onBound(function(binding)
-    binding:onUnbound(function()
-      listener(binding)
-    end, opts)
-  end, opts)
-end
-
----@param listener fun(binding: api.FileSourceBinding)
----@param opts? HookOptions
----@return fun() unsubscribe
-function BreakpointManager:onUpdated(listener, opts)
-  -- Listen to binding events directly through hierarchical API
-  return self:onBound(function(binding)
-    binding:onUpdated(function()
-      listener(binding)
-    end, opts)
-  end, opts)
-end
 
 ---@param listener fun(event: { source: api.FileSource, session: api.Session, breakpoints: api.FileSourceBreakpoint[] })
 ---@param opts? HookOptions
@@ -366,12 +332,17 @@ function BreakpointManager:listen()
       log:debug("Session", session.id, "- Unexpected DAP binding new event:", dapBinding)
       -- This should rarely happen with proper source-level sync
       -- But we can handle it by triggering a resync
-      local location = Location.SourceFile.fromDapBinding(dapBinding)
-      if location then
-        local source = session:getFileSourceAt(location)
-        if source then
-          self:queueSourceSync(source, session)
-        end
+      local location = Location.fromDapBinding(dapBinding)
+
+      if not location then
+        log:warn("Session", session.id, "- Could not create location from DAP binding:", dapBinding)
+        return
+      end
+
+      local sourcefile = location:SourceFile()
+      local source = session:getFileSourceAt(sourcefile)
+      if source then
+        self:queueSourceSync(source, session)
       end
     end)
 

@@ -1,5 +1,5 @@
 local Class = require('neodap.tools.class')
-local BaseLocation = require('neodap.api.Location.BaseLocation')
+local Base = require('neodap.api.Location.Base')
 local nio = require("nio")
 
 ---@class api.SourceFileProps: api.BaseLocationProps
@@ -7,7 +7,7 @@ local nio = require("nio")
 
 ---@class api.SourceFile: api.SourceFileProps, api.BaseLocationProps
 ---@field new Constructor<api.SourceFileProps>
-local SourceFile = Class(BaseLocation)
+local SourceFile = Class(Base)
 
 ---@param opts { path: string }
 function SourceFile.create(opts)
@@ -41,8 +41,8 @@ function SourceFile.fromCursor()
   })
 end
 
----@param other api.SourceFile
----@return boolean
+---@param other api.Location
+---@return_cast other api.SourceFile
 function SourceFile:equals(other)
   return self.key == other.key
 end
@@ -88,6 +88,10 @@ function SourceFile:deferUntilLoaded()
   })
 
   return future.wait()
+end
+
+function SourceFile:SourceFile()
+  return self
 end
 
 

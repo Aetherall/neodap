@@ -61,4 +61,7 @@ end
 -- Backward compatibility - export SourceFile as the previous interface
 Location.SourceFile = SourceFilePosition
 
+
+---@alias api.Location api.SourceFilePosition | api.SourceFileLine | api.SourceFile
+
 return Location

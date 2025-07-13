@@ -1,13 +1,14 @@
 local Class = require('neodap.tools.class')
-local BaseLocation = require('neodap.api.Location.BaseLocation')
+local BaseLocation = require('neodap.api.Location.Base')
 local nio = require("nio")
+local SourceFile = require("neodap.api.Location.SourceFile")
 
 ---@class api.SourceFilePositionProps: api.BaseLocationProps
 ---@field path string
 ---@field line integer
 ---@field column integer
 
----@class api.SourceFilePosition: api.SourceFilePositionProps, api.BaseLocation
+---@class api.SourceFilePosition: api.SourceFilePositionProps
 ---@field new Constructor<api.SourceFilePositionProps>
 local SourceFilePosition = Class(BaseLocation)
 
@@ -64,6 +65,12 @@ function SourceFilePosition.fromCursor()
     line = line,
     column = column,
   })
+end
+
+---@param other api.Location
+---@return_cast other api.SourceFilePosition
+function SourceFilePosition:equals(other)
+  return self.key == other.key
 end
 
 ---@param sourceId string
@@ -126,5 +133,12 @@ function SourceFilePosition:unmark(ns)
     vim.api.nvim_buf_del_extmark(bufnr, ns, id)
   end
 end
+
+function SourceFilePosition:SourceFile()
+  return SourceFile.create({
+    path = self.path,
+  })
+end
+
 
 return SourceFilePosition

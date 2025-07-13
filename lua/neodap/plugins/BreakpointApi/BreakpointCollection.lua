@@ -1,4 +1,5 @@
 local Class = require('neodap.tools.class')
+local Location = require("neodap.api.Location")
 
 ---@class api.BreakpointCollectionProps
 ---@field breakpoints api.FileSourceBreakpoint[]
@@ -45,7 +46,7 @@ function BreakpointCollection:get(id)
   return nil
 end
 
----@param predicate fun(breakpoint: api.FileSourceBreakpoint): boolean
+---@param predicate fun(breakpoint: api.FileSourceBreakpoint): boolean?
 ---@return api.BreakpointCollection
 function BreakpointCollection:filter(predicate)
   local filtered = BreakpointCollection.create()
@@ -57,12 +58,12 @@ function BreakpointCollection:filter(predicate)
   return filtered
 end
 
----@param location api.SourceFileLocation
+---@param location api.SourceFileLine | api.SourceFilePosition
 ---@return api.BreakpointCollection
 function BreakpointCollection:atLocation(location)
   return self:filter(function(breakpoint)
     -- First check exact match with original location
-    if breakpoint.location:matches(location) then
+    if breakpoint.location:equals(location) then
       return true
     end
     
@@ -71,7 +72,7 @@ function BreakpointCollection:atLocation(location)
     local bindings = breakpoint:getBindings()
     for binding in bindings:each() do
       local actualLocation = binding:getActualLocation()
-      if actualLocation:matches(location) then
+      if actualLocation:equals(location) then
         return true
       end
       
@@ -87,9 +88,9 @@ function BreakpointCollection:atLocation(location)
   end)
 end
 
----@param location api.SourceFileLocation
----@param start api.SourceFileLocation
----@param finish api.SourceFileLocation
+---@param location api.Location
+---@param start api.SourceFilePosition
+---@param finish api.SourceFilePosition
 ---@return boolean
 function BreakpointCollection:_isLocationBetween(location, start, finish)
   -- Only consider positions in the same file
@@ -133,14 +134,6 @@ function BreakpointCollection:_isLocationBetween(location, start, finish)
   return true
 end
 
----@param sourceId string
----@return api.BreakpointCollection
-function BreakpointCollection:atSourceId(sourceId)
-  return self:filter(function(breakpoint)
-    return breakpoint.location:isAtSourceId(sourceId)
-  end)
-end
-
 ---@param path string
 ---@return api.BreakpointCollection
 function BreakpointCollection:atPath(path)
@@ -153,7 +146,8 @@ end
 ---@return api.BreakpointCollection
 function BreakpointCollection:match(dapBreakpoint)
   return self:filter(function(breakpoint)
-    return breakpoint:matches(dapBreakpoint)
+    local location = Location.fromDapBinding(dapBreakpoint)
+    return location and location:equals(breakpoint.location)
   end)
 end
 

@@ -70,7 +70,7 @@ return {
         local current_location = binding:getActualLocation()
         
         -- Ensure buffer is loaded before marking
-        current_location:deferUntilLoaded()
+        current_location:SourceFile():deferUntilLoaded()
         
         binding:onDispose(function ()
           log:info("BPVT2: onDispose triggered for breakpoint:", breakpoint.id, "session:", binding.session and binding.session.id or "no-session", "namespace:", ns)
@@ -176,7 +176,7 @@ return {
       end)
 
 
-      breakpoint.location:deferUntilLoaded()
+      breakpoint.location:SourceFile():deferUntilLoaded()
 
       -- Only show normal symbol if no bindings exist
       -- The onBinding handler will handle all bindings (new and existing)

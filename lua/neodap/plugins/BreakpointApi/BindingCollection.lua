@@ -126,16 +126,6 @@ function BindingCollection:toDapSourceBreakpoints()
   return dapBreakpoints
 end
 
----@return dap.SourceBreakpoint[]
-function BindingCollection:toDapSourceBreakpointsWithIds()
-  local dapBreakpoints = {}
-  for _, binding in ipairs(self.bindings) do
-    local dapBreakpoint = binding:toDapSourceBreakpointWithId()
-    table.insert(dapBreakpoints, dapBreakpoint)
-  end
-  return dapBreakpoints
-end
-
 ---Group bindings by session
 ---@return fun(): api.Session?, api.BindingCollection?
 function BindingCollection:bySession()

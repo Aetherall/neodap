@@ -1,5 +1,6 @@
 local Class = require('neodap.tools.class')
 local Hookable = require("neodap.transport.hookable")
+local Location = require("neodap.api.Location")
 
 ---@class api.FileSourceBindingProps
 ---@field manager api.BreakpointManager
@@ -9,8 +10,8 @@ local Hookable = require("neodap.transport.hookable")
 ---@field id integer
 ---@field verified boolean
 ---@field line integer
----@field column? integer
----@field actualLine integer
+---@field column integer
+---@field actualLine? integer
 ---@field actualColumn? integer
 ---@field message? string
 ---@field hookable Hookable
@@ -27,6 +28,9 @@ local FileSourceBinding = Class()
 ---@param dapBreakpoint dap.Breakpoint
 ---@return api.FileSourceBinding
 function FileSourceBinding.verified(manager, session, source, breakpoint, dapBreakpoint)
+  if not dapBreakpoint or not dapBreakpoint.id then
+    error("Invalid DAP breakpoint provided")
+  end
   return FileSourceBinding:new({
     manager = manager,
     session = session,
@@ -111,18 +115,18 @@ function FileSourceBinding:getBreakpoint()
   return self.manager.breakpoints:get(self.breakpointId)
 end
 
----@return api.SourceFileLocation
+---@return api.SourceFilePosition
 function FileSourceBinding:getActualLocation()
-  local Location = require('neodap.plugins.BreakpointApi.Location')
+  local Location = require('neodap.api.Location')
   return Location.SourceFile.fromSource(self.source, {
     line = self.actualLine or self.line,
     column = self.actualColumn or self.column,
   })
 end
 
----@return api.SourceFileLocation
+---@return api.SourceFilePosition
 function FileSourceBinding:getRequestedLocation()
-  local Location = require('neodap.plugins.BreakpointApi.Location')
+  local Location = require('neodap.api.Location')
   return Location.SourceFile.fromSource(self.source, {
     line = self.line,
     column = self.column,
@@ -140,34 +144,27 @@ end
 function FileSourceBinding:toDapSourceBreakpoint()
   local breakpoint = self:getBreakpoint()
   return {
-    line = self.actualLine,
-    column = self.actualColumn or 0,
+    id = self.id,
+    line = self.actualLine or self.line,
+    column = self.actualColumn or self.column,
     condition = breakpoint and breakpoint.condition,
     logMessage = breakpoint and breakpoint.logMessage,
   }
 end
 
----@return dap.SourceBreakpoint
-function FileSourceBinding:toDapSourceBreakpointWithId()
-  local dapBreakpoint = self:toDapSourceBreakpoint()
-  dapBreakpoint.id = self.id
-  return dapBreakpoint
-end
-
 ---@param dapBinding dap.Breakpoint
 ---@return boolean
 function FileSourceBinding:matches(dapBinding)
-  -- Match by DAP ID if available
   if self.id and dapBinding.id then
     return self.id == dapBinding.id
   end
   
-  -- Fallback to location matching
-  local matchesPath = dapBinding.source and dapBinding.source.path == self.source:absolutePath()
-  local matchesLine = dapBinding.line == self.actualLine or dapBinding.line == self.line
-  local matchesColumn = dapBinding.column == self.actualColumn or dapBinding.column == self.column
+  local location = Location.fromDapBinding(dapBinding)
+  if not location then
+    return false
+  end
 
-  return matchesPath and matchesLine and (matchesColumn or not dapBinding.column)
+  return location:equals(self:getActualLocation())
 end
 
 -- Hit handling (called by manager)
