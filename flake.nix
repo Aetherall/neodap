@@ -45,6 +45,9 @@
           # Neovim plugins for development
           vimPlugins.nvim-nio
           vimPlugins.plenary-nvim
+
+          # make for building/testing
+          gnumake
         ];
 
         shellHook = ''
