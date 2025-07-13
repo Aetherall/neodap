@@ -22,6 +22,26 @@ function SourceFileLine.create(opts)
   })
 end
 
+---NEW: Create with source identifier
+---@param opts { source_identifier: SourceIdentifier, line: integer }
+function SourceFileLine.createWithIdentifier(opts)
+  local key
+  if opts.source_identifier.type == 'file' then
+    key = opts.source_identifier.path .. ":" .. (opts.line or 0)
+  else
+    key = opts.source_identifier:toString() .. ":" .. (opts.line or 0)
+  end
+  
+  return SourceFileLine:new({
+    type = 'source_file_line',
+    key = key,
+    source_identifier = opts.source_identifier,
+    line = opts.line,
+    -- Backward compatibility
+    path = opts.source_identifier.type == 'file' and opts.source_identifier.path or nil
+  })
+end
+
 
 ---@param source api.FileSource
 ---@param opts { line: integer }

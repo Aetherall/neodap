@@ -93,8 +93,11 @@ end
 ---@param finish api.SourceFilePosition
 ---@return boolean
 function BreakpointCollection:_isLocationBetween(location, start, finish)
-  -- Only consider positions in the same file
-  if location.path ~= start.path then
+  -- Only consider positions in the same source
+  local target_id = location:getSourceIdentifier()
+  local start_id = start:getSourceIdentifier()
+  
+  if not target_id:equals(start_id) then
     return false
   end
   
@@ -138,7 +141,28 @@ end
 ---@return api.BreakpointCollection
 function BreakpointCollection:atPath(path)
   return self:filter(function(breakpoint)
-    return breakpoint.location.path == path
+    local id = breakpoint.location:getSourceIdentifier()
+    return id.type == 'file' and id.path == path
+  end)
+end
+
+---NEW: Filter breakpoints by virtual source stability hash
+---@param stability_hash string
+---@return api.BreakpointCollection
+function BreakpointCollection:atVirtualSource(stability_hash)
+  return self:filter(function(breakpoint)
+    local id = breakpoint.location:getSourceIdentifier()
+    return id.type == 'virtual' and id.stability_hash == stability_hash
+  end)
+end
+
+---NEW: Filter breakpoints by source identifier
+---@param source_identifier SourceIdentifier
+---@return api.BreakpointCollection
+function BreakpointCollection:atSource(source_identifier)
+  return self:filter(function(breakpoint)
+    local id = breakpoint.location:getSourceIdentifier()
+    return id:equals(source_identifier)
   end)
 end
 

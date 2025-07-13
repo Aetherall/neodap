@@ -336,7 +336,7 @@ function Session:destroy()
     end
   end
   
-  -- Clean up all sources
+  -- Clean up all sources (VirtualSource:destroy() handles virtual buffer cleanup)
   for sourceId, source in pairs(self._sources) do
     if source and source.destroy then
       log:debug("Session", self.id, "destroying source", sourceId)

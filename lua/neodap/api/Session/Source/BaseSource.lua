@@ -186,23 +186,32 @@ function BaseSource.dap_identifier(dap)
   return nil
 end
 
----@return { wait: fun(): number | nil }
+---@return { wait: fun(): number | nil } | number | nil
 function BaseSource:bufnr()
-  local future = nio.control.future()
-  if not self.ref or not self.ref.path then
-    return nil
-  end
+  if self:isFile() then
+    -- File-based buffer handling (existing logic with async future)
+    local future = nio.control.future()
+    if not self.ref or not self.ref.path then
+      future.set(nil)
+      return future
+    end
 
-  -- vim.schedule(function()
     local bufnr = vim.uri_to_bufnr(vim.uri_from_fname(self.ref.path))
     if bufnr == -1 then
       future.set(nil)
     else
       future.set(bufnr)
     end
-  -- end)
 
-  return future
+    return future
+  elseif self:isVirtual() then
+    -- Virtual source buffer handling (synchronous)
+    ---@cast self api.VirtualSource
+    return self:bufnr()
+  else
+    -- Generic sources have no buffer
+    return nil
+  end
 end
 
 -- ---@return api.FileSourceBreakpoint

@@ -24,6 +24,27 @@ function SourceFilePosition.create(opts)
   })
 end
 
+---NEW: Create with source identifier
+---@param opts { source_identifier: SourceIdentifier, line: integer, column: integer }
+function SourceFilePosition.createWithIdentifier(opts)
+  local key
+  if opts.source_identifier.type == 'file' then
+    key = opts.source_identifier.path .. ":" .. (opts.line or 0) .. ":" .. (opts.column or 0)
+  else
+    key = opts.source_identifier:toString() .. ":" .. (opts.line or 0) .. ":" .. (opts.column or 0)
+  end
+  
+  return SourceFilePosition:new({
+    type = 'source_file_position',
+    key = key,
+    source_identifier = opts.source_identifier,
+    line = opts.line,
+    column = opts.column,
+    -- Backward compatibility
+    path = opts.source_identifier.type == 'file' and opts.source_identifier.path or nil
+  })
+end
+
 ---@param source api.FileSource
 ---@param opts { line: integer, column: integer }
 ---@return api.SourceFilePosition
@@ -55,18 +76,20 @@ end
 ---@param other api.Location
 ---@return_cast other api.SourceFilePosition
 function SourceFilePosition:equals(other)
-  return self.key == other.key
-end
-
-
----@return integer?
-function SourceFilePosition:bufnr()
-  local bufnr = vim.uri_to_bufnr(vim.uri_from_fname(self.path))
-  if bufnr == -1 then
-    return nil
+  if not other or other.type ~= self.type then
+    return false
   end
-  return bufnr
+  
+  local self_id = self:getSourceIdentifier()
+  local other_id = other:getSourceIdentifier()
+  
+  return self_id:equals(other_id) and 
+         self.line == other.line and 
+         self.column == other.column
 end
+
+
+-- bufnr() method now inherited from BaseLocation via source identifier delegation
 
 ---@param ns integer
 ---@param opts vim.api.keyset.set_extmark
