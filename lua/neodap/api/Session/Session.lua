@@ -383,7 +383,7 @@ function Session:destroy()
 end
 
 ---Get valid breakpoint locations for a source range using DAP's breakpointLocations request
----@param source api.FileSource
+---@param source api.Source
 ---@param line integer
 ---@param column? integer
 ---@return dap.BreakpointLocation[]|nil locations Array of valid breakpoint locations, or nil if not supported
@@ -437,7 +437,7 @@ function Session:getBreakpointLocations(source, line, column)
 end
 
 ---Find the closest valid breakpoint location to the requested position
----@param source api.FileSource
+---@param source api.Source
 ---@param line integer
 ---@param column? integer
 ---@return { line: integer, column: integer }|nil closest Closest valid location, or nil if none found

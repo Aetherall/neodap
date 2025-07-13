@@ -62,6 +62,7 @@ end
 function BaseLocation:getSourceIdentifier()
   -- Lazy migration from path to source_identifier
   if not self.source_identifier and self.path then
+    -- Enhanced fromPath() now handles both file paths and virtual URIs
     self.source_identifier = SourceIdentifier.fromPath(self.path)
   end
   return self.source_identifier

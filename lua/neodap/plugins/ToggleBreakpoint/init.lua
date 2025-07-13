@@ -1,6 +1,6 @@
 local Class = require("neodap.tools.class")
 local Logger = require("neodap.tools.logger")
-local Location = require("neodap.api.Location.Location")
+local Location = require("neodap.api.Location")
 
 
 ---@class neodap.ToggleBreakpointProps
@@ -44,20 +44,18 @@ function ToggleBreakpoint:adjustLocation(location)
   local adjustedLocation = nil
   
   for session in self.api:eachSession() do
-    local source = session:getFileSourceAt(location)
+    local source = session:getSourceByIdentifier(location:getSourceIdentifier())
     if source then
       log:debug("Smart placement: found source for location, querying breakpoint locations...")
       
       -- Try to get specific breakpoint locations from DAP adapter
       local closestLocation = session:findClosestBreakpointLocation(source, location.line, location.column)
       if closestLocation then
-        -- Create adjusted location based on DAP adapter's response
-        local adjustedKey = location.path .. ":" .. closestLocation.line .. ":" .. closestLocation.column
-        adjustedLocation = Location.SourceFile:new({
-          path = location.path,
+        -- Create adjusted location based on DAP adapter's response using identifier
+        adjustedLocation = Location.createWithIdentifier({
+          source_identifier = location:getSourceIdentifier(),
           line = closestLocation.line,
           column = closestLocation.column,
-          key = adjustedKey
         })
         
         log:debug("Smart placement: adapter provided valid location at", closestLocation.line, closestLocation.column)
@@ -73,12 +71,10 @@ function ToggleBreakpoint:adjustLocation(location)
   -- If no session provided specific valid locations, use intelligent fallback
   if not adjustedLocation then
     if location.column ~= 0 then
-      local fallbackKey = location.path .. ":" .. location.line .. ":0"
-      adjustedLocation = Location.SourceFile:new({
-        path = location.path,
+      adjustedLocation = Location.createWithIdentifier({
+        source_identifier = location:getSourceIdentifier(),
         line = location.line,
         column = 0,
-        key = fallbackKey
       })
       
       local hasActiveSessions = false
@@ -100,8 +96,8 @@ function ToggleBreakpoint:adjustLocation(location)
   
   -- Check if the adjusted location would conflict with an existing breakpoint
   local existingAtAdjusted = self.breakpointApi.getBreakpoints():atLocation(adjustedLocation):first()
-  if existingAtAdjusted and adjustedLocation.key ~= location.key then
-    log:debug("Smart placement: adjusted location conflicts with existing breakpoint:", adjustedLocation.key)
+  if existingAtAdjusted and not adjustedLocation:equals(location) then
+    log:debug("Smart placement: adjusted location conflicts with existing breakpoint:", adjustedLocation:getSourceIdentifier():toString(), adjustedLocation.line, adjustedLocation.column)
     -- Return nil to indicate we shouldn't create a duplicate
     return nil
   end
@@ -117,7 +113,7 @@ function ToggleBreakpoint:wouldCreateDuplicateBinding(location)
   
   -- For each active session, check if this location would bind to the same place as an existing breakpoint
   for session in self.api:eachSession() do
-    local source = session:getFileSourceAt(location)
+    local source = session:getSourceByIdentifier(location:getSourceIdentifier())
     if source then
       -- Get the closest valid breakpoint location that DAP would actually use
       local actualLocation = session:findClosestBreakpointLocation(source, location.line, location.column)
@@ -160,8 +156,10 @@ function ToggleBreakpoint:toggle(location)
     -- This means there's already a breakpoint that would conflict
     -- Find any existing breakpoint on this line and remove it
     local breakpoints = self.breakpointApi.getBreakpoints()
+    local location_identifier = location:getSourceIdentifier()
     for breakpoint in breakpoints:each() do
-      if breakpoint.location.path == location.path and breakpoint.location.line == location.line then
+      local breakpoint_identifier = breakpoint.location:getSourceIdentifier()
+      if breakpoint_identifier:equals(location_identifier) and breakpoint.location.line == location.line then
         log:debug("Toggle: removing existing breakpoint at same line:", breakpoint.id)
         self.breakpointApi.removeBreakpoint(breakpoint)
         return nil
@@ -179,7 +177,7 @@ function ToggleBreakpoint:toggle(location)
   end
   
   -- Create new breakpoint at the smart location
-  log:debug("Toggle: creating new breakpoint at smart location:", smartLocation.key)
+  log:debug("Toggle: creating new breakpoint at smart location:", smartLocation:getSourceIdentifier():toString(), smartLocation.line, smartLocation.column)
   return self.breakpointApi.setBreakpoint(smartLocation)
 end
 
@@ -188,7 +186,7 @@ end
 ---@return boolean cleared True if a breakpoint was cleared
 function ToggleBreakpoint:clear(location)
   local log = Logger.get()
-  log:debug("ToggleBreakpoint:clear called for:", location.key)
+  log:debug("ToggleBreakpoint:clear called for:", location:getSourceIdentifier():toString(), location.line, location.column)
   
   -- First check exact location
   local existing = self.breakpointApi.getBreakpoints():atLocation(location):first()
@@ -199,7 +197,7 @@ function ToggleBreakpoint:clear(location)
   
   -- Check adjusted location
   local adjustedLocation = self:adjustLocation(location)
-  if adjustedLocation and adjustedLocation.key ~= location.key then
+  if adjustedLocation and not adjustedLocation:equals(location) then
     existing = self.breakpointApi.getBreakpoints():atLocation(adjustedLocation):first()
     if existing then
       self.breakpointApi.removeBreakpoint(existing)

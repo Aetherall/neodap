@@ -205,7 +205,9 @@ function BreakpointManager:syncSourceToSession(source, session)
   }):wait()
   
   log:debug("DAP returned", #result.breakpoints, "breakpoint responses")
-  
+
+  log:debug(vim.inspect(result.breakpoints, { depth = 2 }))
+
   -- 7. Reconcile bindings with response
   self:reconcileBindings(source, session, sourceBreakpoints, result.breakpoints, bindingsByBreakpointId)
   

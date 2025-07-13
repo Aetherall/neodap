@@ -64,6 +64,19 @@ function SourceFilePosition.fromCursor()
   local column = (cursor[2] or 0) + 1 -- Convert to 1-based index
   local path = vim.api.nvim_buf_get_name(0)
 
+  -- Check if this is a virtual buffer
+  if path:match("^virtual://") then
+    local SourceIdentifier = require('neodap.api.Location.SourceIdentifier')
+    local identifier = SourceIdentifier.fromVirtualUri(path)
+    
+    return SourceFilePosition.createWithIdentifier({
+      source_identifier = identifier,
+      line = line,
+      column = column,
+    })
+  end
+
+  -- Regular file buffer
   return SourceFilePosition:new({
     type = 'source_file_position',
     key = path .. ":" .. line .. ":" .. column,

@@ -17,13 +17,58 @@ local SourceIdentifier = Class()
 ---@field source_reference integer? -- Optional: for session context
 ---@field session_id integer? -- Optional: for session context
 
--- Factory: Create from file path
+-- Factory: Create from file path or virtual URI
 ---@param path string
----@return FileSourceIdentifier
+---@return FileSourceIdentifier | VirtualSourceIdentifier
 function SourceIdentifier.fromPath(path)
+  -- Check if this is a virtual URI
+  if path:match("^virtual://") then
+    return SourceIdentifier.fromVirtualUri(path)
+  end
+  
+  -- Regular file path
   return SourceIdentifier:new({
     type = 'file',
     path = vim.fn.fnamemodify(path, ':p') -- Ensure absolute
+  })
+end
+
+-- Factory: Create from virtual URI (e.g., "virtual://02f68bfe/<node_internals>/internal/timers")
+---@param uri string
+---@return VirtualSourceIdentifier
+function SourceIdentifier.fromVirtualUri(uri)
+  local log = Logger.get()
+  
+  -- Parse virtual URI: virtual://stability_hash/name
+  local stability_hash, name = uri:match("^virtual://([^/]+)/(.+)$")
+  
+  if not stability_hash or not name then
+    log:warn("SourceIdentifier.fromVirtualUri: Invalid virtual URI format:", uri)
+    error("Invalid virtual URI format: " .. uri)
+  end
+  
+  -- Extract origin from name if available (heuristic)
+  local origin = "unknown"
+  if name:match("^<(.+)>") then
+    origin = name:match("^<(.+)>") or "unknown"
+  elseif name:match("eval") then
+    origin = "eval"
+  end
+  
+  log:debug("SourceIdentifier.fromVirtualUri: Parsed", {
+    uri = uri,
+    stability_hash = stability_hash,
+    name = name,
+    origin = origin
+  })
+  
+  return SourceIdentifier:new({
+    type = 'virtual',
+    stability_hash = stability_hash,
+    origin = origin,
+    name = name,
+    source_reference = nil, -- Not available from URI alone
+    session_id = nil -- Not tied to specific session
   })
 end
 
@@ -108,6 +153,11 @@ end
 ---@return string
 function SourceIdentifier:toUri()
   if self.type == 'file' then
+    if not self.path then
+      local log = Logger.get()
+      log:error("SourceIdentifier:toUri - File identifier missing path field")
+      return ""
+    end
     return vim.uri_from_fname(self.path)
   else
     return string.format("virtual://%s/%s", 
@@ -136,6 +186,11 @@ end
 ---@return integer?
 function SourceIdentifier:bufnr()
   if self.type == 'file' then
+    if not self.path then
+      local log = Logger.get()
+      log:error("SourceIdentifier:bufnr - File identifier missing path field")
+      return nil
+    end
     local uri = vim.uri_from_fname(self.path)
     local bufnr = vim.uri_to_bufnr(uri)
     return bufnr ~= -1 and bufnr or nil
