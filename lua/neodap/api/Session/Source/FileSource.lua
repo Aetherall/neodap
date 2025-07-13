@@ -3,6 +3,7 @@ local BaseSource = require('neodap.api.Session.Source.BaseSource')
 
 ---@class api.FileSource: api.BaseSource
 ---@field id string
+---@field _identifier FileSourceIdentifier? -- Cached SourceIdentifier
 local FileSource = Class(BaseSource)
 
 ---@param session api.Session
@@ -19,14 +20,19 @@ function FileSource.instanciate(session, source)
     ref = source,
     _content = nil,
     type = 'file',
+    _identifier = nil -- Cached SourceIdentifier
   })
   return instance
 end
 
----Create a unique identifier for this source, or nil if unidentifiable
----@return string
+---Create a unique identifier for this source
+---@return FileSourceIdentifier
 function FileSource:identifier()
-  return BaseSource.dap_identifier(self.ref) or ''
+  if not self._identifier then
+    local SourceIdentifier = require('neodap.api.Location.SourceIdentifier')
+    self._identifier = SourceIdentifier.fromDapSource(self.ref, self.session)
+  end
+  return self._identifier
 end
 
 ---@return_cast self api.VirtualSource

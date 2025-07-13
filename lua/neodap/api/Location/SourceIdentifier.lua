@@ -110,11 +110,9 @@ function SourceIdentifier:toUri()
   if self.type == 'file' then
     return vim.uri_from_fname(self.path)
   else
-    -- Generate virtual URI
-    local sanitized_name = self:sanitizeName(self.name)
-    return string.format("neodap-virtual://%s/%s", 
+    return string.format("virtual://%s/%s", 
       self.stability_hash, 
-      sanitized_name
+      self.name
     )
   end
 end

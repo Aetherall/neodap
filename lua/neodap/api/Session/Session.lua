@@ -247,6 +247,21 @@ function Session:getFileSourceAt(location)
   end)
 end
 
+---Find virtual source by source identifier
+---@param identifier VirtualSourceIdentifier
+---@return api.VirtualSource?
+function Session:getVirtualSourceByIdentifier(identifier)
+  return self:findSource(function(source)
+    local virtualsource = source:asVirtual()
+    if not virtualsource then
+      return false
+    end
+    
+    local source_identifier = virtualsource:identifier()
+    return source_identifier:equals(identifier)
+  end)
+end
+
 ---Get or create a source for the given DAP source
 ---This is the authoritative way to get source instances in the system
 ---@param dapSource dap.Source

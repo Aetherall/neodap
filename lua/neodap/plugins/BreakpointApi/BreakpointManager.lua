@@ -41,7 +41,8 @@ end
 ---@return api.FileSourceBreakpoint
 function BreakpointManager:addBreakpoint(location, opts)
   local log = Logger.get()
-  log:info("BreakpointManager:addBreakpoint called for location:", location.path, location.line)
+  local identifier = location:getSourceIdentifier()
+  log:info("BreakpointManager:addBreakpoint called for location:", identifier:toString(), location.line)
   
   -- Check for existing breakpoint
   local existing = self.breakpoints:atLocation(location):first()
@@ -59,7 +60,14 @@ function BreakpointManager:addBreakpoint(location, opts)
   
   -- Queue sync for all active sessions
   for session in self.api:eachSession() do
-    local source = session:getFileSourceAt(location)
+    local source
+    if identifier:isFile() then
+      source = session:getFileSourceAt(location)
+    else
+      -- For virtual sources, find by source identifier
+      source = session:getVirtualSourceByIdentifier(identifier)
+    end
+    
     if source then
       self:queueSourceSync(source, session)
     end
@@ -84,8 +92,16 @@ function BreakpointManager:removeBreakpoint(breakpoint)
   end
   
   -- Queue sync for all affected sessions
+  local identifier = breakpoint.location:getSourceIdentifier()
   for session in self.api:eachSession() do
-    local source = session:getFileSourceAt(breakpoint.location)
+    local source
+    if identifier:isFile() then
+      source = session:getFileSourceAt(breakpoint.location)
+    else
+      -- For virtual sources, find by source identifier
+      source = session:getVirtualSourceByIdentifier(identifier)
+    end
+    
     if source then
       self:queueSourceSync(source, session)
     end
@@ -111,8 +127,16 @@ end
 ---@param breakpoint api.FileSourceBreakpoint
 function BreakpointManager:resyncBreakpoint(breakpoint)
   -- Queue sync for all sessions that have this source
+  local identifier = breakpoint.location:getSourceIdentifier()
   for session in self.api:eachSession() do
-    local source = session:getFileSourceAt(breakpoint.location)
+    local source
+    if identifier:isFile() then
+      source = session:getFileSourceAt(breakpoint.location)
+    else
+      -- For virtual sources, find by source identifier
+      source = session:getVirtualSourceByIdentifier(identifier)
+    end
+    
     if source then
       self:queueSourceSync(source, session)
     end
@@ -121,10 +145,10 @@ end
 
 -- Source Synchronization (Core of Lazy Binding)
 
----@param source api.FileSource
+---@param source api.FileSource | api.VirtualSource
 ---@param session api.Session
 function BreakpointManager:queueSourceSync(source, session)
-  local key = session.id .. ":" .. source:identifier()
+  local key = session.id .. ":" .. source:identifier():toString()
   
   if self.pendingOperations[key] then
     return -- Already queued
@@ -150,14 +174,20 @@ function BreakpointManager:queueSourceSync(source, session)
   end)
 end
 
----@param source api.FileSource
+---@param source api.FileSource | api.VirtualSource
 ---@param session api.Session
 function BreakpointManager:syncSourceToSession(source, session)
   local log = Logger.get()
-  log:info("BreakpointManager:syncSourceToSession - source:", source:identifier(), "session:", session.id)
+  log:info("BreakpointManager:syncSourceToSession - source:", source:identifier():toString(), "session:", session.id)
   
-  -- 1. Gather all breakpoints for this source
-  local sourceBreakpoints = self.breakpoints:atPath(source:absolutePath())
+  -- 1. Gather all breakpoints for this source (supporting both file and virtual)
+  local sourceBreakpoints
+  if source:isFile() then
+    sourceBreakpoints = self.breakpoints:atPath(source:absolutePath())
+  else
+    -- For virtual sources, use source identifier
+    sourceBreakpoints = self.breakpoints:atVirtualSource(source:contentHash())
+  end
   
   -- 2. Get existing bindings to preserve DAP state
   local existingBindings = self.bindings:forSession(session):forSource(source)
@@ -190,27 +220,41 @@ function BreakpointManager:syncSourceToSession(source, session)
     end
   end
   
-  log:info("Sending", #dapBreakpoints, "breakpoints to DAP for source:", source:identifier())
+  log:info("Sending", #dapBreakpoints, "breakpoints to DAP for source:", source:identifier():toString())
   
-  -- 5. Send to DAP (replaces all breakpoints for source)
+  -- 5. Build DAP source for the request
+  local dapSource
+  if source:isFile() then
+    -- File source: use path
+    dapSource = source.ref
+  else
+    -- Virtual source: use sourceReference
+    dapSource = {
+      sourceReference = source.ref.sourceReference,
+      name = source.ref.name,
+      origin = source.ref.origin
+    }
+  end
+  
+  -- 6. Send to DAP (replaces all breakpoints for source)
   local result = session.ref.calls:setBreakpoints({
-    source = source.ref,
+    source = dapSource,
     breakpoints = dapBreakpoints
   }):wait()
   
   log:debug("DAP returned", #result.breakpoints, "breakpoint responses")
   
-  -- 6. Reconcile bindings with response
+  -- 7. Reconcile bindings with response
   self:reconcileBindings(source, session, sourceBreakpoints, result.breakpoints, bindingsByBreakpointId)
   
-  -- 7. Emit completion event
+  -- 8. Emit completion event
   self.hookable:emit('SourceSyncComplete', {
     source = source,
     session = session
   })
 end
 
----@param source api.FileSource
+---@param source api.FileSource | api.VirtualSource
 ---@param session api.Session
 ---@param breakpoints api.BreakpointCollection
 ---@param dapResponses dap.Breakpoint[]
@@ -318,13 +362,10 @@ function BreakpointManager:listen()
 
     -- When source loads, sync existing breakpoints
     session:onSourceLoaded(function(source)
-      local filesource = source:asFile()
-      if not filesource then
-        return
+      if source:isFile() or source:isVirtual() then
+        log:info("Session", session.id, "- Source loaded:", source:identifier():toString())
+        self:queueSourceSync(source, session)
       end
-      
-      log:info("Session", session.id, "- Source loaded:", filesource:identifier())
-      self:queueSourceSync(filesource, session)
     end)
 
     -- Handle DAP breakpoint events (should be rare with source-level sync)
