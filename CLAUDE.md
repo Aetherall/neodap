@@ -1,15 +1,3 @@
----
-applyTo: '**'
----
-
-WARNING: IN ORDER TO CORRECTLY EDIT AND RUN COMMANDS, THE ENTIRE FILE MUST BE READ AND UNDERSTOOD. DO NOT EDIT THE FILE WITHOUT READING IT IN FULL.
-
-
-# Project Description
-
-Neodap is a SDK for building DAP client plugins for Neovim.
-It provides a comprehensive api for interacting with the lifecycle of dap sessions, breakpoints, threads, stacks, frames, variables, and more.
-
 # Neodap Development Guide
 
 Neodap is a SDK for building DAP client plugins for Neovim. It provides a comprehensive API for interacting with the lifecycle of DAP sessions, breakpoints, threads, stacks, frames, variables, and more.
