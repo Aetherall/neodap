@@ -58,12 +58,14 @@ local function go()
   local BreakpointVirtualText = require("neodap.plugins.BreakpointVirtualText")
   local BreakpointManager = require("neodap.plugins.BreakpointManager")
   local FrameVariables = require("neodap.plugins.FrameVariables")
+  local ToggleBreakpoint = require("neodap.plugins.ToggleBreakpoint")
 
   api:getPluginInstance(JumpToStoppedFrame)
   api:getPluginInstance(HighlightCurrentFrame)
   api:getPluginInstance(BreakpointVirtualText)
   local breakpoints = api:getPluginInstance(BreakpointManager)
   api:getPluginInstance(FrameVariables)
+  local ToggleBreakpoint = api:getPluginInstance(ToggleBreakpoint)
 
 
   -- DebugMode.plugin(api)
@@ -90,7 +92,7 @@ local function go()
 
   vim.keymap.set("n", "<leader>db", function()
     nio.run(function()
-      breakpoints:toggleBreakpoint(Location.SourceFile.fromCursor())
+      ToggleBreakpoint:toggle(Location.SourceFile.fromCursor())
     end)
   end, { noremap = true, silent = true, desc = "Toggle Breakpoint" })
 

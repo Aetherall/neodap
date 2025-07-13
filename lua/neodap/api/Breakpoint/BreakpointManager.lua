@@ -38,46 +38,28 @@ end
 
 ---@param location api.SourceFileLocation
 ---@param opts? { condition?: string, logMessage?: string }
----@return api.FileSourceBreakpoint?
+---@return api.FileSourceBreakpoint
 function BreakpointManager:addBreakpoint(location, opts)
   local log = Logger.get()
-  log:info("BreakpointManager:addBreakpoint called for location:", location.path, location.line, location.column)
+  log:info("BreakpointManager:addBreakpoint called for location:", location.path, location.line)
   
-  -- Apply smart placement to avoid duplicates and find valid positions
-  local adjustedLocation = self:applySmartPlacement(location)
-  if not adjustedLocation then
-    log:info("Smart placement prevented duplicate breakpoint at:", location.key)
-    return nil
-  end
-  
-  -- Check if the adjustment would create a duplicate binding
-  if self:wouldCreateDuplicateBinding(adjustedLocation) then
-    log:info("Smart placement detected potential duplicate binding at:", adjustedLocation.key)
-    return nil
-  end
-  
-  -- Check for existing breakpoint at adjusted location
-  local existing = self.breakpoints:atLocation(adjustedLocation):first()
+  -- Check for existing breakpoint
+  local existing = self.breakpoints:atLocation(location):first()
   if existing then
-    log:info("Breakpoint already exists at adjusted location, returning existing:", existing.id)
+    log:info("Breakpoint already exists at location, returning existing:", existing.id)
     return existing
   end
 
-  -- Create new breakpoint at the smart-adjusted location
-  local breakpoint = FileSourceBreakpoint.atLocation(self, adjustedLocation, opts)
+  -- Create new breakpoint (pure user intent)
+  local breakpoint = FileSourceBreakpoint.atLocation(self, location, opts)
   self.breakpoints:add(breakpoint)
   
-  if adjustedLocation.key ~= location.key then
-    log:info("Created breakpoint with smart placement adjustment:", location.key, "->", adjustedLocation.key)
-  else
-    log:info("Created breakpoint at requested location:", breakpoint.id)
-  end
-  
+  log:info("Created new breakpoint with ID:", breakpoint.id)
   self.hookable:emit('BreakpointAdded', breakpoint)
   
   -- Queue sync for all active sessions
   for session in self.api:eachSession() do
-    local source = session:getFileSourceAt(adjustedLocation)
+    local source = session:getFileSourceAt(location)
     if source then
       self:queueSourceSync(source, session)
     end
@@ -116,71 +98,14 @@ end
 ---@param location api.SourceFileLocation
 ---@return api.FileSourceBreakpoint?
 function BreakpointManager:toggleBreakpoint(location)
-  local log = Logger.get()
-  log:debug("BreakpointManager:toggleBreakpoint called for:", location.key)
-  
-  -- First, check for exact match at the requested location
   local existing = self.breakpoints:atLocation(location):first()
+  
   if existing then
-    log:debug("Found exact match, removing breakpoint:", existing.id)
     self:removeBreakpoint(existing)
     return nil
+  else
+    return self:addBreakpoint(location)
   end
-  
-  -- For toggling, we need to check if smart placement would find an existing breakpoint
-  -- without the duplicate prevention logic interfering
-  local adjustedLocation = nil
-  
-  -- Check if any session can provide a better location
-  for session in self.api:eachSession() do
-    local source = session:getFileSourceAt(location)
-    if source then
-      log:debug("Toggle: found source for location, querying breakpoint locations...")
-      local closestLocation = session:findClosestBreakpointLocation(source, location.line, location.column)
-      if closestLocation then
-        -- Create adjusted location based on DAP adapter's response
-        local adjustedKey = location.path .. ":" .. closestLocation.line .. ":" .. closestLocation.column
-        adjustedLocation = Location.SourceFile:new({
-          path = location.path,
-          line = closestLocation.line,
-          column = closestLocation.column,
-          key = adjustedKey
-        })
-        
-        log:debug("Toggle: adapter provided valid location at", closestLocation.line, closestLocation.column)
-        break
-      end
-    end
-  end
-  
-  -- If no specific location found via DAP, fall back to line start
-  if not adjustedLocation then
-    if location.column ~= 0 then
-      local fallbackKey = location.path .. ":" .. location.line .. ":0"
-      adjustedLocation = Location.SourceFile:new({
-        path = location.path,
-        line = location.line,
-        column = 0,
-        key = fallbackKey
-      })
-      log:debug("Toggle: fallback to line start (column 0)")
-    else
-      adjustedLocation = location
-      log:debug("Toggle: already at line start, no adjustment needed")
-    end
-  end
-  
-  -- Check if there's already a breakpoint at the adjusted location
-  local existingAtAdjusted = self.breakpoints:atLocation(adjustedLocation):first()
-  if existingAtAdjusted then
-    log:debug("Toggle: found existing breakpoint at adjusted location, removing:", existingAtAdjusted.id)
-    self:removeBreakpoint(existingAtAdjusted)
-    return nil
-  end
-  
-  -- Create new breakpoint at the adjusted location
-  log:debug("Toggle: creating new breakpoint at:", adjustedLocation.key)
-  return self:addBreakpoint(adjustedLocation)
 end
 
 ---@param breakpoint api.FileSourceBreakpoint
@@ -489,115 +414,5 @@ function BreakpointManager:listen()
   end)
 end
 
----Apply smart placement to a location based on available sessions and breakpoint locations
----@param location api.SourceFileLocation
----@return api.SourceFileLocation|nil adjusted The adjusted location, or nil if no valid placement possible
-function BreakpointManager:applySmartPlacement(location)
-  local log = Logger.get()
-  
-  -- First, check if we already have a breakpoint at this exact location
-  local existingAtExact = self.breakpoints:atLocation(location):first()
-  if existingAtExact then
-    log:debug("Smart placement: breakpoint already exists at exact location:", location.key)
-    return location
-  end
-  
-  -- Check if any session can provide valid breakpoint locations
-  local adjustedLocation = nil
-  
-  for session in self.api:eachSession() do
-    local source = session:getFileSourceAt(location)
-    if source then
-      log:debug("Smart placement: found source for location, querying breakpoint locations...")
-      
-      -- Try to get specific breakpoint locations from DAP adapter
-      local closestLocation = session:findClosestBreakpointLocation(source, location.line, location.column)
-      if closestLocation then
-        -- Create adjusted location based on DAP adapter's response
-        local adjustedKey = location.path .. ":" .. closestLocation.line .. ":" .. closestLocation.column
-        adjustedLocation = Location.SourceFile:new({
-          path = location.path,
-          line = closestLocation.line,
-          column = closestLocation.column,
-          key = adjustedKey
-        })
-        
-        log:debug("Smart placement: adapter provided valid location at", closestLocation.line, closestLocation.column)
-        break
-      else
-        log:debug("Smart placement: adapter returned no specific breakpoint locations")
-        -- This is common - many adapters support breakpointLocations but don't provide
-        -- granular column-level information. The adapter will handle placement during setBreakpoints.
-      end
-    end
-  end
-  
-  -- If no session provided specific valid locations, use intelligent fallback
-  if not adjustedLocation then
-    if location.column ~= 0 then
-      local fallbackKey = location.path .. ":" .. location.line .. ":0"
-      adjustedLocation = Location.SourceFile:new({
-        path = location.path,
-        line = location.line,
-        column = 0,
-        key = fallbackKey
-      })
-      
-      local hasActiveSessions = false
-      for _ in self.api:eachSession() do
-        hasActiveSessions = true
-        break
-      end
-      
-      if hasActiveSessions then
-        log:debug("Smart placement: adapter doesn't provide granular locations, using line start (will be adjusted by adapter during sync)")
-      else
-        log:debug("Smart placement: no active session, fallback to line start (column 0)")
-      end
-    else
-      adjustedLocation = location
-      log:debug("Smart placement: already at line start, no adjustment needed")
-    end
-  end
-  
-  -- Check if the adjusted location would conflict with an existing breakpoint
-  local existingAtAdjusted = self.breakpoints:atLocation(adjustedLocation):first()
-  if existingAtAdjusted and adjustedLocation.key ~= location.key then
-    log:debug("Smart placement: adjusted location conflicts with existing breakpoint:", adjustedLocation.key)
-    -- Return nil to indicate we shouldn't create a duplicate
-    return nil
-  end
-  
-  return adjustedLocation
-end
-
----Check if a new breakpoint would create a duplicate binding at the same DAP location
----@param location api.SourceFileLocation
----@return boolean wouldDuplicate True if this would create a duplicate binding
-function BreakpointManager:wouldCreateDuplicateBinding(location)
-  local log = Logger.get()
-  
-  -- For each active session, check if this location would bind to the same place as an existing breakpoint
-  for session in self.api:eachSession() do
-    local source = session:getFileSourceAt(location)
-    if source then
-      -- Get the closest valid breakpoint location that DAP would actually use
-      local actualLocation = session:findClosestBreakpointLocation(source, location.line, location.column)
-      if actualLocation then
-        -- Check if any existing bindings are already at this actual location
-        local existingBindings = self.bindings:forSession(session):forSource(source)
-        for binding in existingBindings:each() do
-          if binding.actualLine == actualLocation.line and binding.actualColumn == actualLocation.column then
-            log:debug("Would create duplicate: binding already exists at DAP location", 
-                     actualLocation.line, actualLocation.column, "for breakpoint", binding.breakpointId)
-            return true
-          end
-        end
-      end
-    end
-  end
-  
-  return false
-end
 
 return BreakpointManager
