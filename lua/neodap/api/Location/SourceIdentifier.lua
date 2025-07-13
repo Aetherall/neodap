@@ -138,7 +138,7 @@ function SourceIdentifier:bufnr()
     local bufnr = vim.uri_to_bufnr(uri)
     return bufnr ~= -1 and bufnr or nil
   else
-    -- Virtual source buffer lookup via registry
+    -- Virtual source buffer lookup via singleton registry
     local VirtualBufferRegistry = require('neodap.api.VirtualBuffer.Registry')
     local registry = VirtualBufferRegistry.get()
     

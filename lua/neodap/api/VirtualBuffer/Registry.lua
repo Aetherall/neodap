@@ -5,22 +5,42 @@ local Logger = require('neodap.tools.logger')
 ---@class VirtualBufferRegistry
 ---@field private buffers table<string, VirtualBufferMetadata> -- URI -> metadata
 ---@field private stability_index table<string, string> -- stability_hash -> URI
----@field private _instance VirtualBufferRegistry? -- Singleton instance
+---@field private manager VirtualBufferManager -- Instance-specific manager
 local VirtualBufferRegistry = Class()
 
--- Class-level singleton instance
+-- Singleton instance
 VirtualBufferRegistry._instance = nil
 
 ---Get the singleton registry instance
 ---@return VirtualBufferRegistry
 function VirtualBufferRegistry.get()
   if not VirtualBufferRegistry._instance then
+    local VirtualBufferManager = require('neodap.api.VirtualBuffer.Manager')
     VirtualBufferRegistry._instance = VirtualBufferRegistry:new({
       buffers = {},
-      stability_index = {}
+      stability_index = {},
+      manager = VirtualBufferManager.create()
     })
   end
   return VirtualBufferRegistry._instance
+end
+
+---Create a new registry instance
+---@return VirtualBufferRegistry
+function VirtualBufferRegistry.create()
+  local VirtualBufferManager = require('neodap.api.VirtualBuffer.Manager')
+  local instance = VirtualBufferRegistry:new({
+    buffers = {},
+    stability_index = {},
+    manager = VirtualBufferManager.create()
+  })
+  return instance
+end
+
+---Set the singleton instance (for API lifecycle management)
+---@param instance VirtualBufferRegistry
+function VirtualBufferRegistry.setSingleton(instance)
+  VirtualBufferRegistry._instance = instance
 end
 
 ---Register a new virtual buffer
@@ -77,9 +97,8 @@ function VirtualBufferRegistry:removeSessionReference(uri, session_id)
     -- Schedule cleanup if no sessions reference this buffer
     if not metadata:hasReferences() then
       log:debug("VirtualBufferRegistry: Buffer", uri, "has no more references, scheduling cleanup")
-      -- Require here to avoid circular dependency
-      local VirtualBufferManager = require('neodap.api.VirtualBuffer.Manager')
-      VirtualBufferManager.scheduleCleanup(metadata)
+      -- Use instance manager with registry reference
+      self.manager:scheduleCleanup(metadata, self)
     end
   else
     log:debug("VirtualBufferRegistry: Attempted to remove session reference from non-existent buffer", uri)
@@ -134,6 +153,28 @@ function VirtualBufferRegistry:getStats()
     unreferenced = unreferenced,
     invalid = invalid
   }
+end
+
+---Destroy the registry and clean up all buffers
+function VirtualBufferRegistry:destroy()
+  local log = Logger.get()
+  log:debug("VirtualBufferRegistry: Destroying registry and cleaning up all buffers")
+  
+  -- Clean up manager first (cancels scheduled cleanups)
+  if self.manager and self.manager.destroy then
+    self.manager:destroy()
+  end
+  
+  -- Force delete all buffers
+  for uri, metadata in pairs(self.buffers) do
+    if metadata:isValid() then
+      vim.api.nvim_buf_delete(metadata.bufnr, { force = true })
+    end
+  end
+  
+  self.buffers = {}
+  self.stability_index = {}
+  self.manager = nil
 end
 
 ---Clear all buffers (for testing or reset)

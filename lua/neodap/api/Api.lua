@@ -8,6 +8,7 @@ local Hookable = require("neodap.transport.hookable")
 ---@field manager Manager
 ---@field hookable Hookable
 ---@field _plugin_cache { [string]: any }
+---@field _virtual_buffer_registry VirtualBufferRegistry
 
 ---@class Api: ApiProps
 ---@field new Constructor<ApiProps>
@@ -15,13 +16,20 @@ local Api = Class()
 
 ---@return Api
 function Api.register(manager)
+  local VirtualBuffer = require('neodap.api.VirtualBuffer')
+  local registry = VirtualBuffer.createRegistry()
+  
   local instance = Api:new({
     sessions = {},
     manager = manager,
     listeners = {},
     hookable = Hookable.create(), -- Top-level hookable for the entire API
     _plugin_cache = {},
+    _virtual_buffer_registry = registry, -- Instance-scoped registry
   })
+
+  -- Set this registry as the global singleton for SourceIdentifier access
+  VirtualBuffer.Registry.setSingleton(registry)
 
   manager:onSession(function(session)
     instance.sessions[session.id] = Session.wrap(session, manager, instance.hookable, instance)
@@ -127,6 +135,16 @@ function Api:destroy()
   
   -- Clear plugin cache after cleanup
   self._plugin_cache = {}
+  
+  -- Destroy virtual buffer registry
+  if self._virtual_buffer_registry and self._virtual_buffer_registry.destroy then
+    log:info("API: Destroying virtual buffer registry")
+    self._virtual_buffer_registry:destroy()
+  end
+  
+  -- Clear the singleton reference to prevent dangling references
+  local VirtualBuffer = require('neodap.api.VirtualBuffer')
+  VirtualBuffer.Registry.setSingleton(nil)
   
   -- Destroy the hookable system last
   self.hookable:destroy()

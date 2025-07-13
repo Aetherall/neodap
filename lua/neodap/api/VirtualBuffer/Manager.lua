@@ -1,21 +1,28 @@
 local Class = require('neodap.tools.class')
-local VirtualBufferRegistry = require('neodap.api.VirtualBuffer.Registry')
 local Logger = require('neodap.tools.logger')
 local nio = require('nio')
 
 ---@class VirtualBufferManager
+---@field cleanup_scheduled table<string, boolean> -- Instance-specific cleanup tracking
 local VirtualBufferManager = Class()
 
 -- Cleanup configuration
 local CLEANUP_GRACE_PERIOD = 30 -- seconds
-local cleanup_scheduled = {}
+
+---Create a new manager instance
+---@return VirtualBufferManager
+function VirtualBufferManager.create()
+  return VirtualBufferManager:new({
+    cleanup_scheduled = {}
+  })
+end
 
 ---Create a new virtual source buffer
 ---@param uri string
 ---@param content string
 ---@param filetype? string
 ---@return integer bufnr
-function VirtualBufferManager.createBuffer(uri, content, filetype)
+function VirtualBufferManager:createBuffer(uri, content, filetype)
   local log = Logger.get()
   log:debug("VirtualBufferManager: Creating buffer for", uri)
   
@@ -57,22 +64,22 @@ end
 
 ---Schedule cleanup for a buffer with no references
 ---@param metadata VirtualBufferMetadata
-function VirtualBufferManager.scheduleCleanup(metadata)
+---@param registry VirtualBufferRegistry
+function VirtualBufferManager:scheduleCleanup(metadata, registry)
   local log = Logger.get()
   
-  if cleanup_scheduled[metadata.uri] then
+  if self.cleanup_scheduled[metadata.uri] then
     log:debug("VirtualBufferManager: Cleanup already scheduled for", metadata.uri)
     return -- Already scheduled
   end
   
   log:debug("VirtualBufferManager: Scheduling cleanup for", metadata.uri, "in", CLEANUP_GRACE_PERIOD, "seconds")
-  cleanup_scheduled[metadata.uri] = true
+  self.cleanup_scheduled[metadata.uri] = true
   
   nio.run(function()
     nio.sleep(CLEANUP_GRACE_PERIOD * 1000) -- Convert to milliseconds
     
     -- Check if buffer should still be cleaned up
-    local registry = VirtualBufferRegistry.get()
     local current = registry:getBufferByUri(metadata.uri)
     
     if current and not current:hasReferences() then
@@ -89,25 +96,25 @@ function VirtualBufferManager.scheduleCleanup(metadata)
       log:debug("VirtualBufferManager: Cleanup cancelled for", metadata.uri, "(buffer has references or was removed)")
     end
     
-    cleanup_scheduled[metadata.uri] = nil
+    self.cleanup_scheduled[metadata.uri] = nil
   end)
 end
 
 ---Cancel scheduled cleanup for a buffer (when it gets new references)
 ---@param uri string
-function VirtualBufferManager.cancelCleanup(uri)
-  if cleanup_scheduled[uri] then
+function VirtualBufferManager:cancelCleanup(uri)
+  if self.cleanup_scheduled[uri] then
     local log = Logger.get()
     log:debug("VirtualBufferManager: Cancelling cleanup for", uri)
-    cleanup_scheduled[uri] = nil
+    self.cleanup_scheduled[uri] = nil
   end
 end
 
 ---Manual cleanup of all unreferenced buffers
+---@param registry VirtualBufferRegistry
 ---@return integer cleaned_count
-function VirtualBufferManager.cleanupUnreferenced()
+function VirtualBufferManager:cleanupUnreferenced(registry)
   local log = Logger.get()
-  local registry = VirtualBufferRegistry.get()
   local cleaned = 0
   
   log:info("VirtualBufferManager: Starting manual cleanup of unreferenced buffers")
@@ -126,27 +133,24 @@ function VirtualBufferManager.cleanupUnreferenced()
   return cleaned
 end
 
----Force cleanup of all virtual buffers (for testing/reset)
-function VirtualBufferManager.cleanupAll()
+---Add destroy method for manager cleanup
+function VirtualBufferManager:destroy()
   local log = Logger.get()
-  log:warn("VirtualBufferManager: Force cleanup of all virtual buffers")
+  log:debug("VirtualBufferManager: Destroying manager and cancelling scheduled cleanups")
   
-  local registry = VirtualBufferRegistry.get()
-  registry:clear()
-  
-  -- Clear cleanup schedule
-  cleanup_scheduled = {}
+  -- Clear all scheduled cleanups
+  self.cleanup_scheduled = {}
 end
 
 ---Get statistics about virtual buffers
+---@param registry VirtualBufferRegistry
 ---@return { total: integer, referenced: integer, unreferenced: integer, invalid: integer, scheduled_cleanup: integer }
-function VirtualBufferManager.getStats()
-  local registry = VirtualBufferRegistry.get()
+function VirtualBufferManager:getStats(registry)
   local stats = registry:getStats()
   
   -- Add cleanup scheduling info
   local scheduled_cleanup = 0
-  for _ in pairs(cleanup_scheduled) do
+  for _ in pairs(self.cleanup_scheduled) do
     scheduled_cleanup = scheduled_cleanup + 1
   end
   

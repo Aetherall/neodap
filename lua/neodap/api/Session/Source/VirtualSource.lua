@@ -52,7 +52,7 @@ end
 ---@return integer?
 function VirtualSource:bufnr()
   local log = Logger.get()
-  local registry = VirtualBufferRegistry.get()
+  local registry = self.session.api._virtual_buffer_registry
   local uri = self:uri()
   local identifier = self:identifier()
   
@@ -86,7 +86,7 @@ function VirtualSource:bufnr()
   local filetype = self:detectFiletype()
   
   -- Create buffer via manager
-  local bufnr = VirtualBufferManager.createBuffer(uri, content, filetype)
+  local bufnr = registry.manager:createBuffer(uri, content, filetype)
   
   -- Register in registry
   local metadata = VirtualBufferMetadata.create({
@@ -145,7 +145,7 @@ function VirtualSource:destroy()
   if self._uri then
     local log = Logger.get()
     log:debug("VirtualSource: Destroying, removing session reference for", self._uri)
-    local registry = VirtualBufferRegistry.get()
+    local registry = self.session.api._virtual_buffer_registry
     registry:removeSessionReference(self._uri, self.session.id)
   end
 end
