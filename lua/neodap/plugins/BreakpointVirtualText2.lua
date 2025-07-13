@@ -59,13 +59,19 @@ return {
     }
 
     breakpoint_manager.onBreakpoint(function(breakpoint)
+      log:info("BPVT2: onBreakpoint triggered for breakpoint:", breakpoint.id, "namespace:", ns)
+      
       breakpoint:onBinding(function(binding)
+        log:info("BPVT2: onBinding triggered for breakpoint:", breakpoint.id, "session:", binding.session and binding.session.id or "no-session", "namespace:", ns)
+        
         local current_location = binding:getActualLocation()
         binding:onUnbound(function ()
+          log:info("BPVT2: onUnbound triggered for breakpoint:", breakpoint.id, "session:", binding.session and binding.session.id or "no-session", "namespace:", ns)
           current_location:unmark(ns)
         end)
 
         binding:onUpdated(function()
+          log:info("BPVT2: onUpdated triggered for breakpoint:", breakpoint.id, "session:", binding.session and binding.session.id or "no-session", "namespace:", ns)
           current_location:unmark(ns)
           current_location = binding:getActualLocation()
           current_location:mark(ns, marks.adjusted)
@@ -73,13 +79,26 @@ return {
         
         -- Mark the binding with appropriate symbol
         local mark = binding:wasMoved() and marks.adjusted or marks.bound
+        log:info("BPVT2: Marking binding at", current_location.line, current_location.column, "with symbol:", mark.virt_text[1][1], "moved:", binding:wasMoved(), "session:", binding.session and binding.session.id or "no-session", "namespace:", ns)
         binding:getActualLocation():mark(ns, mark)
         
         -- If binding was moved, unmark the original location
         if binding:wasMoved() then
+          log:info("BPVT2: Unmarking original location for moved binding, session:", binding.session and binding.session.id or "no-session", "namespace:", ns)
           breakpoint.location:unmark(ns)
         end
       end)
+
+      -- Handle breakpoint hits - disabled for now to test basic functionality
+      -- TODO: Implement proper hit symbol replacement that doesn't create duplicates
+      --[[
+      breakpoint:onHit(function(hit)
+        log:info("BPVT2: onHit triggered for breakpoint:", breakpoint.id, "session:", hit.binding.session and hit.binding.session.id or "no-session", "namespace:", ns)
+        local hit_location = hit.binding:getActualLocation()
+        log:info("BPVT2: Adding hit symbol at", hit_location.line, hit_location.column, "namespace:", ns)
+        hit_location:mark(ns, marks.hit)
+      end)
+      --]]
 
       breakpoint:onRemoved(function()
         breakpoint.location:unmark(ns)
@@ -88,20 +107,13 @@ return {
 
       breakpoint.location:deferUntilLoaded()
 
+      -- Only show normal symbol if no bindings exist
+      -- The onBinding handler will handle all bindings (new and existing)
       if breakpoint:getBindings():isEmpty() then
+        log:info("BPVT2: No bindings exist, marking normal symbol for breakpoint:", breakpoint.id, "namespace:", ns)
         breakpoint.location:mark(ns, marks.normal)
-        return
-      end
-
-      for binding in breakpoint:getBindings():each() do
-        -- Use appropriate mark based on whether binding was moved
-        local mark = binding:wasMoved() and marks.adjusted or marks.bound
-        binding:getActualLocation():mark(ns, mark)
-        
-        -- If binding was moved, unmark the original location
-        if binding:wasMoved() then
-          breakpoint.location:unmark(ns)
-        end
+      else
+        log:info("BPVT2: Bindings exist for breakpoint:", breakpoint.id, "count:", breakpoint:getBindings():count(), "- letting onBinding handler manage them, namespace:", ns)
       end
     end)
 
