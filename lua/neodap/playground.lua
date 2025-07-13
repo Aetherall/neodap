@@ -55,7 +55,7 @@ local function go()
 
   local JumpToStoppedFrame = require("neodap.plugins.JumpToStoppedFrame")
   local HighlightCurrentFrame = require("neodap.plugins.HighlightCurrentFrame")
-  local BreakpointVirtualText = require("neodap.plugins.BreakpointVirtualText2")
+  local BreakpointVirtualText = require("neodap.plugins.BreakpointVirtualText")
   local BreakpointManager = require("neodap.plugins.BreakpointManager")
   local FrameVariables = require("neodap.plugins.FrameVariables")
 
