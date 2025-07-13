@@ -26,7 +26,7 @@ function FileSourceBreakpoint.atLocation(manager, location, opts)
     location = location,
     condition = opts.condition,
     logMessage = opts.logMessage,
-    hookable = Hookable.create(),
+    hookable = Hookable.create(manager.hookable),
   })
 end
 

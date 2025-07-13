@@ -111,6 +111,8 @@ return {
 
       -- Handle breakpoint hits - replace existing symbol with hit symbol
       breakpoint:onHit(function(hit)
+        print("HIT_EVENT: onHit triggered, about to schedule execution for namespace:", ns)
+        print("HIT_HANDLER: Executing hit handler for namespace:", ns)
         log:info("BPVT2: onHit triggered for breakpoint:", breakpoint.id, "session:", hit.binding.session and hit.binding.session.id or "no-session", "namespace:", ns)
         local hit_location = hit.binding:getActualLocation()
         

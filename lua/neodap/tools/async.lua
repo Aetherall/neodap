@@ -12,8 +12,15 @@ function NvimAsync.run(coroutine_func, event, options)
   options = options or {}
   local isPreempted = options.isPreempted
   
-  -- If we're already in a NvimAsync context, just run directly
+  print("NVIM_ASYNC: Called with isPreempted func exists:", isPreempted ~= nil)
+  
+  -- If we're already in a NvimAsync context, check preemption and run directly
   if nio.current_task() then
+    if isPreempted and isPreempted() then
+      print("NVIM_ASYNC: Preempted in nested context")
+      return
+    end
+    print("NVIM_ASYNC: Running in nested context")
     coroutine_func(event)
     return
   end
@@ -28,12 +35,14 @@ function NvimAsync.run(coroutine_func, event, options)
   local function step(...)
     local args = { ... }
     if cancelled or (isPreempted and isPreempted()) then
+      print("NVIM_ASYNC: Preempted in step function")
       return
     end
     
     -- Always resume coroutine in main thread for vim API safety
     vim.schedule(function()
       if cancelled or (isPreempted and isPreempted()) then
+        print("NVIM_ASYNC: Preempted in scheduled step")
         return
       end
       

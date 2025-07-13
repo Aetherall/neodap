@@ -39,7 +39,7 @@ function FileSourceBinding.verified(manager, session, source, breakpoint, dapBre
     actualLine = dapBreakpoint.line,
     actualColumn = dapBreakpoint.column,
     message = dapBreakpoint.message,
-    hookable = Hookable.create(),
+    hookable = Hookable.create(manager.hookable),
   })
 end
 
