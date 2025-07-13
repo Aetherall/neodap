@@ -99,9 +99,10 @@ end
 ---@param listener fun()
 ---@param opts? HookOptions
 ---@return fun() unsubscribe
-function FileSourceBinding:onUnbound(listener, opts)
-  return self.hookable:on('Unbound', listener, opts)
+function FileSourceBinding:onDispose(listener, opts)
+  return self.hookable:onDispose(listener, opts)
 end
+
 
 -- Query Methods
 
@@ -181,8 +182,7 @@ end
 
 -- Internal lifecycle method (called by manager)
 function FileSourceBinding:destroy()
-  self:emit('Unbound')
-  self.hookable:destroy()
+  self.hookable:destroy()  -- Hookable will emit 'Dispose' event automatically
 end
 
 return FileSourceBinding

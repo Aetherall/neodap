@@ -176,7 +176,7 @@ Test.Describe("BreakpointVirtualText2 (New Architecture)", function()
     breakpoints.onBreakpoint(function(breakpoint)
       event_count = event_count + 1
       
-      breakpoint:onRemoved(function()
+      breakpoint:onDispose(function()
         _count = _count + 1
         breakpoint_removed.trigger()
       end)
@@ -342,7 +342,7 @@ Test.Describe("BreakpointVirtualText2 (New Architecture)", function()
         end)
       end)
       
-      breakpoint:onRemoved(function()
+      breakpoint:onDispose(function()
         breakpoint_removed.trigger()
       end)
     end)

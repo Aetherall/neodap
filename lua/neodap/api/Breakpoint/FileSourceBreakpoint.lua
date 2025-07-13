@@ -111,18 +111,19 @@ function FileSourceBreakpoint:onHit(listener, opts)
   end, opts)
 end
 
----@param listener fun()
----@param opts? HookOptions
----@return fun() unsubscribe
-function FileSourceBreakpoint:onRemoved(listener, opts)
-  return self.hookable:on('Removed', listener, opts)
-end
 
 ---@param listener fun(condition: string?)
 ---@param opts? HookOptions
 ---@return fun() unsubscribe
 function FileSourceBreakpoint:onConditionChanged(listener, opts)
   return self.hookable:on('ConditionChanged', listener, opts)
+end
+
+---@param listener fun()
+---@param opts? HookOptions
+---@return fun() unsubscribe
+function FileSourceBreakpoint:onDispose(listener, opts)
+  return self.hookable:onDispose(listener, opts)
 end
 
 ---@param listener fun(logMessage: string?)
@@ -176,8 +177,7 @@ end
 -- Internal lifecycle method (called by manager)
 function FileSourceBreakpoint:destroy()
   print("BREAKPOINT_LIFECYCLE: Destroying breakpoint", self.id, "location before destroy:", self.location and self.location.key or "NIL")
-  self:emit('Removed')
-  self.hookable:destroy()
+  self.hookable:destroy()  -- Hookable will emit 'Dispose' event automatically
   print("BREAKPOINT_LIFECYCLE: Destroyed breakpoint", self.id, "location after destroy:", self.location and self.location.key or "NIL")
 end
 

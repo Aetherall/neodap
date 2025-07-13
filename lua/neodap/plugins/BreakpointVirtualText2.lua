@@ -72,10 +72,10 @@ return {
         -- Ensure buffer is loaded before marking
         current_location:deferUntilLoaded()
         
-        binding:onUnbound(function ()
-          log:info("BPVT2: onUnbound triggered for breakpoint:", breakpoint.id, "session:", binding.session and binding.session.id or "no-session", "namespace:", ns)
+        binding:onDispose(function ()
+          log:info("BPVT2: onDispose triggered for breakpoint:", breakpoint.id, "session:", binding.session and binding.session.id or "no-session", "namespace:", ns)
           current_location:unmark(ns)
-        end, { preemptible = false })  -- Must complete extmark cleanup
+        end)  -- onDispose is non-preemptible by default
 
         binding:onUpdated(function()
           log:info("BPVT2: onUpdated triggered for breakpoint:", breakpoint.id, "session:", binding.session and binding.session.id or "no-session", "namespace:", ns)
@@ -152,7 +152,7 @@ return {
         hit_bindings[hit.binding] = true
       end)
 
-      breakpoint:onRemoved(function()
+      breakpoint:onDispose(function()
         breakpoint.location:unmark(ns)
       end)
 

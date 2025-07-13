@@ -157,6 +157,17 @@ function Hookable:clearAll()
   self.listeners = {}
 end
 
+--- Register a disposal handler that will be called when this hookable is destroyed
+--- Disposal handlers are non-preemptible by default to ensure reliable cleanup
+---@param listener fun() The disposal handler function
+---@param opts? HookOptions Optional hook options (preemptible is forced to false)
+---@return fun() unsubscribe Cleanup function to remove the handler
+function Hookable:onDispose(listener, opts)
+  opts = opts or {}
+  opts.preemptible = false  -- Always non-preemptible for reliable cleanup
+  return self:on('Dispose', listener, opts)
+end
+
 --- Destroys this Hookable and all its children, cleaning up all handlers
 --- This method ensures complete cleanup of the handler hierarchy
 function Hookable:destroy()
@@ -165,7 +176,11 @@ function Hookable:destroy()
   end
   
   -- print("HOOKABLE_DESTROY: Destroying hookable instance", tostring(self))
-  -- Mark as destroyed early to prevent new registrations
+  
+  -- Emit Dispose event BEFORE marking as destroyed so handlers can still access the resource
+  self:emit('Dispose')
+  
+  -- Mark as destroyed to prevent new registrations
   self.destroyed = true
   -- print("HOOKABLE_DESTROY: Set destroyed=true for", tostring(self))
   
