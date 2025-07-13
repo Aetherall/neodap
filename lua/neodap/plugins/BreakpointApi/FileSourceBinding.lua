@@ -113,7 +113,7 @@ end
 
 ---@return api.SourceFileLocation
 function FileSourceBinding:getActualLocation()
-  local Location = require('neodap.api.Breakpoint.Location')
+  local Location = require('neodap.plugins.BreakpointApi.Location')
   return Location.SourceFile.fromSource(self.source, {
     line = self.actualLine or self.line,
     column = self.actualColumn or self.column,
@@ -122,7 +122,7 @@ end
 
 ---@return api.SourceFileLocation
 function FileSourceBinding:getRequestedLocation()
-  local Location = require('neodap.api.Breakpoint.Location')
+  local Location = require('neodap.plugins.BreakpointApi.Location')
   return Location.SourceFile.fromSource(self.source, {
     line = self.line,
     column = self.column,

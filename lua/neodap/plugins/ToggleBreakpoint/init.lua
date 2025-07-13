@@ -1,6 +1,6 @@
 local Class = require("neodap.tools.class")
 local Logger = require("neodap.tools.logger")
-local Location = require("neodap.api.Breakpoint.Location")
+local Location = require("neodap.plugins.BreakpointApi.Location")
 
 
 ---@class neodap.ToggleBreakpointProps
@@ -17,7 +17,7 @@ ToggleBreakpoint.description = "Plugin for smart breakpoint toggling with locati
 
 function ToggleBreakpoint.plugin(api)
   local logger = Logger.get()
-  local breakpointApi = api:getPluginInstance(require("neodap.plugins.BreakpointManager"))
+  local breakpointApi = api:getPluginInstance(require("neodap.plugins.BreakpointApi"))
   return ToggleBreakpoint:new({
     api = api,
     breakpointApi = breakpointApi,

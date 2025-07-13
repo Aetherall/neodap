@@ -1,11 +1,11 @@
 local Class = require('neodap.tools.class')
 local nio = require('nio')
 local Hookable = require("neodap.transport.hookable")
-local FileSourceBreakpoint = require('neodap.api.Breakpoint.FileSourceBreakpoint')
-local FileSourceBinding = require('neodap.api.Breakpoint.FileSourceBinding')
-local Location = require('neodap.api.Breakpoint.Location')
-local BreakpointCollection = require("neodap.api.Breakpoint.BreakpointCollection")
-local BindingCollection = require("neodap.api.Breakpoint.BindingCollection")
+local FileSourceBreakpoint = require('neodap.plugins.BreakpointApi.FileSourceBreakpoint')
+local FileSourceBinding = require('neodap.plugins.BreakpointApi.FileSourceBinding')
+local Location = require('neodap.plugins.BreakpointApi.Location')
+local BreakpointCollection = require("neodap.plugins.BreakpointApi.BreakpointCollection")
+local BindingCollection = require("neodap.plugins.BreakpointApi.BindingCollection")
 local Logger = require("neodap.tools.logger")
 
 ---@class api.BreakpointManagerProps

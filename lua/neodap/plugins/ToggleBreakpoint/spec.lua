@@ -1,9 +1,9 @@
 local Test = require("spec.helpers.testing")(describe, it)
 local P = require("spec.helpers.prepare")
 local prepare = P.prepare
-local BreakpointManagerPlugin = require("neodap.plugins.BreakpointManager")
+local BreakpointApiPlugin = require("neodap.plugins.BreakpointApi")
 local ToggleBreakpoint = require("neodap.plugins.ToggleBreakpoint")
-local Location = require("neodap.api.Breakpoint.Location")
+local Location = require("neodap.plugins.BreakpointApi.Location")
 local nio = require("nio")
 
 Test.Describe("ToggleBreakpoint plugin", function()
@@ -11,7 +11,7 @@ Test.Describe("ToggleBreakpoint plugin", function()
     local api, start = prepare()
     
     -- Initialize the breakpoint manager and toggle plugins
-    local breakpointManagerApi = api:getPluginInstance(BreakpointManagerPlugin)
+    local breakpointManagerApi = api:getPluginInstance(BreakpointApiPlugin)
     local togglePlugin = ToggleBreakpoint.plugin(api)
     
     local sessionInitialized = Test.spy("sessionInitialized")
@@ -100,7 +100,7 @@ Test.Describe("ToggleBreakpoint plugin", function()
     local api, start = prepare()
     
     -- Initialize the breakpoint manager and toggle plugins
-    local breakpointManagerApi = api:getPluginInstance(BreakpointManagerPlugin)
+    local breakpointManagerApi = api:getPluginInstance(BreakpointApiPlugin)
     local togglePlugin = ToggleBreakpoint.plugin(api)
     
     local sessionInitialized = Test.spy("sessionInitialized")
@@ -160,7 +160,7 @@ Test.Describe("ToggleBreakpoint plugin", function()
     local api, _start = prepare()
     
     -- Initialize the breakpoint manager and toggle plugins
-    local breakpointManagerApi = api:getPluginInstance(BreakpointManagerPlugin)
+    local breakpointManagerApi = api:getPluginInstance(BreakpointApiPlugin)
     local togglePlugin = ToggleBreakpoint.plugin(api)
     
     -- Create breakpoint without any active session
@@ -183,7 +183,7 @@ Test.Describe("ToggleBreakpoint plugin", function()
     local api, _start = prepare()
     
     -- Initialize the breakpoint manager and toggle plugins
-    local breakpointManagerApi = api:getPluginInstance(BreakpointManagerPlugin)
+    local breakpointManagerApi = api:getPluginInstance(BreakpointApiPlugin)
     local togglePlugin = ToggleBreakpoint.plugin(api)
     
     -- Create a breakpoint at column 0
@@ -216,7 +216,7 @@ Test.Describe("ToggleBreakpoint plugin", function()
     local api, _start = prepare()
     
     -- Initialize the breakpoint manager and toggle plugins
-    local breakpointManagerApi = api:getPluginInstance(BreakpointManagerPlugin)
+    local breakpointManagerApi = api:getPluginInstance(BreakpointApiPlugin)
     local togglePlugin = ToggleBreakpoint.plugin(api)
     
     -- Create multiple breakpoints

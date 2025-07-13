@@ -8,11 +8,11 @@ return {
   plugin = function(api)
     local log = Logger.get()
 
-    -- Use BreakpointManager plugin through the plugin API
-    local BreakpointManagerPlugin = require("neodap.plugins.BreakpointManager")
-    local breakpoint_manager = api:getPluginInstance(BreakpointManagerPlugin)
+    -- Use BreakpointApi plugin through the plugin API
+    local BreakpointApiPlugin = require("neodap.plugins.BreakpointApi")
+    local breakpoint_manager = api:getPluginInstance(BreakpointApiPlugin)
 
-    log:info("BreakpointVirtualText: Plugin loading with BreakpointManager plugin integration")
+    log:info("BreakpointVirtualText: Plugin loading with BreakpointApi plugin integration")
 
     -- Create unique namespace for this plugin instance to prevent conflicts
     local namespace_name = "neodap_bpvt_" .. tostring(api)

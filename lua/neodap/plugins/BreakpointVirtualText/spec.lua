@@ -2,7 +2,7 @@ local Test = require("spec.helpers.testing")(describe, it)
 local BufferSnapshot = require("spec.helpers.buffer_snapshot")
 local BreakpointVirtualText = require("neodap.plugins.BreakpointVirtualText")
 local PrepareHelper = require("spec.helpers.prepare")
-local BreakpointManager = require("neodap.plugins.BreakpointManager")
+local BreakpointApi = require("neodap.plugins.BreakpointApi")
 local prepare = PrepareHelper.prepare
 
 Test.Describe("BreakpointVirtualText (New Architecture)", function()
@@ -21,7 +21,7 @@ Test.Describe("BreakpointVirtualText (New Architecture)", function()
   Test.It("should place bound symbol (◉) for breakpoint at exact valid position", function()
     local api, start = prepare()
     
-    local breakpoints = api:getPluginInstance(BreakpointManager)
+    local breakpoints = api:getPluginInstance(BreakpointApi)
     local _breakpoints_text = api:getPluginInstance(BreakpointVirtualText)
     
     local binding_created = Test.spy('binding_created')
@@ -87,7 +87,7 @@ Test.Describe("BreakpointVirtualText (New Architecture)", function()
   Test.It("should show adjusted symbol (◐) when breakpoint moves", function()
     local api, start = prepare()
     
-    local breakpoints = api:getPluginInstance(BreakpointManager)
+    local breakpoints = api:getPluginInstance(BreakpointApi)
     local _breakpoints_text = api:getPluginInstance(BreakpointVirtualText)
     
     local binding_created = Test.spy('binding_created')
@@ -133,7 +133,7 @@ Test.Describe("BreakpointVirtualText (New Architecture)", function()
   Test.It("should handle multiple breakpoints with different states", function()
     local api, start = prepare()
     
-    local breakpoints = api:getPluginInstance(BreakpointManager)
+    local breakpoints = api:getPluginInstance(BreakpointApi)
     local _breakpoints_text = api:getPluginInstance(BreakpointVirtualText)
     
     local breakpoints_ready = 0
@@ -185,7 +185,7 @@ Test.Describe("BreakpointVirtualText (New Architecture)", function()
   Test.It("should demonstrate hierarchical event ", function()
     local api, start = prepare()
     
-    local breakpoints = api:getPluginInstance(BreakpointManager)
+    local breakpoints = api:getPluginInstance(BreakpointApi)
     local _breakpoints_text = api:getPluginInstance(BreakpointVirtualText)
     
     local event_count = 0
@@ -262,7 +262,7 @@ Test.Describe("BreakpointVirtualText (New Architecture)", function()
   Test.It("should handle lazy binding with correct visual feedback", function()
     local api, start = prepare()
     
-    local breakpoints = api:getPluginInstance(BreakpointManager)
+    local breakpoints = api:getPluginInstance(BreakpointApi)
     local _breakpoints_text = api:getPluginInstance(BreakpointVirtualText)
     
     local binding_events = {}
@@ -333,7 +333,7 @@ Test.Describe("BreakpointVirtualText (New Architecture)", function()
   Test.It("should show hit symbol (◆) when breakpoint is hit, then clean up when removed", function()
     local api, start = prepare()
     
-    local breakpoints = api:getPluginInstance(BreakpointManager)
+    local breakpoints = api:getPluginInstance(BreakpointApi)
     local _breakpoints_text = api:getPluginInstance(BreakpointVirtualText)
     
     local binding_created = Test.spy('binding_created')
@@ -452,7 +452,7 @@ Test.Describe("BreakpointVirtualText (New Architecture)", function()
     local api, start = prepare()
     
     -- Create breakpoint manager
-    local breakpointManager = require("neodap.api.Breakpoint.BreakpointManager").create(api)
+    local breakpointManager = require("neodap.plugins.BreakpointApi.BreakpointManager").create(api)
     
     -- Load BreakpointVirtualText plugin
     local virtualTextInstance = api:getPluginInstance(BreakpointVirtualText)
@@ -487,7 +487,7 @@ Test.Describe("BreakpointVirtualText (New Architecture)", function()
     end)
     
     -- Create breakpoint
-    local originalLocation = require("neodap.api.Breakpoint.Location").SourceFile:new({
+    local originalLocation = require("neodap.plugins.BreakpointApi.Location").SourceFile:new({
       path = vim.fn.getcwd() .. "/spec/fixtures/loop.js",
       line = 3,
       column = 0,

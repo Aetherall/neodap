@@ -1,5 +1,5 @@
 -- -- Example usage of the new hierarchical breakpoint API
--- local Location = require('neodap.api.NewBreakpoint.Location')
+-- local Location = require('neodap.plugins.BreakpointApi.Location')
 
 -- -- This demonstrates how plugins would use the hierarchical API
 -- -- Note: All events now follow proper hierarchical responsibility!
