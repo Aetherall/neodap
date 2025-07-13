@@ -71,7 +71,9 @@ function Hookable:emit(key, event)
         -- Use simplified NvimAsync that preserves NIO context
         vim.schedule(function ()
         
-        NvimAsync.run(hook.handler, event)
+        NvimAsync.run(hook.handler, event, {
+          isPreempted = function() return self.destroyed end
+        })
       end)
       end
     end

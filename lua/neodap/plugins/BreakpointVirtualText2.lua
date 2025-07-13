@@ -61,9 +61,6 @@ return {
     -- Track bindings that are currently hit
     local hit_bindings = {}
     
-    -- Track if plugin is destroyed to prevent operations after destruction
-    local plugin_destroyed = false
-    
     breakpoint_manager.onBreakpoint(function(breakpoint)
       log:info("BPVT2: onBreakpoint triggered for breakpoint:", breakpoint.id, "namespace:", ns)
       
@@ -114,12 +111,6 @@ return {
 
       -- Handle breakpoint hits - replace existing symbol with hit symbol
       breakpoint:onHit(function(hit)
-        -- Check if plugin was destroyed before executing
-        if plugin_destroyed then
-          log:info("BPVT2: onHit ignored - plugin destroyed, namespace:", ns)
-          return
-        end
-        
         log:info("BPVT2: onHit triggered for breakpoint:", breakpoint.id, "session:", hit.binding.session and hit.binding.session.id or "no-session", "namespace:", ns)
         local hit_location = hit.binding:getActualLocation()
         
@@ -193,12 +184,6 @@ return {
     api:onSession(function(session)
       session:onThread(function(thread)
         thread:onResumed(function()
-          -- Check if plugin was destroyed before executing
-          if plugin_destroyed then
-            log:info("BPVT2: onResumed ignored - plugin destroyed, namespace:", ns)
-            return
-          end
-          
           log:info("BPVT2: Thread resumed, restoring hit breakpoint symbols")
           
           -- Restore all hit bindings to their original symbols
@@ -225,9 +210,6 @@ return {
     return {
       destroy = function()
         log:info("BreakpointVirtualText: Destroying plugin instance and clearing namespace", namespace_name)
-        
-        -- Mark plugin as destroyed to prevent pending operations
-        plugin_destroyed = true
         
         -- Clear namespace from all valid buffers
         local buffers_cleared = 0

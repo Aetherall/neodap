@@ -7,7 +7,11 @@ local NvimAsync = {}
 --- of vim.api calls and nio.await calls while preserving NIO context
 ---@param coroutine_func fun(event: any) A function that contains asynchronous logic
 ---@param event any The event data to pass to the coroutine
-function NvimAsync.run(coroutine_func, event)
+---@param options? table Optional configuration with isPreempted function
+function NvimAsync.run(coroutine_func, event, options)
+  options = options or {}
+  local isPreempted = options.isPreempted
+  
   -- If we're already in a NvimAsync context, just run directly
   if nio.current_task() then
     coroutine_func(event)
@@ -23,13 +27,13 @@ function NvimAsync.run(coroutine_func, event)
   
   local function step(...)
     local args = { ... }
-    if cancelled then
+    if cancelled or (isPreempted and isPreempted()) then
       return
     end
     
     -- Always resume coroutine in main thread for vim API safety
     vim.schedule(function()
-      if cancelled then
+      if cancelled or (isPreempted and isPreempted()) then
         return
       end
       
@@ -68,6 +72,9 @@ function NvimAsync.run(coroutine_func, event)
     cancel = function() 
       cancelled = true 
     end,
+    preempted = function()
+      return cancelled or (isPreempted and isPreempted()) or false
+    end,
     trace = function() 
       return debug.traceback(co) 
     end,
@@ -93,6 +100,8 @@ function NvimAsync.run(coroutine_func, event)
   vim.schedule(function()
     nio.current_task = original_current_task
   end)
+  
+  return fake_task
 end
 
 
