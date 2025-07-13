@@ -42,7 +42,7 @@ return {
         priority = 200,
       },
       adjusted = {
-        virt_text = { { "◐", "DiagnosticWarn" } },
+        virt_text = { { "◐", "DiagnosticInfo" } },
         virt_text_pos = "inline",
         priority = 200,
       },
@@ -111,8 +111,6 @@ return {
 
       -- Handle breakpoint hits - replace existing symbol with hit symbol
       breakpoint:onHit(function(hit)
-        -- print("HIT_EVENT: onHit triggered, about to schedule execution for namespace:", ns)
-        -- print("HIT_HANDLER: Executing hit handler for namespace:", ns)
         log:info("BPVT2: onHit triggered for breakpoint:", breakpoint.id, "session:", hit.binding.session and hit.binding.session.id or "no-session", "namespace:", ns)
         local hit_location = hit.binding:getActualLocation()
         
@@ -150,10 +148,31 @@ return {
         
         -- Track that this binding is currently hit (for future restoration)
         hit_bindings[hit.binding] = true
+        
+        -- Clean up hit_bindings when the binding is disposed
+        hit.binding:onDispose(function()
+          log:info("BPVT2: Cleaning up hit binding from tracking due to disposal, namespace:", ns)
+          hit_bindings[hit.binding] = nil
+        end)
       end)
 
       breakpoint:onDispose(function()
+        log:info("BPVT2: Breakpoint disposed, cleaning up location and hit tracking, namespace:", ns)
         breakpoint.location:unmark(ns)
+        
+        -- Clean up any hit bindings associated with this breakpoint
+        local cleaned_bindings = 0
+        for binding, _ in pairs(hit_bindings) do
+          -- Check if this binding belongs to the disposed breakpoint
+          if binding and binding.breakpoint == breakpoint then
+            hit_bindings[binding] = nil
+            cleaned_bindings = cleaned_bindings + 1
+          end
+        end
+        
+        if cleaned_bindings > 0 then
+          log:info("BPVT2: Cleaned", cleaned_bindings, "hit binding references for disposed breakpoint:", breakpoint.id, "namespace:", ns)
+        end
       end)
 
 
@@ -189,19 +208,39 @@ return {
           log:info("BPVT2: Thread resumed, restoring hit breakpoint symbols")
           
           -- Restore all hit bindings to their original symbols
+          local restored_count = 0
+          local skipped_count = 0
+          
           for binding, _ in pairs(hit_bindings) do
+            -- Validate that the binding still exists and has a valid location
             if binding and binding:getActualLocation() then
               local location = binding:getActualLocation()
               
-              -- Unmark hit symbol
-              location:unmark(ns)
+              -- Additional validation: check if the binding's breakpoint still exists
+              -- by trying to access its properties safely
+              local success, is_moved = pcall(function() return binding:wasMoved() end)
               
-              -- Restore original symbol based on whether binding was moved
-              local mark = binding:wasMoved() and marks.adjusted or marks.bound
-              log:info("BPVT2: Restoring symbol at", location.line, location.column, "to", mark.virt_text[1][1], "namespace:", ns)
-              location:mark(ns, mark)
+              if success then
+                -- Unmark hit symbol
+                location:unmark(ns)
+                
+                -- Restore original symbol based on whether binding was moved
+                local mark = is_moved and marks.adjusted or marks.bound
+                log:info("BPVT2: Restoring symbol at", location.line, location.column, "to", mark.virt_text[1][1], "namespace:", ns)
+                location:mark(ns, mark)
+                
+                restored_count = restored_count + 1
+              else
+                log:info("BPVT2: Skipping restoration for invalid binding (breakpoint likely removed), namespace:", ns)
+                skipped_count = skipped_count + 1
+              end
+            else
+              log:info("BPVT2: Skipping restoration for disposed binding, namespace:", ns)
+              skipped_count = skipped_count + 1
             end
           end
+          
+          log:info("BPVT2: Resume restoration complete - restored:", restored_count, "skipped:", skipped_count, "namespace:", ns)
           
           -- Clear hit bindings tracking
           hit_bindings = {}

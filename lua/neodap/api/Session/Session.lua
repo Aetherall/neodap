@@ -388,4 +388,101 @@ function Session:destroy()
   log:info("Session", self.id, "destroyed successfully")
 end
 
+---Get valid breakpoint locations for a source range using DAP's breakpointLocations request
+---@param source api.FileSource
+---@param line integer
+---@param column? integer
+---@return dap.BreakpointLocation[]|nil locations Array of valid breakpoint locations, or nil if not supported
+function Session:getBreakpointLocations(source, line, column)
+  local log = Logger.get()
+  
+  -- Check if adapter supports breakpointLocations
+  log:debug("Session", self.id, "- Checking adapter capabilities...")
+  log:debug("Session", self.id, "- self.ref.capabilities:", vim.inspect(self.ref.capabilities))
+  
+  if not self.ref.capabilities or not self.ref.capabilities.supportsBreakpointLocationsRequest then
+    log:debug("Session", self.id, "- Adapter does not support breakpointLocations request")
+    if not self.ref.capabilities then
+      log:debug("Session", self.id, "- No capabilities object found")
+    else
+      log:debug("Session", self.id, "- supportsBreakpointLocationsRequest:", self.ref.capabilities.supportsBreakpointLocationsRequest)
+    end
+    return nil
+  end
+  
+  column = column or 0
+  
+  local args = {
+    source = source.ref,
+    line = line
+    -- Only specify line, not column - let adapter return all valid locations on this line
+    -- According to DAP spec: "If only the line is specified, the request returns all possible locations in that line"
+  }
+  
+  log:debug("Session", self.id, "- Requesting breakpoint locations for line", line, "column", column)
+  log:debug("Session", self.id, "- Request args:", vim.inspect(args))
+  
+  local success, result = pcall(function()
+    return self.ref.calls:breakpointLocations(args):wait()
+  end)
+  
+  if not success then
+    log:debug("Session", self.id, "- breakpointLocations request failed:", result)
+    return nil
+  end
+  
+  log:debug("Session", self.id, "- breakpointLocations response:", vim.inspect(result))
+  if result.breakpoints and #result.breakpoints > 0 then
+    log:debug("Session", self.id, "- Valid breakpoint locations:")
+    for i, location in ipairs(result.breakpoints) do
+      log:debug("Session", self.id, "  [" .. i .. "] line:", location.line, "column:", location.column)
+    end
+  end
+  log:debug("Session", self.id, "- Found", #result.breakpoints, "valid breakpoint locations")
+  return result.breakpoints
+end
+
+---Find the closest valid breakpoint location to the requested position
+---@param source api.FileSource
+---@param line integer
+---@param column? integer
+---@return { line: integer, column: integer }|nil closest Closest valid location, or nil if none found
+function Session:findClosestBreakpointLocation(source, line, column)
+  local locations = self:getBreakpointLocations(source, line, column)
+  if not locations or #locations == 0 then
+    return nil
+  end
+  
+  column = column or 0
+  
+  -- Sort locations by column to find the best match
+  table.sort(locations, function(a, b) 
+    return (a.column or 0) < (b.column or 0) 
+  end)
+  
+  -- For better UX, prefer the earliest valid location (beginning of statement)
+  -- unless the user specifically clicked at a later valid location
+  local earliest = locations[1]
+  if not earliest then
+    return nil
+  end
+  
+  -- Check if any location is exactly at the requested position
+  for _, location in ipairs(locations) do
+    local locColumn = location.column or 0
+    if locColumn == column then
+      return {
+        line = location.line,
+        column = locColumn
+      }
+    end
+  end
+  
+  -- Default to the earliest (leftmost) valid location
+  return {
+    line = earliest.line,
+    column = earliest.column or 0
+  }
+end
+
 return Session
