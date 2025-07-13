@@ -5,7 +5,7 @@ local Location = require("neodap.api.Location")
 
 ---@class neodap.ToggleBreakpointProps
 ---@field api Api
----@field breakpointApi BreakpointManagerAPI
+---@field breakpointApi BreakpointApiPlugin
 ---@field logger Logger
 
 ---@class neodap.ToggleBreakpoint: neodap.ToggleBreakpointProps

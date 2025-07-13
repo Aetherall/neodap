@@ -1,6 +1,7 @@
 local Class = require('neodap.tools.class')
 local Scope = require('neodap.api.Session.Scope')
 local Logger = require('neodap.tools.logger')
+local Location = require("neodap.api.Location")
 
 
 ---@class api.FrameProps
@@ -89,40 +90,35 @@ function Frame:jump()
     return
   end
   
-  -- Create location for the frame position
-  local Location = require('neodap.api.Location')
-  local location
+  local bufnr = source_obj:bufnr()
   
-  if source_obj:isFile() then
-    location = Location.fromSource(source_obj, {
-      line = self.ref.line,
-      column = self.ref.column
-    })
-  elseif source_obj:isVirtual() then
-    location = Location.fromVirtualSource(source_obj, {
-      line = self.ref.line,
-      column = self.ref.column
-    })
-  else
-    return -- Generic sources not navigable
-  end
-  
-  -- Use location to get buffer
-  local bufnr = location:bufnr()
   if not bufnr then
-    -- For virtual sources, this triggers buffer creation
-    if source_obj:isVirtual() then
-      bufnr = source_obj:bufnr() -- Create buffer if needed
-      if not bufnr then
-        return -- Buffer creation failed
-      end
-    else
-      return
-    end
+    return
   end
   
+  -- Ensure the buffer is valid before switching to it
+  if not vim.api.nvim_buf_is_valid(bufnr) then
+    local Logger = require('neodap.tools.logger')
+    local log = Logger.get()
+    log:error("Frame:jump - Invalid buffer", bufnr, "for source", source.name or "unnamed")
+    return
+  end
+  
+  -- Switch to the buffer and set cursor position
   vim.api.nvim_set_current_buf(bufnr)
-  vim.api.nvim_win_set_cursor(0, { self.ref.line, self.ref.column - 1 })
+  
+  -- Ensure line and column are valid for the buffer
+  local line_count = vim.api.nvim_buf_line_count(bufnr)
+  local safe_line = math.min(math.max(1, self.ref.line), line_count)
+  local safe_column = math.max(0, (self.ref.column or 1) - 1) -- Convert to 0-based
+  
+  vim.api.nvim_win_set_cursor(0, { safe_line, safe_column })
+  
+  -- Log successful jump for debugging
+  local Logger = require('neodap.tools.logger')
+  local log = Logger.get()
+  log:debug("Frame:jump - Successfully jumped to", source_obj:isVirtual() and "virtual" or "file", "source", 
+            source.name or "unnamed", "at line", safe_line, "column", safe_column + 1)
 end
 
 ---@param namespace integer
@@ -139,36 +135,33 @@ function Frame:highlight(namespace, hl_group)
     return
   end
   
-  -- Create location for the frame position
-  local Location = require('neodap.api.Location')
-  local location
+  local bufnr = nil
   
   if source_obj:isFile() then
-    location = Location.fromSource(source_obj, {
+    -- Handle file sources
+    local Location = require('neodap.api.Location')
+    local location = Location.fromSource(source_obj, {
       line = self.ref.line,
       column = self.ref.column
     })
+    bufnr = location:bufnr()
+    
   elseif source_obj:isVirtual() then
-    location = Location.fromVirtualSource(source_obj, {
-      line = self.ref.line,
-      column = self.ref.column
-    })
-  else
-    return -- Generic sources not navigable
-  end
-  
-  -- Use location to get buffer
-  local bufnr = location:bufnr()
-  if not bufnr then
-    -- For virtual sources, this triggers buffer creation
-    if source_obj:isVirtual() then
-      bufnr = source_obj:bufnr() -- Create buffer if needed
-      if not bufnr then
-        return -- Buffer creation failed
-      end
-    else
+    -- Handle virtual sources - ensure buffer is created with DAP content
+    bufnr = source_obj:bufnr() -- This triggers DAP content loading
+    
+    if not bufnr then
+      -- If buffer creation failed, return without highlighting
       return
     end
+    
+  else
+    -- Generic sources not navigable
+    return
+  end
+  
+  if not bufnr then
+    return
   end
   
   local log = Logger.get()

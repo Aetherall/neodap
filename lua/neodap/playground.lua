@@ -59,12 +59,14 @@ local function go()
   local BreakpointApi = require("neodap.plugins.BreakpointApi")
   local FrameVariables = require("neodap.plugins.FrameVariables")
   local ToggleBreakpoint = require("neodap.plugins.ToggleBreakpoint")
+  local StackNavigation = require("neodap.plugins.StackNavigation")
 
   api:getPluginInstance(JumpToStoppedFrame)
   api:getPluginInstance(HighlightCurrentFrame)
   api:getPluginInstance(BreakpointVirtualText)
   local breakpoints = api:getPluginInstance(BreakpointApi)
   api:getPluginInstance(FrameVariables)
+  local stack = api:getPluginInstance(StackNavigation)
   local ToggleBreakpoint = api:getPluginInstance(ToggleBreakpoint)
 
 
@@ -113,6 +115,16 @@ local function go()
       currentStopped:stepOver()
     end
   end, { noremap = true, silent = true, desc = "Step Over" })
+
+
+  vim.keymap.set("n", "<leader>du", function()
+   stack:up()
+  end, { noremap = true, silent = true, desc = "Step Out" })
+
+
+  vim.keymap.set("n", "<leader>dd", function()
+    stack:down()
+  end, { noremap = true, silent = true, desc = "Jump to Stopped Frame" })
 
   -- Add command to show log file path
   vim.keymap.set("n", "<leader>dl", function()

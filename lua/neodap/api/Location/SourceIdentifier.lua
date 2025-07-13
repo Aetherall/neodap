@@ -1,4 +1,5 @@
 local Class = require('neodap.tools.class')
+local Logger = require('neodap.tools.logger')
 
 ---@class SourceIdentifier
 ---@field type 'file' | 'virtual'
@@ -31,23 +32,26 @@ end
 ---@param session? api.Session
 ---@return FileSourceIdentifier | VirtualSourceIdentifier
 function SourceIdentifier.fromDapSource(dap_source, session)
-  if dap_source.path and dap_source.path ~= '' then
-    return SourceIdentifier.fromPath(dap_source.path)
-  elseif dap_source.sourceReference and dap_source.sourceReference > 0 then
-    -- Calculate stability hash without session dependency
+  local log = Logger.get()
+  log:debug(vim.inspect(dap_source, { depth = 2 }))
+  
+
+  if dap_source.sourceReference and dap_source.sourceReference > 0 then
+    -- Virtual source with sourceReference
     local stability_hash = SourceIdentifier.calculateStabilityHash(dap_source)
-    
     return SourceIdentifier:new({
       type = 'virtual',
       stability_hash = stability_hash,
       origin = dap_source.origin or 'unknown',
       name = dap_source.name or 'unnamed',
-      -- Optional session context
       source_reference = dap_source.sourceReference,
       session_id = session and session.id
     })
+  elseif dap_source.path and dap_source.path ~= '' then
+    -- File source with path
+    return SourceIdentifier.fromPath(dap_source.path)
   else
-    error("Cannot create SourceIdentifier from source without path or sourceReference")
+    error("Cannot create SourceIdentifier from DAP source without path or sourceReference")
   end
 end
 

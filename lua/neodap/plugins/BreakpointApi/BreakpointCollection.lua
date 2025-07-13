@@ -161,7 +161,7 @@ end
 ---@return api.BreakpointCollection
 function BreakpointCollection:atSource(source_identifier)
   return self:filter(function(breakpoint)
-    local id = breakpoint.location:getSourceIdentifier()
+    local id = breakpoint.location:SourceFile():getSourceIdentifier()
     return id:equals(source_identifier)
   end)
 end
