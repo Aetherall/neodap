@@ -40,11 +40,11 @@ function Session.wrap(ref, manager, parentHookable, api)
   -- Register cleanup on session termination and exit
   ref.events:on('terminated', function()
     instance:destroy()
-  end, { name = "SessionCleanup_terminated_" .. instance.id, priority = 999 })
+  end, { name = "SessionCleanup_terminated_" .. instance.id, priority = 999, preemptible = false })
   
   ref.events:on('exited', function()
     instance:destroy()
-  end, { name = "SessionCleanup_exited_" .. instance.id, priority = 999 })
+  end, { name = "SessionCleanup_exited_" .. instance.id, priority = 999, preemptible = false })
 
   return instance
 end
@@ -71,7 +71,7 @@ function Session:listen()
       end
       self._threads[body.threadId] = nil
     end
-  end, { name = "SessionThreadExited_" .. uniqueId, priority = 98 })
+  end, { name = "SessionThreadExited_" .. uniqueId, priority = 98, preemptible = false })
 
 
   self:onLoadedSourceNew(function(dapSource)

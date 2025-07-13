@@ -8,12 +8,14 @@ local NvimAsync = require("neodap.tools.async")
 ---@field name? string
 ---@field priority? number
 ---@field once? boolean
+---@field preemptible? boolean
 
 ---@class HookProps<T>: { handler: string }
 ---@field name string
 ---@field key string
 ---@field priority number
 ---@field once boolean
+---@field preemptible boolean
 
 ---@class Hook: HookProps
 ---@field new Constructor<{}>
@@ -75,11 +77,11 @@ function Hookable:emit(key, event)
           print("HOOKABLE_EXECUTE: About to run handler for", key, "hookable", tostring(self), "destroyed:", self.destroyed)
         
         NvimAsync.run(hook.handler, event, {
-          isPreempted = function() 
+          isPreempted = hook.preemptible and function() 
             local is_destroyed = self.destroyed
-            print("HOOKABLE_PREEMPT_CHECK: isPreempted() called for hookable", tostring(self), "destroyed:", is_destroyed)
+            print("HOOKABLE_PREEMPT_CHECK: isPreempted() called for hookable", tostring(self), "destroyed:", is_destroyed, "preemptible:", hook.preemptible)
             return is_destroyed
-          end
+          end or nil
         })
       end)
       end
@@ -104,6 +106,7 @@ function Hookable:on(key, handler, opts)
   local name = opts.name or math.random(1, 1000000) .. "_" .. key
   local priority = opts.priority or 10
   local once = opts.once or false
+  local preemptible = opts.preemptible ~= false  -- Default to true, only false if explicitly set
 
   if not self.listeners[key] then
     self.listeners[key] = {}
@@ -123,6 +126,7 @@ function Hookable:on(key, handler, opts)
     handler = handler,
     priority = priority,
     once = once,
+    preemptible = preemptible,
   })
 
   return function()

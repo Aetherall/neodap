@@ -75,7 +75,7 @@ return {
         binding:onUnbound(function ()
           log:info("BPVT2: onUnbound triggered for breakpoint:", breakpoint.id, "session:", binding.session and binding.session.id or "no-session", "namespace:", ns)
           current_location:unmark(ns)
-        end)
+        end, { preemptible = false })  -- Must complete extmark cleanup
 
         binding:onUpdated(function()
           log:info("BPVT2: onUpdated triggered for breakpoint:", breakpoint.id, "session:", binding.session and binding.session.id or "no-session", "namespace:", ns)

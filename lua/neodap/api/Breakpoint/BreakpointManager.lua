@@ -410,7 +410,7 @@ function BreakpointManager:listen()
         self.bindings:remove(binding)
         binding:destroy()  -- Binding emits its own 'Unbound' event
       end
-    end)
+    end, { preemptible = false })  -- Must complete cleanup even if session is destroyed
   end)
 end
 
