@@ -42,13 +42,30 @@ return {
         priority = 200,
       },
     }
-
-    -- Track bindings that are currently hit
-    local hit_bindings = {}
     
     BP.onBreakpoint(function(breakpoint)      
+      local hits = 0;
+      local mark = marks.normal
+      
       breakpoint:onBinding(function(binding)        
         local location = binding:getActualLocation()
+
+        binding:onHit(function(hit)
+          hits = hits + 1
+    
+          hit.thread:onResumed(function()
+            if binding.hookable.destroyed then
+              return
+            end
+            hits = hits - 1
+            if hits <= 0 then
+              hits = 0
+              location:mark(ns, mark)
+            end
+          end)
+  
+          location:mark(ns, marks.hit)
+        end)
         
         location:SourceFile():deferUntilLoaded()
         
@@ -57,7 +74,10 @@ return {
         binding:onUpdated(function()
           location:unmark(ns)
           location = binding:getActualLocation()
-          location:mark(ns, marks.adjusted)
+          if binding:wasMoved() then
+            mark = marks.adjusted
+          end
+          location:mark(ns, mark)
         end)
         
         -- Mark the binding with appropriate symbol
@@ -69,79 +89,14 @@ return {
         end
       end)
 
-      -- Handle breakpoint hits - replace existing symbol with hit symbol
-      breakpoint:onHit(function(hit)
-        local hit_location = hit.binding:getActualLocation()
-
-        hit_location:unmark(ns)
-        hit_location:mark(ns, marks.hit)
-        
-        -- Track that this binding is currently hit (for future restoration)
-        hit_bindings[hit.binding] = true
-        
-        hit.binding:onDispose(function()
-          hit_bindings[hit.binding] = nil
-        end)
-      end)
-
       breakpoint:onDispose(function()
         breakpoint.location:unmark(ns)
-        
-        -- Clean up any hit bindings associated with this breakpoint
-        local cleaned_bindings = 0
-        for binding, _ in pairs(hit_bindings) do
-          -- Check if this binding belongs to the disposed breakpoint
-          if binding and binding.breakpoint == breakpoint then
-            hit_bindings[binding] = nil
-            cleaned_bindings = cleaned_bindings + 1
-          end
-        end
       end)
 
 
       breakpoint.location:SourceFile():deferUntilLoaded()
     end)
 
-    -- Handle thread resume to restore symbols after hits
-    api:onSession(function(session)
-      session:onThread(function(thread)
-        thread:onResumed(function()
-          
-          -- Restore all hit bindings to their original symbols
-          local restored_count = 0
-          local skipped_count = 0
-          
-          for binding, _ in pairs(hit_bindings) do
-            -- Validate that the binding still exists and has a valid location
-            if binding and binding:getActualLocation() then
-              local location = binding:getActualLocation()
-              
-              -- Additional validation: check if the binding's breakpoint still exists
-              -- by trying to access its properties safely
-              local success, is_moved = pcall(function() return binding:wasMoved() end)
-              
-              if success then
-                -- Unmark hit symbol
-                location:unmark(ns)
-                
-                -- Restore original symbol based on whether binding was moved
-                local mark = is_moved and marks.adjusted or marks.bound
-                location:mark(ns, mark)
-                
-                restored_count = restored_count + 1
-              else
-                skipped_count = skipped_count + 1
-              end
-            else
-              skipped_count = skipped_count + 1
-            end
-          end
-                    
-          -- Clear hit bindings tracking
-          hit_bindings = {}
-        end)
-      end)
-    end)
 
     return {
       destroy = function()
