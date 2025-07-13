@@ -1,11 +1,11 @@
 local Class = require("neodap.tools.class")
 local Logger = require("neodap.tools.logger")
-local Location = require("neodap.api.Location")
+local Location = require("neodap.api.Location.Location")
 
 
 ---@class neodap.ToggleBreakpointProps
 ---@field api Api
----@field breakpointApi BreakpointApiPlugin
+---@field breakpointApi BreakpointAPI
 ---@field logger Logger
 
 ---@class neodap.ToggleBreakpoint: neodap.ToggleBreakpointProps

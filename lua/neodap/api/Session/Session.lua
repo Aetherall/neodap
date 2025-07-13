@@ -262,6 +262,16 @@ function Session:getVirtualSourceByIdentifier(identifier)
   end)
 end
 
+---Find source by unified source identifier (preferred method)
+---@param identifier SourceIdentifier
+---@return api.Source?
+function Session:getSourceByIdentifier(identifier)
+  return self:findSource(function(source)
+    local source_identifier = source:identifier()
+    return source_identifier:equals(identifier)
+  end)
+end
+
 ---Get or create a source for the given DAP source
 ---This is the authoritative way to get source instances in the system
 ---@param dapSource dap.Source

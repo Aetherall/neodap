@@ -137,6 +137,7 @@ function BreakpointCollection:_isLocationBetween(location, start, finish)
   return true
 end
 
+---@deprecated Use atSource() with SourceIdentifier instead
 ---@param path string
 ---@return api.BreakpointCollection
 function BreakpointCollection:atPath(path)
@@ -146,7 +147,7 @@ function BreakpointCollection:atPath(path)
   end)
 end
 
----NEW: Filter breakpoints by virtual source stability hash
+---@deprecated Use atSource() with SourceIdentifier instead
 ---@param stability_hash string
 ---@return api.BreakpointCollection
 function BreakpointCollection:atVirtualSource(stability_hash)
@@ -156,7 +157,7 @@ function BreakpointCollection:atVirtualSource(stability_hash)
   end)
 end
 
----NEW: Filter breakpoints by source identifier
+---Filter breakpoints by source identifier (preferred method)
 ---@param source_identifier SourceIdentifier
 ---@return api.BreakpointCollection
 function BreakpointCollection:atSource(source_identifier)
