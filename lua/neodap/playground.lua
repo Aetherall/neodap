@@ -69,6 +69,7 @@ local function go()
   local stack = api:getPluginInstance(StackNavigation)
   local toggleBreakpoint = api:getPluginInstance(ToggleBreakpoint)
   api:getPluginInstance(FrameHighlight)
+  api:getPluginInstance(require("neodap.plugins.DebugMode"))
 
 
   -- DebugMode.plugin(api)
