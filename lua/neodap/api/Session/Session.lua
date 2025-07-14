@@ -7,7 +7,7 @@ local Logger = require("neodap.tools.logger")
 ---@class api.SessionProps
 ---@field id integer
 ---@field ref Session
----@field protected _threads { [integer]: api.Thread? }
+---@field _threads { [integer]: api.Thread? }
 ---@field _sources { [string]: api.Source? }
 ---@field hookable Hookable
 ---@field manager Manager
@@ -213,16 +213,6 @@ function Session:onLoadedSourceRemoved(listener, opts)
     , opts)
 end
 
----@return api.Source?
-function Session:getSourceForPath(path)
-  for _, source in pairs(self._sources) do
-    -- Check if this is a file source with matching path
-    if source.type == 'file' and source:absolutePath() == path then
-      return source
-    end
-  end
-end
-
 ---@generic T
 ---@param predicate fun(source: api.Source): T?
 ---@return T
@@ -234,27 +224,6 @@ function Session:findSource(predicate)
     end
   end
   return nil
-end
-
-
----@deprecated Use getSourceByIdentifier() instead
----@param location api.SourceFilePosition|api.SourceFileLine|api.SourceFile
----@return api.Source?
-function Session:getFileSourceAt(location)
-  -- Legacy compatibility - convert to identifier-based lookup
-  local identifier = location:getSourceIdentifier()
-  if identifier:isFile() then
-    return self:getSourceByIdentifier(identifier)
-  end
-  return nil
-end
-
----@deprecated Use getSourceByIdentifier() instead
----@param identifier VirtualSourceIdentifier
----@return api.Source?
-function Session:getVirtualSourceByIdentifier(identifier)
-  -- Legacy compatibility - delegate to unified method
-  return self:getSourceByIdentifier(identifier)
 end
 
 ---Find source by unified source identifier (preferred method)
@@ -379,7 +348,7 @@ end
 
 ---Get valid breakpoint locations for a source range using DAP's breakpointLocations request
 ---@param source api.Source
----@param line integer
+---@param line? integer
 ---@param column? integer
 ---@return dap.BreakpointLocation[]|nil locations Array of valid breakpoint locations, or nil if not supported
 function Session:getBreakpointLocations(source, line, column)
@@ -403,7 +372,7 @@ function Session:getBreakpointLocations(source, line, column)
   
   local args = {
     source = source.ref,
-    line = line
+    line = line or 0,
     -- Only specify line, not column - let adapter return all valid locations on this line
     -- According to DAP spec: "If only the line is specified, the request returns all possible locations in that line"
   }
@@ -433,16 +402,15 @@ end
 
 ---Find the closest valid breakpoint location to the requested position
 ---@param source api.Source
----@param line integer
----@param column? integer
+---@param opts { line?: integer, column?: integer }
 ---@return { line: integer, column: integer }|nil closest Closest valid location, or nil if none found
-function Session:findClosestBreakpointLocation(source, line, column)
-  local locations = self:getBreakpointLocations(source, line, column)
+function Session:findClosestBreakpointLocation(source, opts)
+  local locations = self:getBreakpointLocations(source, opts.line, opts.column)
   if not locations or #locations == 0 then
     return nil
   end
-  
-  column = column or 0
+
+  opts.column = opts.column or 0
   
   -- Sort locations by column to find the best match
   table.sort(locations, function(a, b) 
@@ -459,7 +427,7 @@ function Session:findClosestBreakpointLocation(source, line, column)
   -- Check if any location is exactly at the requested position
   for _, location in ipairs(locations) do
     local locColumn = location.column or 0
-    if locColumn == column then
+    if locColumn == opts.column then
       return {
         line = location.line,
         column = locColumn

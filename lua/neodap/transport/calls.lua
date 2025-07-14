@@ -10,6 +10,7 @@ local nio = require("nio")
 
 ---@class Calls: CallsProps
 ---@field attach fun(self: Calls, args: dap.AttachRequestArguments): { wait: fun(): nil }
+---@field breakpointLocations fun(self: Calls, args: dap.BreakpointLocationsArguments): { wait: fun(): dap.BreakpointLocationsResponseBody }
 ---@field completions fun(self: Calls, args: dap.CompletionsArguments): { wait: fun(): dap.CompletionsResponseBody }
 ---@field configurationDone fun(self: Calls, args: dap.ConfigurationDoneArguments): { wait: fun(): nil }
 ---@field continue fun(self: Calls, args: dap.ContinueArguments): { wait: fun(): dap.ContinueResponseBody }

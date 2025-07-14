@@ -4,7 +4,7 @@ local Hookable = require("neodap.transport.hookable")
 ---@class api.FileSourceBreakpointProps
 ---@field id string
 ---@field manager api.BreakpointManager
----@field location api.SourceFilePosition
+---@field location api.Location
 ---@field condition? string
 ---@field logMessage? string
 ---@field hookable Hookable
@@ -14,7 +14,7 @@ local Hookable = require("neodap.transport.hookable")
 local FileSourceBreakpoint = Class()
 
 ---@param manager api.BreakpointManager
----@param location api.SourceFilePosition
+---@param location api.Location
 ---@param opts? { condition?: string, logMessage?: string }
 ---@return api.FileSourceBreakpoint
 function FileSourceBreakpoint.atLocation(manager, location, opts)
@@ -36,7 +36,7 @@ function FileSourceBreakpoint.atLocation(manager, location, opts)
   return instance
 end
 
----@return api.SourceFilePosition
+---@return api.Location
 function FileSourceBreakpoint:getLocation()
   return self.location
 end

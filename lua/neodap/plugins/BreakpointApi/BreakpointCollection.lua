@@ -58,7 +58,7 @@ function BreakpointCollection:filter(predicate)
   return filtered
 end
 
----@param location api.SourceFileLine | api.SourceFilePosition
+---@param location api.Location
 ---@return api.BreakpointCollection
 function BreakpointCollection:atLocation(location)
   return self:filter(function(breakpoint)
@@ -89,8 +89,8 @@ function BreakpointCollection:atLocation(location)
 end
 
 ---@param location api.Location
----@param start api.SourceFilePosition
----@param finish api.SourceFilePosition
+---@param start api.Location
+---@param finish api.Location
 ---@return boolean
 function BreakpointCollection:_isLocationBetween(location, start, finish)
   -- Only consider positions in the same source

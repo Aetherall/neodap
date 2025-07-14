@@ -1,25 +1,23 @@
 local Class = require('neodap.tools.class')
 local Logger = require('neodap.tools.logger')
+local VirtualBufferRegistry = require('neodap.api.VirtualBuffer.Registry')
 
----@class SourceIdentifier
+---@class SourceIdentifierProps
 ---@field type 'file' | 'virtual'
+---@field stability_hash? string -- For virtual sources
+---@field path? string -- For file sources
+---@field origin? string -- For virtual sources
+---@field name? string -- For virtual sources
+---@field source_reference? integer -- Optional: for session context
+---@field session_id? integer -- Optional: for session context
+
+---@class SourceIdentifier: SourceIdentifierProps
+---@field new Constructor<SourceIdentifierProps>
 local SourceIdentifier = Class()
-
----@class FileSourceIdentifier: SourceIdentifier
----@field type 'file'
----@field path string -- Absolute file path
-
----@class VirtualSourceIdentifier: SourceIdentifier  
----@field type 'virtual'
----@field stability_hash string -- Cross-session identifier
----@field origin string -- Semantic origin
----@field name string -- Display name
----@field source_reference integer? -- Optional: for session context
----@field session_id integer? -- Optional: for session context
 
 -- Factory: Create from file path or virtual URI
 ---@param path string
----@return FileSourceIdentifier | VirtualSourceIdentifier
+---@return SourceIdentifier
 function SourceIdentifier.fromPath(path)
   -- Check if this is a virtual URI
   if path:match("^virtual://") then
@@ -35,7 +33,7 @@ end
 
 -- Factory: Create from virtual URI (e.g., "virtual://02f68bfe/<node_internals>/internal/timers")
 ---@param uri string
----@return VirtualSourceIdentifier
+---@return SourceIdentifier
 function SourceIdentifier.fromVirtualUri(uri)
   local log = Logger.get()
   
@@ -75,7 +73,7 @@ end
 -- Factory: Create from DAP source (session-independent)
 ---@param dap_source dap.Source
 ---@param session? api.Session
----@return FileSourceIdentifier | VirtualSourceIdentifier
+---@return SourceIdentifier
 function SourceIdentifier.fromDapSource(dap_source, session)
   local log = Logger.get()
   log:debug(vim.inspect(dap_source, { depth = 2 }))
@@ -90,7 +88,7 @@ function SourceIdentifier.fromDapSource(dap_source, session)
       origin = dap_source.origin or 'unknown',
       name = dap_source.name or 'unnamed',
       source_reference = dap_source.sourceReference,
-      session_id = session and session.id
+      session_id = session and session.id,
     })
   elseif dap_source.path and dap_source.path ~= '' then
     -- File source with path
@@ -167,21 +165,6 @@ function SourceIdentifier:toUri()
   end
 end
 
----Sanitize name for use in URIs
----@param name string
----@return string
-function SourceIdentifier:sanitizeName(name)
-  -- Replace problematic characters for URIs
-  local sanitized = name:gsub("[<>:\"/\\|?*]", "-")
-  -- Remove leading/trailing dashes
-  sanitized = sanitized:gsub("^%-+", ""):gsub("%-+$", "")
-  -- Ensure we have something
-  if sanitized == "" then
-    sanitized = "unnamed"
-  end
-  return sanitized
-end
-
 ---Get buffer number for this source (session-independent lookup)
 ---@return integer?
 function SourceIdentifier:bufnr()
@@ -196,9 +179,12 @@ function SourceIdentifier:bufnr()
     return bufnr ~= -1 and bufnr or nil
   else
     -- Virtual source buffer lookup via singleton registry
-    local VirtualBufferRegistry = require('neodap.api.VirtualBuffer.Registry')
     local registry = VirtualBufferRegistry.get()
     
+    if not self.stability_hash then
+      return nil
+    end
+
     -- Try lookup by stability hash first
     local metadata = registry:getBufferByStabilityHash(self.stability_hash)
     return metadata and metadata:isValid() and metadata.bufnr or nil
@@ -221,9 +207,12 @@ end
 ---@return string
 function SourceIdentifier:getDisplayName()
   if self.type == 'file' then
+    if not self.path then
+      return "Unknown File"
+    end
     return vim.fn.fnamemodify(self.path, ':t') -- Just filename
   else
-    return self.name
+    return self.name or string.format("Virtual Source (%s)", self.stability_hash or "unknown")
   end
 end
 

@@ -49,14 +49,10 @@ function ToggleBreakpoint:adjustLocation(location)
       log:debug("Smart placement: found source for location, querying breakpoint locations...")
       
       -- Try to get specific breakpoint locations from DAP adapter
-      local closestLocation = session:findClosestBreakpointLocation(source, location.line, location.column)
+      local closestLocation = session:findClosestBreakpointLocation(source, location)
       if closestLocation then
         -- Create adjusted location based on DAP adapter's response using identifier
-        adjustedLocation = Location.create({
-          source_identifier = location:getSourceIdentifier(),
-          line = closestLocation.line,
-          column = closestLocation.column,
-        })
+        adjustedLocation = location:adjusted(closestLocation)
         
         log:debug("Smart placement: adapter provided valid location at", closestLocation.line, closestLocation.column)
         break

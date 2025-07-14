@@ -134,7 +134,7 @@ function FileSourceBinding:getBreakpoint()
   return self.manager.breakpoints:get(self.breakpointId)
 end
 
----@return api.SourceFilePosition
+---@return api.Location
 function FileSourceBinding:getActualLocation()
   return SourceFilePosition.create({
     path = self.source:absolutePath(),
@@ -143,7 +143,7 @@ function FileSourceBinding:getActualLocation()
   })
 end
 
----@return api.SourceFilePosition
+---@return api.Location
 function FileSourceBinding:getRequestedLocation()
   return SourceFilePosition.create({
     path = self.source:absolutePath(),
