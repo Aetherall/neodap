@@ -53,13 +53,6 @@ function SourceIdentifier.fromVirtualUri(uri)
     origin = "eval"
   end
   
-  log:debug("SourceIdentifier.fromVirtualUri: Parsed", {
-    uri = uri,
-    stability_hash = stability_hash,
-    name = name,
-    origin = origin
-  })
-  
   return SourceIdentifier:new({
     type = 'virtual',
     stability_hash = stability_hash,
@@ -71,10 +64,14 @@ function SourceIdentifier.fromVirtualUri(uri)
 end
 
 -- Factory: Create from DAP source (session-independent)
----@param dap_source dap.Source
+---@param dap_source? dap.Source
 ---@param session? api.Session
----@return SourceIdentifier
+---@return SourceIdentifier?
 function SourceIdentifier.fromDapSource(dap_source, session)
+  if not dap_source then
+    return nil -- No source provided
+  end
+  
   local log = Logger.get()
   log:debug(vim.inspect(dap_source, { depth = 2 }))
   
@@ -94,7 +91,7 @@ function SourceIdentifier.fromDapSource(dap_source, session)
     -- File source with path
     return SourceIdentifier.fromPath(dap_source.path)
   else
-    error("Cannot create SourceIdentifier from DAP source without path or sourceReference")
+    return nil
   end
 end
 
@@ -201,33 +198,6 @@ end
 ---@return boolean
 function SourceIdentifier:isVirtual()
   return self.type == 'virtual'
-end
-
----Get display name for UI purposes
----@return string
-function SourceIdentifier:getDisplayName()
-  if self.type == 'file' then
-    if not self.path then
-      return "Unknown File"
-    end
-    return vim.fn.fnamemodify(self.path, ':t') -- Just filename
-  else
-    return self.name or string.format("Virtual Source (%s)", self.stability_hash or "unknown")
-  end
-end
-
----Get a debug-friendly representation
----@return string
-function SourceIdentifier:debug()
-  if self.type == 'file' then
-    return string.format("FileSource(%s)", self.path)
-  else
-    return string.format("VirtualSource(%s, %s, ref=%s)", 
-      self.stability_hash, 
-      self.origin,
-      self.source_reference or "none"
-    )
-  end
 end
 
 return SourceIdentifier

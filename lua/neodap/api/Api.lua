@@ -1,6 +1,7 @@
 local Class = require("neodap.tools.class")
 local Session = require("neodap.api.Session.Session")
 local Hookable = require("neodap.transport.hookable")
+local VirtualBuffer = require('neodap.api.VirtualBuffer')
 
 ---@class ApiProps
 ---@field sessions { [integer]: api.Session }
@@ -16,7 +17,6 @@ local Api = Class()
 
 ---@return Api
 function Api.register(manager)
-  local VirtualBuffer = require('neodap.api.VirtualBuffer')
   local registry = VirtualBuffer.createRegistry()
   
   local instance = Api:new({

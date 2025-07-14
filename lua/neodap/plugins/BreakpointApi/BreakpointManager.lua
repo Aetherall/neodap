@@ -41,7 +41,7 @@ end
 ---@return api.FileSourceBreakpoint
 function BreakpointManager:addBreakpoint(location, opts)
   local log = Logger.get()
-  local identifier = location:getSourceIdentifier()
+  local identifier = location.id
   log:info("BreakpointManager:addBreakpoint called for location:", identifier:toString(), location.line)
   
   -- Check for existing breakpoint
@@ -85,7 +85,7 @@ function BreakpointManager:removeBreakpoint(breakpoint)
   end
   
   -- Queue sync for all affected sessions
-  local identifier = breakpoint.location:getSourceIdentifier()
+  local identifier = breakpoint.location.id
   for session in self.api:eachSession() do
     local source = session:getSourceByIdentifier(identifier)
     if source then
@@ -113,7 +113,7 @@ end
 ---@param breakpoint api.FileSourceBreakpoint
 function BreakpointManager:resyncBreakpoint(breakpoint)
   -- Queue sync for all sessions that have this source
-  local identifier = breakpoint.location:getSourceIdentifier()
+  local identifier = breakpoint.location.id
   for session in self.api:eachSession() do
     local source = session:getSourceByIdentifier(identifier)
     if source then
