@@ -1,6 +1,5 @@
 local Class = require('neodap.tools.class')
 local Logger = require('neodap.tools.logger')
-local nio = require('nio')
 local SourceIdentifier = require('neodap.api.Location.SourceIdentifier')
 
 ---@class api.SourceProps
@@ -40,24 +39,6 @@ end
 ---@return boolean
 function Source:isFile()
   return not self:isVirtual() and self.ref.path and self.ref.path ~= ''
-end
-
-
--- Core Consumer Methods
-
----Get session-independent identifier for this source
----@return SourceIdentifier
-function Source:identifier()
-  if not self._identifier then
-    if self:isVirtual() then
-      self._identifier = SourceIdentifier.fromDapSource(self.ref, self.session)
-    elseif self:isFile() then
-      self._identifier = SourceIdentifier.fromPath(self.ref.path)
-    else
-      error("Source: Cannot create identifier without path or sourceReference")
-    end
-  end
-  return self._identifier
 end
 
 -- REMOVED: Source:bufnr() - session-scoped objects cannot manage persistent buffers

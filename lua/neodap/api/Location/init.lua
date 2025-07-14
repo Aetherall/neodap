@@ -45,7 +45,7 @@ end
 ---@return api.Location
 function Location.fromSource(source, opts)
   return Location.create({
-    sourceId = source:identifier(),
+    sourceId = source.id,
     line = opts.line,
     column = opts.column,
   })
