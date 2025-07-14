@@ -43,8 +43,8 @@ Test.Describe("BreakpointVirtualText (New Architecture)", function()
     
     api:onSession(function(session)
       session:onSourceLoaded(function(source)
-        local filesource = source:asFile()
-        if filesource and filesource:filename() == "loop.js" then
+        -- Direct source usage - source is already file type
+        if source and source:filename() == "loop.js" then
           -- Start session first, then use breakpointLocations to find exact valid position
           session:onInitialized(function()
             -- Get valid breakpoint locations first
@@ -53,13 +53,13 @@ Test.Describe("BreakpointVirtualText (New Architecture)", function()
               -- Use the first valid location
               local validLoc = locations[1]
               if validLoc then
-                filesource:addBreakpoint({ line = validLoc.line, column = validLoc.column or 0 })
+                source:addBreakpoint({ line = validLoc.line, column = validLoc.column or 0 })
               else
-                filesource:addBreakpoint({ line = 3, column = 0 })
+                source:addBreakpoint({ line = 3, column = 0 })
               end
             else
               -- Fallback to line start
-              filesource:addBreakpoint({ line = 3, column = 0 })
+              source:addBreakpoint({ line = 3, column = 0 })
             end
           end, { once = true })
         end
@@ -105,10 +105,10 @@ Test.Describe("BreakpointVirtualText (New Architecture)", function()
     
     api:onSession(function(session)
       session:onSourceLoaded(function(source)
-        local filesource = source:asFile()
-        if filesource and filesource:filename() == "loop.js" then
+        -- Direct source usage - source is already file type
+        if source and source:filename() == "loop.js" then
           -- Set breakpoint at column 0, DAP will move it to column 2
-          filesource:addBreakpoint({ line = 3, column = 0 })
+          source:addBreakpoint({ line = 3, column = 0 })
         end
       end)
     end)
@@ -155,11 +155,11 @@ Test.Describe("BreakpointVirtualText (New Architecture)", function()
     
     api:onSession(function(session)
       session:onSourceLoaded(function(source)
-        local filesource = source:asFile()
-        if filesource and filesource:filename() == "loop.js" then
+        -- Direct source usage - source is already file type
+        if source and source:filename() == "loop.js" then
           -- With smart placement, both will be created at column 0 and adjusted by DAP
-          filesource:addBreakpoint({ line = 4, column = 2 }) -- Smart placement will adjust to column 0
-          filesource:addBreakpoint({ line = 5, column = 0 }) -- Already at column 0
+          source:addBreakpoint({ line = 4, column = 2 }) -- Smart placement will adjust to column 0
+          source:addBreakpoint({ line = 5, column = 0 }) -- Already at column 0
         end
       end)
     end)
@@ -207,10 +207,10 @@ Test.Describe("BreakpointVirtualText (New Architecture)", function()
     
     api:onSession(function(session)
       session:onSourceLoaded(function(source)
-        local filesource = source:asFile()
-        if filesource and filesource:filename() == "loop.js" then
+        -- Direct source usage - source is already file type
+        if source and source:filename() == "loop.js" then
           -- Add breakpoint
-          filesource:addBreakpoint({ line = 3 })
+          source:addBreakpoint({ line = 3 })
         end
       end)
     end)
@@ -288,9 +288,9 @@ Test.Describe("BreakpointVirtualText (New Architecture)", function()
     
     api:onSession(function(session)
       session:onSourceLoaded(function(source)
-        local filesource = source:asFile()
-        if filesource and filesource:filename() == "loop.js" then
-          filesource:addBreakpoint({ line = 3 })
+        -- Direct source usage - source is already file type
+        if source and source:filename() == "loop.js" then
+          source:addBreakpoint({ line = 3 })
         end
       end)
     end)
@@ -371,9 +371,9 @@ Test.Describe("BreakpointVirtualText (New Architecture)", function()
     
     api:onSession(function(session)
       session:onSourceLoaded(function(source)
-        local filesource = source:asFile()
-        if filesource and filesource:filename() == "loop.js" then
-          filesource:addBreakpoint({ line = 3 })
+        -- Direct source usage - source is already file type
+        if source and source:filename() == "loop.js" then
+          source:addBreakpoint({ line = 3 })
         end
       end)
     end)
@@ -505,7 +505,7 @@ Test.Describe("BreakpointVirtualText (New Architecture)", function()
       end)
       
       session:onSourceLoaded(function(source)
-        local fileSource = source:asFile()
+        -- Direct source usage - source is already file type
         if fileSource and fileSource:filename() == "loop.js" then
           sourceLoaded.trigger()
         end

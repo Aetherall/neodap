@@ -173,20 +173,10 @@ function StackNavigation:_frameMatchesLocation(frame, cursor_location, cursor_bu
   end
   
   -- Create location for frame position
-  local frame_location
-  if source_obj:isFile() then
-    frame_location = Location.fromSource(source_obj, {
-      line = frame.ref.line,
-      column = frame.ref.column or 1
-    })
-  elseif source_obj:isVirtual() then
-    frame_location = Location.fromVirtualSource(source_obj, {
-      line = frame.ref.line, 
-      column = frame.ref.column or 1
-    })
-  else
-    return false
-  end
+  local frame_location = Location.fromSource(source_obj, {
+    line = frame.ref.line,
+    column = frame.ref.column or 1
+  })
   
   local frame_bufnr = frame_location:bufnr()
   if frame_bufnr ~= cursor_bufnr then
@@ -213,20 +203,10 @@ function StackNavigation:_frameInSameBuffer(frame, cursor_bufnr)
   end
   
   -- Create location for frame (just need buffer check)
-  local frame_location
-  if source_obj:isFile() then
-    frame_location = Location.fromSource(source_obj, {
-      line = frame.ref.line or 1,
-      column = 1
-    })
-  elseif source_obj:isVirtual() then
-    frame_location = Location.fromVirtualSource(source_obj, {
-      line = frame.ref.line or 1,
-      column = 1  
-    })
-  else
-    return false
-  end
+  local frame_location = Location.fromSource(source_obj, {
+    line = frame.ref.line or 1,
+    column = 1
+  })
   
   local frame_bufnr = frame_location:bufnr()
   return frame_bufnr == cursor_bufnr

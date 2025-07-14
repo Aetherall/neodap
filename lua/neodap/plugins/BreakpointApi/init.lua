@@ -20,15 +20,7 @@ local BreakpointApi = {
   plugin = function(api)
     local manager = BreakpointManagerImpl.create(api)
 
-    
-    ---@class (partial) api.BaseSource
-    ---@field addBreakpoint fun(self: api.BaseSource, opts: { line: integer, column: integer? }): api.FileSourceBreakpoint
-
-    function BaseSource:addBreakpoint(opts)
-      local location = Location.SourceFile.fromSource(self, opts)
-      return manager:addBreakpoint(location)
-    end
-    
+    -- No longer modifying BaseSource prototype - use manager directly
 
     return {
       onBreakpoint = function(callback)

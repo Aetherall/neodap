@@ -343,7 +343,8 @@ function BreakpointManager:listen()
       end
 
       local sourcefile = location:SourceFile()
-      local source = session:getFileSourceAt(sourcefile)
+      local identifier = sourcefile:getSourceIdentifier()
+      local source = session:getSourceByIdentifier(identifier)
       if source then
         self:queueSourceSync(source, session)
       end

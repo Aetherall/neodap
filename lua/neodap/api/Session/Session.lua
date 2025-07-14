@@ -217,8 +217,8 @@ end
 ---@return api.Source?
 function Session:getSourceForPath(path)
   for _, source in pairs(self._sources) do
-    local filesource = source:asFile()
-    if filesource and filesource:absolutePath() == path then
+    -- Check if this is a file source with matching path
+    if source.type == 'file' and source:absolutePath() == path then
       return source
     end
   end

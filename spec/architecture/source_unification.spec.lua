@@ -22,8 +22,8 @@ Test.Describe("Source Unification", function()
     -- Should be a UnifiedSource but with legacy file type
     assert(source ~= nil, "Source should be created")
     assert(source.type == "file", "Should have legacy file type")
-    assert(source:isFile(), "Should identify as file source")
-    assert(not source:isVirtual(), "Should not identify as virtual source")
+    assert(source.type == 'file', "Should identify as file source")
+    assert(source.type ~= 'virtual', "Should not identify as virtual source")
     
     -- Should have unified API
     local identifier = source:identifier()
@@ -56,8 +56,8 @@ Test.Describe("Source Unification", function()
     -- Should be a UnifiedSource but with legacy virtual type
     assert(source ~= nil, "Source should be created")
     assert(source.type == "virtual", "Should have legacy virtual type")
-    assert(not source:isFile(), "Should not identify as file source")
-    assert(source:isVirtual(), "Should identify as virtual source")
+    assert(source.type ~= 'file', "Should not identify as file source")
+    assert(source.type == 'virtual', "Should identify as virtual source")
     
     -- Should have unified API
     local identifier = source:identifier()

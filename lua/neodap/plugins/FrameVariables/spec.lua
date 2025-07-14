@@ -17,9 +17,9 @@ Test.Describe("FrameVariables plugin", function()
     
     api:onSession(function(session)
       session:onSourceLoaded(function(source)
-        local filesource = source:asFile()
-        if filesource and filesource:filename() == "loop.js" then
-          filesource:addBreakpoint({ line = 3 })
+        -- Direct source usage - source is already file type
+        if source and source:filename() == "loop.js" then
+          source:addBreakpoint({ line = 3 })
         end
       end)
       
@@ -71,9 +71,9 @@ Test.Describe("FrameVariables plugin", function()
     
     api:onSession(function(session)
       session:onSourceLoaded(function(source)
-        local filesource = source:asFile()
-        if filesource and filesource:filename() == "loop.js" then
-          filesource:addBreakpoint({ line = 3 })
+        -- Direct source usage - source is already file type
+        if source and source:filename() == "loop.js" then
+          source:addBreakpoint({ line = 3 })
         end
       end)
       
@@ -283,9 +283,9 @@ Test.Describe("FrameVariables plugin", function()
     
     api:onSession(function(session)
       session:onSourceLoaded(function(source)
-        local filesource = source:asFile()
-        if filesource and filesource:filename() == "loop.js" then
-          filesource:addBreakpoint({ line = 3 })
+        -- Direct source usage - source is already file type
+        if source and source:filename() == "loop.js" then
+          source:addBreakpoint({ line = 3 })
         end
       end)
       

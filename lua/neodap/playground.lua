@@ -141,13 +141,14 @@ local function go()
 
   api:onSession(function(session)
     session:onSourceLoaded(function(source)
-      local filesource = source:asFile()
-      if not filesource then
-        return -- Not a file source, nothing to do
-      end
-
-      if filesource:filename() == "loop.js" then
-        filesource:addBreakpoint({ line = 3 })
+      -- Only process file sources
+      if source.type == 'file' then
+        if source:filename() == "loop.js" then
+          -- Use BreakpointApi to add breakpoint
+          local Location = require('neodap.api.Location')
+          local location = Location.SourceFile.fromSource(source, { line = 3 })
+          breakpoint_service:setBreakpoint(location)
+        end
       end
     end)
   end)

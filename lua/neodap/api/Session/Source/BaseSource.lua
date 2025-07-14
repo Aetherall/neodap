@@ -1,6 +1,6 @@
 local Class = require('neodap.tools.class')
 local ContentAccessTrait = require('neodap.api.Session.Source.traits.ContentAccessTrait')
-local Location = require("neodap.api.Location")
+-- Location dependency removed - use dependency injection instead
 local nio = require('nio')
 local Logger = require("neodap.tools.logger")
 
@@ -14,47 +14,7 @@ local Logger = require("neodap.tools.logger")
 ---@field new Constructor<api.BaseSourceProps>
 local BaseSource = ContentAccessTrait.extend(Class())
 
----@return_cast self api.VirtualSource
-function BaseSource:isVirtual()
-  return self.type == 'virtual'
-end
-
----@deprecated Legacy compatibility - UnifiedSource supports all types
----@return api.Source?
-function BaseSource:asVirtual()
-  if not self:isVirtual() then
-    return nil
-  end
-  return self
-end
-
----@return_cast self api.FileSource
-function BaseSource:isFile()
-  return self.type == 'file'
-end
-
----@deprecated Legacy compatibility - UnifiedSource supports all types
----@return api.Source?
-function BaseSource:asFile()
-  if not self:isFile() then
-    return nil
-  end
-  return self
-end
-
----@return_cast self api.GenericSource
-function BaseSource:isGeneric()
-  return self.type == 'generic'
-end
-
----@deprecated Legacy compatibility - UnifiedSource supports all types
----@return api.Source?
-function BaseSource:asGeneric()
-  if not self:isGeneric() then
-    return nil
-  end
-  return self
-end
+-- Legacy type checking methods removed - use source.type directly
 
 ---Create a unique identifier for this source, or nil if unidentifiable
 ---@return string | nil
@@ -188,9 +148,9 @@ end
 
 ---@return number | nil
 function BaseSource:bufnr()
-  if self:isFile() then
+  if self.type == 'file' then
     return vim.uri_to_bufnr(vim.uri_from_fname(self.ref.path))
-  elseif self:isVirtual() then
+  elseif self.type == 'virtual' then
     -- Virtual source buffer handling (synchronous)
     ---@cast self api.VirtualSource
     return self:bufnr()

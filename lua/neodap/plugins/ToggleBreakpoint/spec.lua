@@ -31,8 +31,8 @@ Test.Describe("ToggleBreakpoint plugin", function()
       end)
       
       session:onSourceLoaded(function(source)
-        local fileSource = source:asFile()
-        if fileSource and fileSource:filename() == "loop.js" then
+        -- Direct source usage - source is already file type
+        if source and source:filename() == "loop.js" then
           sourceLoaded.trigger()
         end
       end)
@@ -112,8 +112,8 @@ Test.Describe("ToggleBreakpoint plugin", function()
       end)
       
       session:onSourceLoaded(function(source)
-        local fileSource = source:asFile()
-        if fileSource and fileSource:filename() == "loop.js" then
+        -- Direct source usage - source is already file type
+        if source and source:filename() == "loop.js" then
           sourceLoaded.trigger()
         end
       end)

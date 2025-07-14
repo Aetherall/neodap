@@ -117,7 +117,7 @@ function Frame:jump()
   -- Log successful jump for debugging
   local Logger = require('neodap.tools.logger')
   local log = Logger.get()
-  log:debug("Frame:jump - Successfully jumped to", source_obj:isVirtual() and "virtual" or "file", "source", 
+  log:debug("Frame:jump - Successfully jumped to", source_obj.type == 'virtual' and "virtual" or "file", "source", 
             source.name or "unnamed", "at line", safe_line, "column", safe_column + 1)
 end
 
@@ -137,7 +137,7 @@ function Frame:highlight(namespace, hl_group)
   
   local bufnr = nil
   
-  if source_obj:isFile() then
+  if source_obj.type == 'file' then
     -- Handle file sources
     local Location = require('neodap.api.Location')
     local location = Location.fromSource(source_obj, {
@@ -146,7 +146,7 @@ function Frame:highlight(namespace, hl_group)
     })
     bufnr = location:bufnr()
     
-  elseif source_obj:isVirtual() then
+  elseif source_obj.type == 'virtual' then
     -- Handle virtual sources - ensure buffer is created with DAP content
     bufnr = source_obj:bufnr() -- This triggers DAP content loading
     
