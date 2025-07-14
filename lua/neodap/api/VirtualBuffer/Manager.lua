@@ -184,6 +184,8 @@ function VirtualBufferManager.detectFiletype(name, origin, content)
     return "typescriptreact"
   elseif origin and origin:match("eval") then
     return "javascript" -- Common case for eval code
+  elseif name:match("node") then
+    return "javascript"
   end
   
   -- Content-based detection as fallback

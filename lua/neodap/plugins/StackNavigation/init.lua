@@ -156,6 +156,15 @@ function StackNavigation:_detectRelevantThread()
   return fallback.thread, fallback.position
 end
 
+function StackNavigation:_getThreadById(thread_id)
+  for session in self.api:eachSession() do
+    local thread = session._threads[thread_id]
+    if thread then
+      return thread
+    end
+  end
+end
+
 -- Public Navigation API
 
 ---Move up the call stack (towards caller)
