@@ -119,9 +119,9 @@ Test.Describe("Source Unification", function()
       name = "test.js"
     })
     
-    assert(fileSource.contentStrategy ~= nil, "Should have content strategy")
-    assert(fileSource.identifierStrategy ~= nil, "Should have identifier strategy")
-    assert(fileSource.bufferStrategy ~= nil, "Should have buffer strategy")
+    assert(fileSource._contentType == 'file', "Should have file content type")
+    assert(fileSource._identifierType == 'path', "Should have path identifier type")
+    assert(fileSource._bufferType == 'file', "Should have file buffer type")
     
     -- Test virtual source strategies
     local virtualSource = Source.instanciate(session, {
@@ -130,9 +130,9 @@ Test.Describe("Source Unification", function()
       origin = "eval"
     })
     
-    assert(virtualSource.contentStrategy ~= nil, "Should have content strategy")
-    assert(virtualSource.identifierStrategy ~= nil, "Should have identifier strategy")
-    assert(virtualSource.bufferStrategy ~= nil, "Should have buffer strategy")
+    assert(virtualSource._contentType == 'virtual', "Should have virtual content type")
+    assert(virtualSource._identifierType == 'virtual', "Should have virtual identifier type")
+    assert(virtualSource._bufferType == 'virtual', "Should have virtual buffer type")
     
     -- Test hybrid source strategies
     local hybridSource = Source.instanciate(session, {
@@ -142,8 +142,8 @@ Test.Describe("Source Unification", function()
       origin = "sourcemap"
     })
     
-    assert(hybridSource.contentStrategy ~= nil, "Should have content strategy")
-    assert(hybridSource.identifierStrategy ~= nil, "Should have identifier strategy")
-    assert(hybridSource.bufferStrategy ~= nil, "Should have buffer strategy")
+    assert(hybridSource._contentType == 'hybrid', "Should have hybrid content type")
+    assert(hybridSource._identifierType == 'hybrid', "Should have hybrid identifier type")
+    assert(hybridSource._bufferType == 'hybrid', "Should have hybrid buffer type")
   end)
 end)

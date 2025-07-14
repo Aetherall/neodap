@@ -12,43 +12,32 @@ local Location = {}
 ---@return api.SourceFilePosition | api.SourceFileLine | api.SourceFile
 function Location.fromSource(source, opts)
   local identifier = source:identifier()
-  return Location.createWithIdentifier({
+  return Location.create({
     source_identifier = identifier,
     line = opts.line,
     column = opts.column,
   })
 end
 
----NEW: Create location with source identifier
----@param opts { source_identifier: SourceIdentifier, line?: integer, column?: integer }
----@return api.SourceFilePosition | api.SourceFileLine | api.SourceFile
-function Location.createWithIdentifier(opts)
-  local base_opts = {
-    source_identifier = opts.source_identifier,
-    line = opts.line,
-    column = opts.column
-  }
-  
-  if opts.line and opts.column then
-    return SourceFilePosition.createWithIdentifier(base_opts)
-  elseif opts.line then
-    return SourceFileLine.createWithIdentifier(base_opts)
-  else
-    return SourceFile.createWithIdentifier(base_opts)
-  end
-end
-
 ---Enhanced create method supporting both path and source_identifier
 ---@param opts { path?: string, source_identifier?: SourceIdentifier, line?: integer, column?: integer }
 ---@return api.SourceFilePosition | api.SourceFileLine | api.SourceFile
 function Location.create(opts)
-  -- Handle new source_identifier parameter
+  -- Handle source_identifier parameter
   if opts.source_identifier then
-    return Location.createWithIdentifier({
+    local base_opts = {
       source_identifier = opts.source_identifier,
       line = opts.line,
       column = opts.column
-    })
+    }
+    
+    if opts.line and opts.column then
+      return SourceFilePosition.createWithIdentifier(base_opts)
+    elseif opts.line then
+      return SourceFileLine.createWithIdentifier(base_opts)
+    else
+      return SourceFile.createWithIdentifier(base_opts)
+    end
   end
   
   -- Backward compatibility: path-based creation
