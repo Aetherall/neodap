@@ -1,5 +1,5 @@
 local Test = require("spec.helpers.testing")(describe, it)
-local Source = require("neodap.api.Session.Source.Source")
+local Source = require("neodap.api.Session.Source")
 
 Test.Describe("Source Unification", function()
   Test.It("creates_unified_file_source", function()
@@ -19,11 +19,10 @@ Test.Describe("Source Unification", function()
     
     local source = Source.instanciate(session, dapSource)
     
-    -- Should be a UnifiedSource but with legacy file type
+    -- Should be a Source with file characteristics
     assert(source ~= nil, "Source should be created")
-    assert(source.type == "file", "Should have legacy file type")
-    assert(source.type == 'file', "Should identify as file source")
-    assert(source.type ~= 'virtual', "Should not identify as virtual source")
+    assert(source:isFile(), "Should identify as file source")
+    assert(not source:isVirtual(), "Should not identify as virtual source")
     
     -- Should have unified API
     local identifier = source:identifier()
@@ -53,11 +52,10 @@ Test.Describe("Source Unification", function()
     
     local source = Source.instanciate(session, dapSource)
     
-    -- Should be a UnifiedSource but with legacy virtual type
+    -- Should be a Source with virtual characteristics
     assert(source ~= nil, "Source should be created")
-    assert(source.type == "virtual", "Should have legacy virtual type")
-    assert(source.type ~= 'file', "Should not identify as file source")
-    assert(source.type == 'virtual', "Should identify as virtual source")
+    assert(source:isVirtual(), "Should identify as virtual source")
+    assert(not source:isFile(), "Should not identify as file source")
     
     -- Should have unified API
     local identifier = source:identifier()
@@ -88,9 +86,9 @@ Test.Describe("Source Unification", function()
     
     local source = Source.instanciate(session, dapSource)
     
-    -- Should be a UnifiedSource with virtual type (priority in legacy logic)
+    -- Should be a Source with virtual type (sourceReference takes priority)
     assert(source ~= nil, "Source should be created")
-    assert(source.type == "virtual", "Should have legacy virtual type due to sourceReference priority")
+    assert(source:isVirtual(), "Should identify as virtual due to sourceReference priority")
     
     -- Should have unified API that handles both aspects
     local identifier = source:identifier()
@@ -104,7 +102,7 @@ Test.Describe("Source Unification", function()
     assert(type(source) == "table", "Should be UnifiedSource instance")
   end)
   
-  Test.It("handles_source_strategies", function()
+  Test.It("handles_simplified_source_behavior", function()
     -- Mock session (minimal for source creation)
     local session = {
       id = 999,
@@ -113,28 +111,26 @@ Test.Describe("Source Unification", function()
       }
     }
     
-    -- Test file source strategies
+    -- Test file source behavior
     local fileSource = Source.instanciate(session, {
       path = "/tmp/test.js",
       name = "test.js"
     })
     
-    assert(fileSource._contentType == 'file', "Should have file content type")
-    assert(fileSource._identifierType == 'path', "Should have path identifier type")
-    assert(fileSource._bufferType == 'file', "Should have file buffer type")
+    assert(fileSource:isFile(), "Should identify as file source")
+    assert(not fileSource:isVirtual(), "Should not identify as virtual source")
     
-    -- Test virtual source strategies
+    -- Test virtual source behavior
     local virtualSource = Source.instanciate(session, {
       sourceReference = 123,
       name = "eval.js",
       origin = "eval"
     })
     
-    assert(virtualSource._contentType == 'virtual', "Should have virtual content type")
-    assert(virtualSource._identifierType == 'virtual', "Should have virtual identifier type")
-    assert(virtualSource._bufferType == 'virtual', "Should have virtual buffer type")
+    assert(virtualSource:isVirtual(), "Should identify as virtual source")
+    assert(not virtualSource:isFile(), "Should not identify as file source")
     
-    -- Test hybrid source strategies
+    -- Test hybrid source behavior (sourceReference takes priority)
     local hybridSource = Source.instanciate(session, {
       path = "/tmp/transpiled.js",
       sourceReference = 456,
@@ -142,8 +138,7 @@ Test.Describe("Source Unification", function()
       origin = "sourcemap"
     })
     
-    assert(hybridSource._contentType == 'hybrid', "Should have hybrid content type")
-    assert(hybridSource._identifierType == 'hybrid', "Should have hybrid identifier type")
-    assert(hybridSource._bufferType == 'hybrid', "Should have hybrid buffer type")
+    assert(hybridSource:isVirtual(), "Should identify as virtual when sourceReference > 0")
+    assert(not hybridSource:isFile(), "Should not identify as file when sourceReference > 0")
   end)
 end)

@@ -1,6 +1,6 @@
 local Class = require("neodap.tools.class")
 local Thread = require("neodap.api.Session.Thread")
-local Source = require('neodap.api.Session.Source.Source')
+local Source = require('neodap.api.Session.Source')
 local Hookable = require("neodap.transport.hookable")
 local Logger = require("neodap.tools.logger")
 

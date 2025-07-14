@@ -1,7 +1,7 @@
 local Class = require('neodap.tools.class')
 local Hookable = require("neodap.transport.hookable")
 local nio = require("nio")
-local SourceFilePosition = require("neodap.api.Location.SourceFilePosition")
+local Location = require("neodap.api.Location")
 
 ---@class api.FileSourceBindingProps
 ---@field manager api.BreakpointManager
@@ -136,8 +136,7 @@ end
 
 ---@return api.Location
 function FileSourceBinding:getActualLocation()
-  return SourceFilePosition.create({
-    path = self.source:absolutePath(),
+  return Location.fromSource(self.source, {
     line = self.actualLine or self.line,
     column = self.actualColumn or self.column,
   })
@@ -145,8 +144,7 @@ end
 
 ---@return api.Location
 function FileSourceBinding:getRequestedLocation()
-  return SourceFilePosition.create({
-    path = self.source:absolutePath(),
+  return Location.fromSource(self.source, {
     line = self.line,
     column = self.column,
   })

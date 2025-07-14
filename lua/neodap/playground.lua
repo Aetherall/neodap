@@ -142,7 +142,7 @@ local function go()
   api:onSession(function(session)
     session:onSourceLoaded(function(source)
       -- Only process file sources
-      if source.type == 'file' then
+      if source:isFile() then
         if source:filename() == "loop.js" then
           -- Use ToggleBreakpoint plugin to add breakpoint
           local Location = require('neodap.api.Location')

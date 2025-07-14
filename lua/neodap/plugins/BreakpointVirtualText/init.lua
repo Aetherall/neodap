@@ -72,7 +72,6 @@ return {
         breakpoint.location:unmark(ns)
       end)
 
-      breakpoint.location:SourceFile():deferUntilLoaded()
       breakpoint.location:mark(ns, mark)
     end)
 
