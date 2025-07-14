@@ -16,6 +16,7 @@ local NvimAsync = require("neodap.tools.async")
 ---@field priority number
 ---@field once boolean
 ---@field preemptible boolean
+---@field destroyed boolean
 
 ---@class Hook: HookProps
 ---@field new Constructor<{}>

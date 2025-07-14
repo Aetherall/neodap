@@ -150,4 +150,8 @@ function SourceIdentifier:isVirtual()
   return self.type == 'virtual'
 end
 
+function SourceIdentifier:getId()
+  return self
+end
+
 return SourceIdentifier

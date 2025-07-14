@@ -48,7 +48,7 @@ Test.Describe("BreakpointVirtualText (New Architecture)", function()
           -- Start session first, then use breakpointLocations to find exact valid position
           session:onInitialized(function()
             -- Get valid breakpoint locations first
-            local locations = session:getBreakpointLocations(filesource, 3, 0)
+            local locations = session:getBreakpointLocations(source, 3, 0)
             if locations and #locations > 0 then
               -- Use the first valid location
               local validLoc = locations[1]
@@ -340,7 +340,7 @@ Test.Describe("BreakpointVirtualText (New Architecture)", function()
     local breakpoint_hit = Test.spy('breakpoint_hit')
     local breakpoint_removed = Test.spy('breakpoint_removed')
     
-    --- @type api.FileSourceBreakpoint?
+    --- @type api.Breakpoint?
     local bp = nil
     
     breakpoints.onBreakpoint(function(breakpoint)

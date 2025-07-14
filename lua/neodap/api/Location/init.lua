@@ -52,14 +52,15 @@ function Location.fromSource(source, opts)
 end
 
 ---Create location from DAP binding
+---@param session api.Session
 ---@param dapBinding dap.Breakpoint
 ---@return api.Location | nil
-function Location.fromDapBinding(dapBinding)
-  local identifier = SourceIdentifier.fromDapSource(dapBinding.source)
-  
-  if not identifier then
-    return nil -- Cannot identify this source
+function Location.fromDapBinding(session, dapBinding)
+  if not dapBinding.source then
+    return nil
   end
+
+  local identifier = SourceIdentifier.fromDapSource(dapBinding.source, session)
 
   return Location.create({
     sourceId = identifier,
@@ -130,8 +131,7 @@ function Location:toUri()
   -- Location handles physical addressing in the material world
   if self.id:isFile() then
     if not self.id.path then
-      local log = Logger.get()
-      log:error("Location:toUri - File identifier missing path field")
+      Logger.get():error("Location: File identifier missing path field")
       return ""
     end
     return vim.uri_from_fname(self.id.path)
@@ -231,7 +231,7 @@ function Location:_getOrCreateVirtualBuffer(session)
   end
   
   -- Need to create new buffer - get content from session
-  local source = session:getSourceByIdentifier(self.id)
+  local source = session:getSource(self.id)
   if not source then
     log:error("Location: No source found for virtual buffer creation")
     return nil
@@ -335,6 +335,11 @@ function Location:unmark(ns)
     local id = extmark[1]
     vim.api.nvim_buf_del_extmark(bufnr, ns, id)
   end
+end
+
+
+function Location:getId()
+  return self.id
 end
 
 return Location

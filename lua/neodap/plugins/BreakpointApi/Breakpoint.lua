@@ -1,7 +1,7 @@
 local Class = require('neodap.tools.class')
 local Hookable = require("neodap.transport.hookable")
 
----@class api.FileSourceBreakpointProps
+---@class api.BreakpointProps
 ---@field id string
 ---@field manager api.BreakpointManager
 ---@field location api.Location
@@ -9,20 +9,20 @@ local Hookable = require("neodap.transport.hookable")
 ---@field logMessage? string
 ---@field hookable Hookable
 
----@class api.FileSourceBreakpoint: api.FileSourceBreakpointProps
----@field new Constructor<api.FileSourceBreakpointProps>
-local FileSourceBreakpoint = Class()
+---@class api.Breakpoint: api.BreakpointProps
+---@field new Constructor<api.BreakpointProps>
+local Breakpoint = Class()
 
 ---@param manager api.BreakpointManager
 ---@param location api.Location
 ---@param opts? { condition?: string, logMessage?: string }
----@return api.FileSourceBreakpoint
-function FileSourceBreakpoint.atLocation(manager, location, opts)
+---@return api.Breakpoint
+function Breakpoint.atLocation(manager, location, opts)
   opts = opts or {}
   
   -- print("BREAKPOINT_LIFECYCLE: Creating breakpoint with location:", location and location.key or "NIL")
   
-  local instance = FileSourceBreakpoint:new({
+  local instance = Breakpoint:new({
     id = location.key,
     manager = manager,
     location = location,
@@ -37,12 +37,12 @@ function FileSourceBreakpoint.atLocation(manager, location, opts)
 end
 
 ---@return api.Location
-function FileSourceBreakpoint:getLocation()
+function Breakpoint:getLocation()
   return self.location
 end
 
 ---@param condition? string
-function FileSourceBreakpoint:setCondition(condition)
+function Breakpoint:setCondition(condition)
   if self.condition ~= condition then
     self.condition = condition
     self:emit('ConditionChanged', condition)
@@ -52,7 +52,7 @@ function FileSourceBreakpoint:setCondition(condition)
 end
 
 ---@param logMessage? string
-function FileSourceBreakpoint:setLogMessage(logMessage)
+function Breakpoint:setLogMessage(logMessage)
   if self.logMessage ~= logMessage then
     self.logMessage = logMessage
     self:emit('LogMessageChanged', logMessage)
@@ -64,16 +64,16 @@ end
 -- Internal method to emit events
 ---@param event string
 ---@param data any
-function FileSourceBreakpoint:emit(event, data)
+function Breakpoint:emit(event, data)
   return self.hookable:emit(event, data)
 end
 
 -- API Methods: Hierarchical Event Registration
 
----@param listener fun(binding: api.FileSourceBinding)
+---@param listener fun(binding: api.Binding)
 ---@param opts? HookOptions
 ---@return fun() unsubscribe
-function FileSourceBreakpoint:onBinding(listener, opts)
+function Breakpoint:onBinding(listener, opts)
   -- Register for future bindings
   local unsubscribe1 = self.manager:onBound(function(binding)
     if binding.breakpointId == self.id then
@@ -89,10 +89,10 @@ function FileSourceBreakpoint:onBinding(listener, opts)
   return unsubscribe1
 end
 
----@param listener fun(hit: { thread: api.Thread, body: dap.StoppedEventBody, binding: api.FileSourceBinding })
+---@param listener fun(hit: { thread: api.Thread, body: dap.StoppedEventBody, binding: api.Binding })
 ---@param opts? HookOptions
 ---@return fun() unsubscribe
-function FileSourceBreakpoint:onHit(listener, opts)
+function Breakpoint:onHit(listener, opts)
   return self:onBinding(function(binding)
     binding:onHit(function(hit)
       listener({
@@ -108,34 +108,34 @@ end
 ---@param listener fun(condition: string?)
 ---@param opts? HookOptions
 ---@return fun() unsubscribe
-function FileSourceBreakpoint:onConditionChanged(listener, opts)
+function Breakpoint:onConditionChanged(listener, opts)
   return self.hookable:on('ConditionChanged', listener, opts)
 end
 
 ---@param listener fun()
 ---@param opts? HookOptions
 ---@return fun() unsubscribe
-function FileSourceBreakpoint:onDispose(listener, opts)
+function Breakpoint:onDispose(listener, opts)
   return self.hookable:onDispose(listener, opts)
 end
 
 ---@param listener fun(logMessage: string?)
 ---@param opts? HookOptions
 ---@return fun() unsubscribe
-function FileSourceBreakpoint:onLogMessageChanged(listener, opts)
+function Breakpoint:onLogMessageChanged(listener, opts)
   return self.hookable:on('LogMessageChanged', listener, opts)
 end
 
 -- Query Methods (Read-only access to bindings)
 
 ---@return api.BindingCollection
-function FileSourceBreakpoint:getBindings()
+function Breakpoint:getBindings()
   -- Delegate to manager - maintain architectural purity
   return self.manager.bindings:forBreakpoint(self)
 end
 
 ---@return dap.SourceBreakpoint
-function FileSourceBreakpoint:toDapBreakpoint()
+function Breakpoint:toDapBreakpoint()
   return {
     line = self.location.line,
     column = self.location.column,
@@ -145,10 +145,10 @@ function FileSourceBreakpoint:toDapBreakpoint()
 end
 
 -- Internal lifecycle method (called by manager)
-function FileSourceBreakpoint:destroy()
+function Breakpoint:destroy()
   -- print("BREAKPOINT_LIFECYCLE: Destroying breakpoint", self.id, "location before destroy:", self.location and self.location.key or "NIL")
   self.hookable:destroy()  -- Hookable will emit 'Dispose' event automatically
   -- print("BREAKPOINT_LIFECYCLE: Destroyed breakpoint", self.id, "location after destroy:", self.location and self.location.key or "NIL")
 end
 
-return FileSourceBreakpoint
+return Breakpoint

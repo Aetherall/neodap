@@ -3,10 +3,10 @@ local Hookable = require("neodap.transport.hookable")
 local nio = require("nio")
 local Location = require("neodap.api.Location")
 
----@class api.FileSourceBindingProps
+---@class api.BindingProps
 ---@field manager api.BreakpointManager
 ---@field session api.Session
----@field source api.FileSource
+---@field source api.Source
 ---@field breakpointId string
 ---@field id integer
 ---@field verified boolean
@@ -17,22 +17,22 @@ local Location = require("neodap.api.Location")
 ---@field message? string
 ---@field hookable Hookable
 
----@class api.FileSourceBinding: api.FileSourceBindingProps
----@field new Constructor<api.FileSourceBindingProps>
-local FileSourceBinding = Class()
+---@class api.Binding: api.BindingProps
+---@field new Constructor<api.BindingProps>
+local Binding = Class()
 
 ---Create a verified binding from DAP response
 ---@param manager api.BreakpointManager
 ---@param session api.Session
----@param source api.FileSource
----@param breakpoint api.FileSourceBreakpoint
+---@param source api.Source
+---@param breakpoint api.Breakpoint
 ---@param dapBreakpoint dap.Breakpoint
----@return api.FileSourceBinding
-function FileSourceBinding.verified(manager, session, source, breakpoint, dapBreakpoint)
+---@return api.Binding
+function Binding.verified(manager, session, source, breakpoint, dapBreakpoint)
   if not dapBreakpoint or not dapBreakpoint.id then
     error("Invalid DAP breakpoint provided")
   end
-  return FileSourceBinding:new({
+  return Binding:new({
     manager = manager,
     session = session,
     source = source,
@@ -50,7 +50,7 @@ end
 
 ---Update binding from DAP response
 ---@param dapBreakpoint dap.Breakpoint
-function FileSourceBinding:update(dapBreakpoint)
+function Binding:update(dapBreakpoint)
   local changed = false
   
   if self.id ~= dapBreakpoint.id then
@@ -81,7 +81,7 @@ end
 -- Internal method to emit events
 ---@param event string
 ---@param data any
-function FileSourceBinding:emit(event, data)
+function Binding:emit(event, data)
   return self.hookable:emit(event, data)
 end
 
@@ -90,7 +90,7 @@ end
 ---@param listener async fun(hit: { thread: api.Thread, body: dap.StoppedEventBody }, resumed: nio.control.Future)
 ---@param opts? HookOptions
 ---@return fun() unsubscribe
-function FileSourceBinding:onHit(listener, opts)
+function Binding:onHit(listener, opts)
   return self.hookable:on('Hit', 
   ---@param data { thread: api.Thread, body: dap.StoppedEventBody }
   function (data)
@@ -115,50 +115,52 @@ end
 ---@param listener fun(dapBreakpoint: dap.Breakpoint)
 ---@param opts? HookOptions
 ---@return fun() unsubscribe
-function FileSourceBinding:onUpdated(listener, opts)
+function Binding:onUpdated(listener, opts)
   return self.hookable:on('Updated', listener, opts)
 end
 
 ---@param listener fun()
 ---@param opts? HookOptions
 ---@return fun() unsubscribe
-function FileSourceBinding:onDispose(listener, opts)
+function Binding:onDispose(listener, opts)
   return self.hookable:onDispose(listener, opts)
 end
 
 
 -- Query Methods
 
----@return api.FileSourceBreakpoint?
-function FileSourceBinding:getBreakpoint()
+---@return api.Breakpoint?
+function Binding:getBreakpoint()
   return self.manager.breakpoints:get(self.breakpointId)
 end
 
 ---@return api.Location
-function FileSourceBinding:getActualLocation()
-  return Location.fromSource(self.source, {
+function Binding:getActualLocation()
+  return Location.create({
+    sourceId = self.source.id,
     line = self.actualLine or self.line,
     column = self.actualColumn or self.column,
   })
 end
 
 ---@return api.Location
-function FileSourceBinding:getRequestedLocation()
-  return Location.fromSource(self.source, {
+function Binding:getRequestedLocation()
+  return Location.create({
+    sourceId = self.source.id,
     line = self.line,
     column = self.column,
   })
 end
 
 ---@return boolean
-function FileSourceBinding:wasMoved()
+function Binding:wasMoved()
   return self.actualLine ~= self.line or self.actualColumn ~= self.column
 end
 
 -- Utility Methods
 
 ---@return dap.SourceBreakpoint
-function FileSourceBinding:toDapSourceBreakpoint()
+function Binding:toDapSourceBreakpoint()
   local breakpoint = self:getBreakpoint()
   return {
     id = self.id,
@@ -172,7 +174,7 @@ end
 -- Hit handling (called by manager)
 ---@param thread api.Thread
 ---@param body dap.StoppedEventBody
-function FileSourceBinding:triggerHit(thread, body)
+function Binding:triggerHit(thread, body)
   self:emit('Hit', {
     thread = thread,
     body = body,
@@ -180,8 +182,8 @@ function FileSourceBinding:triggerHit(thread, body)
 end
 
 -- Internal lifecycle method (called by manager)
-function FileSourceBinding:destroy()
+function Binding:destroy()
   self.hookable:destroy()  -- Hookable will emit 'Dispose' event automatically
 end
 
-return FileSourceBinding
+return Binding

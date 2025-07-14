@@ -1,6 +1,5 @@
 local Class = require("neodap.tools.class")
 local Logger = require("neodap.tools.logger")
-local Location = require("neodap.api.Location")
 
 
 ---@class neodap.ToggleBreakpointProps
@@ -44,7 +43,7 @@ function ToggleBreakpoint:adjustLocation(location)
   local adjustedLocation = nil
   
   for session in self.api:eachSession() do
-    local source = session:getSourceByIdentifier(location.id)
+    local source = session:getSource(location.id)
     if source then
       log:debug("Smart placement: found source for location, querying breakpoint locations...")
       
@@ -105,7 +104,7 @@ function ToggleBreakpoint:wouldCreateDuplicateBinding(location)
   
   -- For each active session, check if this location would bind to the same place as an existing breakpoint
   for session in self.api:eachSession() do
-    local source = session:getSourceByIdentifier(location.id)
+    local source = session:getSource(location.id)
     if source then
       -- Get the closest valid breakpoint location that DAP would actually use
       local actualLocation = session:findClosestBreakpointLocation(source, location)
@@ -128,7 +127,7 @@ end
 
 ---Toggle a breakpoint at the given location
 ---@param location api.Location
----@return api.FileSourceBreakpoint?
+---@return api.Breakpoint?
 function ToggleBreakpoint:toggle(location)
   local log = Logger.get()
   log:debug("ToggleBreakpoint:toggle called for:", location.key)
@@ -148,9 +147,9 @@ function ToggleBreakpoint:toggle(location)
     -- This means there's already a breakpoint that would conflict
     -- Find any existing breakpoint on this line and remove it
     local breakpoints = self.breakpointApi.getBreakpoints()
-    local location_identifier = location:getSourceIdentifier()
+    local location_identifier = location.id
     for breakpoint in breakpoints:each() do
-      local breakpoint_identifier = breakpoint.location:getSourceIdentifier()
+      local breakpoint_identifier = breakpoint.location.id
       if breakpoint_identifier:equals(location_identifier) and breakpoint.location.line == location.line then
         log:debug("Toggle: removing existing breakpoint at same line:", breakpoint.id)
         self.breakpointApi.removeBreakpoint(breakpoint)

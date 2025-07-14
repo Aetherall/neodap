@@ -2,7 +2,7 @@ local Class = require('neodap.tools.class')
 local Location = require("neodap.api.Location")
 
 ---@class api.BreakpointCollectionProps
----@field breakpoints api.FileSourceBreakpoint[]
+---@field breakpoints api.Breakpoint[]
 
 ---@class api.BreakpointCollection: api.BreakpointCollectionProps
 ---@field new Constructor<api.BreakpointCollectionProps>
@@ -15,12 +15,12 @@ function BreakpointCollection.create()
   })
 end
 
----@param breakpoint api.FileSourceBreakpoint
+---@param breakpoint api.Breakpoint
 function BreakpointCollection:add(breakpoint)
   table.insert(self.breakpoints, breakpoint)
 end
 
----@param breakpoint api.FileSourceBreakpoint
+---@param breakpoint api.Breakpoint
 function BreakpointCollection:remove(breakpoint)
   for i, b in ipairs(self.breakpoints) do
     if b == breakpoint then
@@ -30,13 +30,13 @@ function BreakpointCollection:remove(breakpoint)
   end
 end
 
----@return api.FileSourceBreakpoint?
+---@return api.Breakpoint?
 function BreakpointCollection:first()
   return self.breakpoints[1]
 end
 
 ---@param id string
----@return api.FileSourceBreakpoint?
+---@return api.Breakpoint?
 function BreakpointCollection:get(id)
   for _, breakpoint in ipairs(self.breakpoints) do
     if breakpoint.id == id then
@@ -46,7 +46,7 @@ function BreakpointCollection:get(id)
   return nil
 end
 
----@param predicate fun(breakpoint: api.FileSourceBreakpoint): boolean?
+---@param predicate fun(breakpoint: api.Breakpoint): boolean?
 ---@return api.BreakpointCollection
 function BreakpointCollection:filter(predicate)
   local filtered = BreakpointCollection.create()
@@ -137,25 +137,6 @@ function BreakpointCollection:_isLocationBetween(location, start, finish)
   return true
 end
 
----@deprecated Use atSource() with SourceIdentifier instead
----@param path string
----@return api.BreakpointCollection
-function BreakpointCollection:atPath(path)
-  return self:filter(function(breakpoint)
-    local id = breakpoint.location.id
-    return id.type == 'file' and id.path == path
-  end)
-end
-
----@deprecated Use atSource() with SourceIdentifier instead
----@param stability_hash string
----@return api.BreakpointCollection
-function BreakpointCollection:atVirtualSource(stability_hash)
-  return self:filter(function(breakpoint)
-    local id = breakpoint.location.id
-    return id.type == 'virtual' and id.stability_hash == stability_hash
-  end)
-end
 
 ---Filter breakpoints by source identifier (preferred method)
 ---@param source_identifier SourceIdentifier
@@ -166,16 +147,7 @@ function BreakpointCollection:atSource(source_identifier)
   end)
 end
 
----@param dapBreakpoint dap.Breakpoint
----@return api.BreakpointCollection
-function BreakpointCollection:match(dapBreakpoint)
-  return self:filter(function(breakpoint)
-    local location = Location.fromDapBinding(dapBreakpoint)
-    return location and location:equals(breakpoint.location)
-  end)
-end
-
----@return fun(): api.FileSourceBreakpoint?
+---@return fun(): api.Breakpoint?
 function BreakpointCollection:each()
   local index = 0
   return function()
@@ -187,7 +159,7 @@ function BreakpointCollection:each()
   end
 end
 
----@return api.FileSourceBreakpoint[]
+---@return api.Breakpoint[]
 function BreakpointCollection:toArray()
   return vim.tbl_map(function(b) return b end, self.breakpoints or {})
 end

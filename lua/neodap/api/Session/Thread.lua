@@ -104,7 +104,7 @@ function Thread:onExited(listener, opts)
   end, opts)
 end
 
----@param listener fun(body: dap.ContinuedEventBody)
+---@param listener async fun(body: dap.ContinuedEventBody)
 ---@param opts? HookOptions
 ---@return fun()
 function Thread:onResumed(listener, opts)

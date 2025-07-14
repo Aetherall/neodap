@@ -231,12 +231,11 @@ function Session:findSource(predicate)
 end
 
 ---Find source by unified source identifier (preferred method)
----@param identifier SourceIdentifier
+---@param identifier SourceIdentifier | api.Location
 ---@return api.Source?
-function Session:getSourceByIdentifier(identifier)
+function Session:getSource(identifier)
   return self:findSource(function(source)
-    local source_identifier = source:identifier()
-    return source_identifier:equals(identifier)
+    return source.id:equals(identifier:getId())
   end)
 end
 

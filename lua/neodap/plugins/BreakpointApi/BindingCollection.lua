@@ -2,7 +2,7 @@ local Class = require('neodap.tools.class')
 local Logger = require('neodap.tools.logger')
 
 ---@class api.BindingCollectionProps
----@field bindings api.FileSourceBinding[]
+---@field bindings api.Binding[]
 
 ---@class api.BindingCollection: api.BindingCollectionProps
 ---@field new Constructor<api.BindingCollectionProps>
@@ -15,12 +15,12 @@ function BindingCollection.create()
   })
 end
 
----@param binding api.FileSourceBinding
+---@param binding api.Binding
 function BindingCollection:add(binding)
   table.insert(self.bindings, binding)
 end
 
----@param binding api.FileSourceBinding
+---@param binding api.Binding
 function BindingCollection:remove(binding)
   for i, b in ipairs(self.bindings) do
     if b == binding then
@@ -30,12 +30,12 @@ function BindingCollection:remove(binding)
   end
 end
 
----@return api.FileSourceBinding?
+---@return api.Binding?
 function BindingCollection:first()
   return self.bindings[1]
 end
 
----@param predicate fun(binding: api.FileSourceBinding): boolean
+---@param predicate fun(binding: api.Binding): boolean
 ---@return api.BindingCollection
 function BindingCollection:filter(predicate)
   local filtered = BindingCollection.create()
@@ -55,15 +55,15 @@ function BindingCollection:forSession(session)
   end)
 end
 
----@param source api.FileSource
+---@param source api.Source
 ---@return api.BindingCollection
 function BindingCollection:forSource(source)
   return self:filter(function(binding)
-    return binding.source:identifier() == source:identifier()
+    return binding.source.id:equals(source.id)
   end)
 end
 
----@param breakpoint api.FileSourceBreakpoint
+---@param breakpoint api.Breakpoint
 ---@return api.BindingCollection
 function BindingCollection:forBreakpoint(breakpoint)
   return self:filter(function(binding)
@@ -79,7 +79,7 @@ function BindingCollection:forIds(ids)
   end)
 end
 
----@return fun(): api.FileSourceBinding?
+---@return fun(): api.Binding?
 function BindingCollection:each()
   local index = 0
   return function()
@@ -91,7 +91,7 @@ function BindingCollection:each()
   end
 end
 
----@return api.FileSourceBinding[]
+---@return api.Binding[]
 function BindingCollection:toArray()
   return vim.tbl_map(function(b) return b end, self.bindings or {})
 end
@@ -150,7 +150,7 @@ end
 function BindingCollection:bySource()
   local groups = {}
   for _, binding in ipairs(self.bindings) do
-    local sourceId = binding.source:identifier()
+    local sourceId = binding.source.id:toString()
     if not groups[sourceId] then
       groups[sourceId] = { 
         source = binding.source, 

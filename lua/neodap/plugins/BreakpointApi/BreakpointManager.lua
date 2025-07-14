@@ -1,8 +1,8 @@
 local Class = require('neodap.tools.class')
 local nio = require('nio')
 local Hookable = require("neodap.transport.hookable")
-local FileSourceBreakpoint = require('neodap.plugins.BreakpointApi.FileSourceBreakpoint')
-local FileSourceBinding = require('neodap.plugins.BreakpointApi.FileSourceBinding')
+local Breakpoint = require('neodap.plugins.BreakpointApi.Breakpoint')
+local Binding = require('neodap.plugins.BreakpointApi.Binding')
 local Location = require('neodap.api.Location')
 local BreakpointCollection = require("neodap.plugins.BreakpointApi.BreakpointCollection")
 local BindingCollection = require("neodap.plugins.BreakpointApi.BindingCollection")
@@ -38,7 +38,7 @@ end
 
 ---@param location api.Location
 ---@param opts? { condition?: string, logMessage?: string }
----@return api.FileSourceBreakpoint
+---@return api.Breakpoint
 function BreakpointManager:addBreakpoint(location, opts)
   local log = Logger.get()
   local identifier = location.id
@@ -52,7 +52,7 @@ function BreakpointManager:addBreakpoint(location, opts)
   end
 
   -- Create new breakpoint (pure user intent)
-  local breakpoint = FileSourceBreakpoint.atLocation(self, location, opts)
+  local breakpoint = Breakpoint.atLocation(self, location, opts)
   self.breakpoints:add(breakpoint)
   
   log:info("Created new breakpoint with ID:", breakpoint.id)
@@ -60,7 +60,7 @@ function BreakpointManager:addBreakpoint(location, opts)
   
   -- Queue sync for all active sessions
   for session in self.api:eachSession() do
-    local source = session:getSourceByIdentifier(identifier)
+    local source = session:getSource(identifier)
     if source then
       self:queueSourceSync(source, session)
     end
@@ -69,7 +69,7 @@ function BreakpointManager:addBreakpoint(location, opts)
   return breakpoint
 end
 
----@param breakpoint api.FileSourceBreakpoint
+---@param breakpoint api.Breakpoint
 function BreakpointManager:removeBreakpoint(breakpoint)
   local log = Logger.get()
   log:info("BreakpointManager:removeBreakpoint called for:", breakpoint.id)
@@ -87,7 +87,7 @@ function BreakpointManager:removeBreakpoint(breakpoint)
   -- Queue sync for all affected sessions
   local identifier = breakpoint.location.id
   for session in self.api:eachSession() do
-    local source = session:getSourceByIdentifier(identifier)
+    local source = session:getSource(identifier)
     if source then
       self:queueSourceSync(source, session)
     end
@@ -98,7 +98,7 @@ function BreakpointManager:removeBreakpoint(breakpoint)
 end
 
 ---@param location api.Location
----@return api.FileSourceBreakpoint?
+---@return api.Breakpoint?
 function BreakpointManager:toggleBreakpoint(location)
   local existing = self.breakpoints:atLocation(location):first()
   
@@ -110,12 +110,12 @@ function BreakpointManager:toggleBreakpoint(location)
   end
 end
 
----@param breakpoint api.FileSourceBreakpoint
+---@param breakpoint api.Breakpoint
 function BreakpointManager:resyncBreakpoint(breakpoint)
   -- Queue sync for all sessions that have this source
   local identifier = breakpoint.location.id
   for session in self.api:eachSession() do
-    local source = session:getSourceByIdentifier(identifier)
+    local source = session:getSource(identifier)
     if source then
       self:queueSourceSync(source, session)
     end
@@ -164,7 +164,7 @@ function BreakpointManager:syncSourceToSession(source, session)
   
   -- 2. Get existing bindings to preserve DAP state
   local existingBindings = self.bindings:forSession(session):forSource(source)
-  ---@type table<string, api.FileSourceBinding?>
+  ---@type table<string, api.Binding?>
   local bindingsByBreakpointId = {}
   for binding in existingBindings:each() do
     bindingsByBreakpointId[binding.breakpointId] = binding
@@ -222,7 +222,7 @@ end
 ---@param session api.Session
 ---@param breakpoints api.BreakpointCollection
 ---@param dapResponses dap.Breakpoint[]
----@param existingBindingsMap table<string, api.FileSourceBinding?>
+---@param existingBindingsMap table<string, api.Binding?>
 function BreakpointManager:reconcileBindings(source, session, breakpoints, dapResponses, existingBindingsMap)
   local log = Logger.get()
   local breakpointArray = breakpoints:toArray()
@@ -243,7 +243,7 @@ function BreakpointManager:reconcileBindings(source, session, breakpoints, dapRe
       else
         -- Create new verified binding
         log:debug("Creating new binding for breakpoint:", breakpoint.id)
-        local binding = FileSourceBinding.verified(self, session, source, breakpoint, dapBreakpoint)
+        local binding = Binding.verified(self, session, source, breakpoint, dapBreakpoint)
         self.bindings:add(binding)
         self.hookable:emit('BindingBound', binding)
         processedBindings[binding] = true
@@ -278,7 +278,7 @@ end
 
 -- Event Registration API (Hierarchical)
 
----@param listener fun(breakpoint: api.FileSourceBreakpoint)
+---@param listener fun(breakpoint: api.Breakpoint)
 ---@param opts? HookOptions
 ---@return fun() unsubscribe
 function BreakpointManager:onBreakpoint(listener, opts)
@@ -293,7 +293,7 @@ function BreakpointManager:onBreakpoint(listener, opts)
   return unsubscribe1
 end
 
----@param listener fun(binding: api.FileSourceBinding)
+---@param listener fun(binding: api.Binding)
 ---@param opts? HookOptions
 ---@return fun() unsubscribe
 function BreakpointManager:onBound(listener, opts)
@@ -301,7 +301,7 @@ function BreakpointManager:onBound(listener, opts)
 end
 
 
----@param listener fun(event: { source: api.FileSource, session: api.Session, breakpoints: api.FileSourceBreakpoint[] })
+---@param listener fun(event: { source: api.FileSource, session: api.Session, breakpoints: api.Breakpoint[] })
 ---@param opts? HookOptions
 ---@return fun() unsubscribe
 function BreakpointManager:onSourceSyncPending(listener, opts)
@@ -335,16 +335,14 @@ function BreakpointManager:listen()
       log:debug("Session", session.id, "- Unexpected DAP binding new event:", dapBinding)
       -- This should rarely happen with proper source-level sync
       -- But we can handle it by triggering a resync
-      local location = Location.fromDapBinding(dapBinding)
+      local location = Location.fromDapBinding(session, dapBinding)
 
       if not location then
         log:warn("Session", session.id, "- Could not create location from DAP binding:", dapBinding)
         return
       end
 
-      local sourcefile = location:SourceFile()
-      local identifier = sourcefile:getSourceIdentifier()
-      local source = session:getSourceByIdentifier(identifier)
+      local source = session:getSource(location)
       if source then
         self:queueSourceSync(source, session)
       end
