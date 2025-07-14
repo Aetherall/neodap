@@ -127,7 +127,7 @@ end
 ---@param source api.Source
 ---@param session api.Session
 function BreakpointManager:queueSourceSync(source, session)
-  local key = session.id .. ":" .. source:identifier():toString()
+  local key = session.id .. ":" .. source.id:toString()
   
   if self.pendingOperations[key] then
     return -- Already queued
@@ -157,10 +157,10 @@ end
 ---@param session api.Session
 function BreakpointManager:syncSourceToSession(source, session)
   local log = Logger.get()
-  log:info("BreakpointManager:syncSourceToSession - source:", source:identifier():toString(), "session:", session.id)
+  log:info("BreakpointManager:syncSourceToSession - source:", source.id:toString(), "session:", session.id)
   
   -- 1. Gather all breakpoints for this source (unified approach)
-  local sourceBreakpoints = self.breakpoints:atSource(source:identifier())
+  local sourceBreakpoints = self.breakpoints:atSource(source.id)
   
   -- 2. Get existing bindings to preserve DAP state
   local existingBindings = self.bindings:forSession(session):forSource(source)
@@ -193,7 +193,7 @@ function BreakpointManager:syncSourceToSession(source, session)
     end
   end
   
-  log:info("Sending", #dapBreakpoints, "breakpoints to DAP for source:", source:identifier():toString())
+  log:info("Sending", #dapBreakpoints, "breakpoints to DAP for source:", source.id:toString())
   
   -- 5. Build DAP source for the request (use source ref directly)
   local dapSource = source.ref
@@ -326,7 +326,7 @@ function BreakpointManager:listen()
 
     -- When source loads, sync existing breakpoints
     session:onSourceLoaded(function(source)
-      log:info("Session", session.id, "- Source loaded:", source:identifier():toString())
+      log:info("Session", session.id, "- Source loaded:", source.id:toString())
       self:queueSourceSync(source, session)
     end)
 

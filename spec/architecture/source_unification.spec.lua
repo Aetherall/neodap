@@ -25,7 +25,7 @@ Test.Describe("Source Unification", function()
     assert(not source:isVirtual(), "Should not identify as virtual source")
     
     -- Should have unified API
-    local identifier = source:identifier()
+    local identifier = source.id
     assert(identifier ~= nil, "Should have identifier")
     assert(identifier:isFile(), "Identifier should be file type")
     assert(identifier:toString():match("^file://"), "Should have file:// URI")
@@ -58,7 +58,7 @@ Test.Describe("Source Unification", function()
     assert(not source:isFile(), "Should not identify as file source")
     
     -- Should have unified API
-    local identifier = source:identifier()
+    local identifier = source.id
     assert(identifier ~= nil, "Should have identifier")
     assert(identifier:isVirtual(), "Identifier should be virtual type")
     assert(identifier:toString():match("^virtual:"), "Should have virtual: URI")
@@ -91,7 +91,7 @@ Test.Describe("Source Unification", function()
     assert(source:isVirtual(), "Should identify as virtual due to sourceReference priority")
     
     -- Should have unified API that handles both aspects
-    local identifier = source:identifier()
+    local identifier = source.id
     assert(identifier ~= nil, "Should have identifier")
     
     -- For hybrid sources, identifier strategy should prefer file path for stability
