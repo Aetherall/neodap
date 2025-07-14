@@ -147,7 +147,7 @@ local function go()
           -- Use BreakpointApi to add breakpoint
           local Location = require('neodap.api.Location')
           local location = Location.SourceFile.fromSource(source, { line = 3 })
-          breakpoint_service:setBreakpoint(location)
+          breakpoints:setBreakpoint(location)
         end
       end
     end)

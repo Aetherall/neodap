@@ -10,7 +10,7 @@ local Location = require("neodap.api.Location")
 
 ---@class api.Frame: api.FrameProps
 ---@field _scopes { [integer]: api.Scope? } | nil
----@field _source api.BaseSource | nil
+---@field _source api.Source | nil
 ---@field new Constructor<api.FrameProps>
 local Frame = Class()
 

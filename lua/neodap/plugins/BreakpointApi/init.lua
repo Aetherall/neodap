@@ -1,5 +1,4 @@
 local BreakpointManagerImpl = require("neodap.plugins.BreakpointApi.BreakpointManager")
-local BaseSource = require("neodap.api.Session.Source.BaseSource")
 local Location = require("neodap.api.Location")
 
 ---@class BreakpointApiPlugin

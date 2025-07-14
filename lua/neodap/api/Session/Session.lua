@@ -1,7 +1,6 @@
 local Class = require("neodap.tools.class")
 local Thread = require("neodap.api.Session.Thread")
 local Source = require('neodap.api.Session.Source.Source')
-local BaseSource = require('neodap.api.Session.Source.BaseSource')
 local Hookable = require("neodap.transport.hookable")
 local Logger = require("neodap.tools.logger")
 
@@ -75,7 +74,7 @@ function Session:listen()
 
 
   self:onLoadedSourceNew(function(dapSource)
-    local id = BaseSource.dap_identifier(dapSource)
+    local id = Source.dap_identifier(dapSource)
     if not id then return end
 
     local existing = self._sources[id]
@@ -105,7 +104,7 @@ function Session:listen()
   end, { name = "SessionLoadedSourceNew_" .. uniqueId, priority = 1 })
 
   self:onLoadedSourceChanged(function(dapSource)
-    local id = BaseSource.dap_identifier(dapSource)
+    local id = Source.dap_identifier(dapSource)
     if not id then return end
 
     local existing = self._sources[id]
@@ -121,7 +120,7 @@ function Session:listen()
 
 
   self:onLoadedSourceRemoved(function(dapSource)
-    local id = BaseSource.dap_identifier(dapSource)
+    local id = Source.dap_identifier(dapSource)
     if not id then return end
 
     local existing = self._sources[id]
@@ -279,7 +278,7 @@ function Session:getSourceFor(dapSource)
     self._sources = {}
   end
 
-  local identifier = BaseSource.dap_identifier(dapSource)
+  local identifier = Source.dap_identifier(dapSource)
   if not identifier then
     -- TODO: Should we error here ?
     return nil
