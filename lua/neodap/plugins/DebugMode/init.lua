@@ -2,10 +2,12 @@ local Logger = require("neodap.tools.logger")
 local Class = require("neodap.tools.class")
 local Location = require("neodap.api.Location")
 local NvimAsync = require("neodap.tools.async")
+local StackNavigation = require("neodap.plugins.StackNavigation")
 
 ---@class neodap.plugin.DebugModeProps
 ---@field api Api
 ---@field logger Logger
+---@field stackNavigation neodap.plugin.StackNavigation
 ---@field namespace integer
 ---@field is_active boolean
 ---@field original_maps table
@@ -24,6 +26,7 @@ function DebugMode.plugin(api)
   local instance = DebugMode:new({
     api = api,
     logger = logger,
+    stackNavigation = api:getPluginInstance(StackNavigation),
     namespace = vim.api.nvim_create_namespace("neodap_debug_mode"),
     is_active = false,
     original_maps = {},
@@ -205,72 +208,32 @@ function DebugMode:restoreOriginalMappings()
   self.original_maps = {}
 end
 
--- Get closest frame to cursor (reuse StackNavigation logic)
+-- Delegate to StackNavigation plugin for frame operations
 ---@param location api.Location?
 ---@return api.Frame?
 function DebugMode:getClosestFrame(location)
-  local target = location or Location.fromCursor()
-
-  local closest = nil
-  local closest_distance = math.huge
-  
-  -- Find frame closest to cursor across all sessions and threads
-  for session in self.api:eachSession() do
-    for thread in session:eachThread({ filter = 'stopped' }) do
-      local stack = thread:stack()
-      if stack then
-        for frame in stack:eachFrame({ sourceId = target.sourceId }) do
-          local frame_location = frame:location()
-          if frame_location then
-            local distance = frame_location:distance(target)
-            if distance < closest_distance then
-              closest_distance = distance
-              closest = frame
-            end
-          end
-        end
-      end
-    end
-  end
-
-  self.logger:debug("DebugMode: Closest frame found at distance", closest_distance)
-  return closest
+  return self.stackNavigation:getClosestFrame(location)
 end
 
--- Navigate up the call stack
+-- Navigate up the call stack using StackNavigation
 function DebugMode:navigateUp()
-  NvimAsync.run(function()
-    local closest = self:getClosestFrame()
-    local parent = closest and closest:up()
-    if parent then 
-      parent:jump()
-      self:updateStatusLine()
-    else
-      vim.api.nvim_echo({{ "DebugMode: No parent frame available", "WarningMsg" }}, false, {})
-    end
-  end)
+  self.stackNavigation:up()
+  self:updateStatusLine()
 end
 
--- Navigate down the call stack
+-- Navigate down the call stack using StackNavigation
 function DebugMode:navigateDown()
-  NvimAsync.run(function()
-    local closest = self:getClosestFrame()
-    local child = closest and closest:down()
-    if child then 
-      child:jump()
-      self:updateStatusLine()
-    else
-      vim.api.nvim_echo({{ "DebugMode: No child frame available", "WarningMsg" }}, false, {})
-    end
-  end)
+  self.stackNavigation:down()
+  self:updateStatusLine()
 end
 
--- Jump to current frame
+-- Jump to current frame using StackNavigation
 function DebugMode:jumpToCurrentFrame()
   NvimAsync.run(function()
     local closest = self:getClosestFrame()
     if closest then 
       closest:jump()
+      self:updateStatusLine()
       vim.api.nvim_echo({{ "DebugMode: Jumped to current frame", "Normal" }}, false, {})
     else
       vim.api.nvim_echo({{ "DebugMode: No frame at cursor", "WarningMsg" }}, false, {})
