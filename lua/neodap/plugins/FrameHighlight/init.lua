@@ -275,61 +275,21 @@ end
 
 -- Apply highlight to a specific location
 function FrameHighlight:applyHighlight(bufnr, location)
-  local line = (location.line or 1) - 1  -- Convert to 0-based
-  local col = (location.column or 1) - 1
+  self.logger:debug("FrameHighlight: Applying highlight at line:", location.line, "col:", location.column, "bufnr:", bufnr)
   
-  self.logger:debug("FrameHighlight: Applying highlight at line:", line + 1, "col:", col + 1, "bufnr:", bufnr)
+  -- Create a location adjusted to start from column 1 for entire line highlighting
+  local line_start_location = location:adjusted({ column = 1 })
   
-  -- Ensure line is within buffer bounds
-  local line_count = vim.api.nvim_buf_line_count(bufnr)
-  self.logger:debug("FrameHighlight: Buffer has", line_count, "lines, target line:", line + 1)
+  -- Use the new Location highlight method (defaults to end of line)
+  local extmark_id = line_start_location:highlight(self.namespace, self.hl_group)
   
-  if line >= line_count then
-    self.logger:warn("FrameHighlight: Line", line + 1, "is beyond buffer bounds (", line_count, "lines)")
+  if extmark_id then
+    self.logger:debug("FrameHighlight: Successfully applied highlight with extmark ID:", extmark_id)
+    return true
+  else
+    self.logger:warn("FrameHighlight: Failed to apply highlight for location:", location.key)
     return false
   end
-  
-  -- Get line content for verification
-  local lines = vim.api.nvim_buf_get_lines(bufnr, line, line + 1, false)
-  if #lines == 0 then
-    self.logger:warn("FrameHighlight: No lines returned for line", line + 1)
-    return false
-  end
-  
-  local line_content = lines[1]
-  if not line_content then
-    self.logger:warn("FrameHighlight: Line", line + 1, "has no content")
-    return false
-  end
-  
-  self.logger:debug("FrameHighlight: Line content:", line_content:sub(1, 50) .. (line_content:len() > 50 and "..." or ""))
-  
-  -- Apply highlight to entire line
-  self.logger:debug("FrameHighlight: Applying highlight with:", {
-    bufnr = bufnr,
-    namespace = self.namespace,
-    hl_group = self.hl_group,
-    line = line,
-    start_col = 0,
-    end_col = -1
-  })
-  
-  local ok, err = pcall(vim.api.nvim_buf_add_highlight,
-    bufnr,
-    self.namespace,
-    self.hl_group,
-    line,
-    0,  -- Start at beginning of line
-    -1  -- Highlight entire line
-  )
-  
-  if not ok then
-    self.logger:error("FrameHighlight: Failed to add highlight:", err)
-    return false
-  end
-  
-  self.logger:debug("FrameHighlight: Successfully added highlight for line", line + 1)
-  return true
 end
 
 -- Highlight all currently visible buffers

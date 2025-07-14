@@ -337,6 +337,109 @@ function Location:unmark(ns)
   end
 end
 
+---Highlight from this location with range support
+---@param ns integer Namespace for the highlight
+---@param hl_group string Highlight group to apply
+---@param opts? {endLine?: integer, endColumn?: integer} Optional range override
+---@return integer? extmark_id The extmark ID if successful
+function Location:highlight(ns, hl_group, opts)
+  local bufnr = self:bufnr()
+  if not bufnr or not vim.api.nvim_buf_is_loaded(bufnr) then
+    return nil
+  end
+
+  opts = opts or {}
+
+  -- Convert to 0-based coordinates
+  local start_line = math.max(0, (self.line or 1) - 1)
+  local start_col = math.max(0, (self.column or 1) - 1)
+
+  -- Calculate end position
+  local end_line, end_col
+
+  if opts.endLine then
+    -- Custom end line provided
+    end_line = math.max(0, opts.endLine - 1) -- Convert to 0-based
+    
+    if opts.endColumn then
+      -- Custom end column provided
+      end_col = math.max(0, opts.endColumn - 1) -- Convert to 0-based
+    else
+      -- Get actual line content length for the end line
+      local line_content = vim.api.nvim_buf_get_lines(bufnr, end_line, end_line + 1, false)[1]
+      end_col = line_content and #line_content or 0
+    end
+  else
+    -- Default: same line, calculate end column
+    end_line = start_line
+    
+    if opts.endColumn then
+      -- Custom end column on same line
+      end_col = math.max(0, opts.endColumn - 1) -- Convert to 0-based
+    else
+      -- Get actual line content length
+      local line_content = vim.api.nvim_buf_get_lines(bufnr, start_line, start_line + 1, false)[1]
+      end_col = line_content and #line_content or 0
+    end
+  end
+
+  -- Bounds checking
+  local line_count = vim.api.nvim_buf_line_count(bufnr)
+  if start_line >= line_count or end_line >= line_count then
+    return nil
+  end
+
+  -- Check for existing highlight extmarks at this location
+  local bufpos = { start_line, start_col }
+  local existing_extmarks = vim.api.nvim_buf_get_extmarks(bufnr, ns, bufpos, bufpos, { details = true })
+  
+  for _, extmark in ipairs(existing_extmarks) do
+    local id, _, _, details = unpack(extmark)
+    -- Check if this extmark is a highlight (has hl_group and range)
+    if details and details.hl_group and (details.end_row or details.end_col) then
+      -- Update existing highlight extmark
+      vim.api.nvim_buf_set_extmark(bufnr, ns, start_line, start_col, {
+        id = id,
+        end_row = end_line,
+        end_col = end_col,
+        hl_group = hl_group
+      })
+      return id
+    end
+  end
+
+  -- Create new highlight extmark
+  return vim.api.nvim_buf_set_extmark(bufnr, ns, start_line, start_col, {
+    end_row = end_line,
+    end_col = end_col,
+    hl_group = hl_group
+  })
+end
+
+---Remove highlights for this location from a buffer
+---@param ns integer Namespace to clear highlights from
+function Location:unhighlight(ns)
+  local bufnr = self:bufnr()
+  if not bufnr or not vim.api.nvim_buf_is_loaded(bufnr) then
+    return
+  end
+
+  local line = math.max(0, (self.line or 1) - 1)
+  local column = math.max(0, (self.column or 1) - 1)
+  local bufpos = { line, column }
+
+  -- Get all extmarks at this location
+  local extmarks = vim.api.nvim_buf_get_extmarks(bufnr, ns, bufpos, bufpos, { details = true })
+
+  for _, extmark in ipairs(extmarks) do
+    local id, _, _, details = unpack(extmark)
+    -- Remove extmarks that are highlights (have hl_group and range information)
+    if details and details.hl_group and (details.end_row or details.end_col) then
+      vim.api.nvim_buf_del_extmark(bufnr, ns, id)
+    end
+  end
+end
+
 function Location:getSourceId()
   return self.sourceId
 end
