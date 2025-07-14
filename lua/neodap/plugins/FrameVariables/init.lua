@@ -180,10 +180,6 @@ return {
             return
           end
           
-          nio.run(function()
-            if plugin_destroyed then
-              return
-            end
             
             local stack = thread:stack()
             if not stack then
@@ -194,7 +190,6 @@ return {
             if current_frame then
               refresh_neotree()
             end
-          end)
         end, { name = name .. ".onStopped" })
         
         table.insert(cleanup_functions, cleanup_stopped)

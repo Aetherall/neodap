@@ -1,5 +1,6 @@
 local Class = require('neodap.tools.class')
 local nio = require('nio')
+local NvimAsync = require('neodap.tools.async')
 local Hookable = require("neodap.transport.hookable")
 local Breakpoint = require('neodap.plugins.BreakpointApi.Breakpoint')
 local Binding = require('neodap.plugins.BreakpointApi.Binding')
@@ -41,8 +42,7 @@ end
 ---@return api.Breakpoint
 function BreakpointManager:addBreakpoint(location, opts)
   local log = Logger.get()
-  local identifier = location.sourceId
-  log:info("BreakpointManager:addBreakpoint called for location:", identifier:toString(), location.line)
+  log:info("BreakpointManager:addBreakpoint called for location:", location.key)
   
   -- Check for existing breakpoint
   local existing = self.breakpoints:atLocation(location):first()
@@ -139,7 +139,7 @@ function BreakpointManager:queueSourceSync(source, session)
     startTime = os.time()
   }
   
-  nio.run(function()
+  NvimAsync.run(function()
     nio.sleep(50) -- Batch window
     
     -- Check if cancelled
@@ -167,7 +167,7 @@ function BreakpointManager:syncSourceToSession(source, session)
   ---@type table<string, api.Binding?>
   local bindingsByBreakpointId = {}
   for binding in existingBindings:each() do
-    bindingsByBreakpointId[binding.breakpointId] = binding
+      bindingsByBreakpointId[binding.breakpointId] = binding
   end
   
   -- 3. Emit pending event
