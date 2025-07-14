@@ -6,23 +6,30 @@ local SourceIdentifier = require('neodap.api.Location.SourceIdentifier')
 -- Create a factory module that exports the create method and backward compatibility
 local Location = {}
 
----@param source api.FileSource
+---@deprecated Use fromUnifiedSource() instead
+---@param source api.Source
 ---@param opts { line?: integer, column?: integer }
 ---@return api.SourceFilePosition | api.SourceFileLine | api.SourceFile
 function Location.fromSource(source, opts)
-  return Location.create({
-    path = source:absolutePath(),
-    line = opts.line,
-    column = opts.column,
-  })
+  -- Legacy compatibility - delegate to unified method
+  return Location.fromUnifiedSource(source, opts)
 end
 
----NEW: Create location from virtual source
----@param virtual_source api.VirtualSource
+---@deprecated Use fromUnifiedSource() instead
+---@param virtual_source api.Source
 ---@param opts { line?: integer, column?: integer }
 ---@return api.SourceFilePosition | api.SourceFileLine | api.SourceFile
 function Location.fromVirtualSource(virtual_source, opts)
-  local identifier = virtual_source:identifier()
+  -- Legacy compatibility - delegate to unified method
+  return Location.fromUnifiedSource(virtual_source, opts)
+end
+
+---Create location from any unified source type
+---@param source api.Source
+---@param opts { line?: integer, column?: integer }
+---@return api.SourceFilePosition | api.SourceFileLine | api.SourceFile
+function Location.fromUnifiedSource(source, opts)
+  local identifier = source:identifier()
   return Location.createWithIdentifier({
     source_identifier = identifier,
     line = opts.line,

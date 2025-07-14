@@ -124,7 +124,7 @@ end
 
 -- Source Synchronization (Core of Lazy Binding)
 
----@param source api.FileSource | api.VirtualSource
+---@param source api.Source
 ---@param session api.Session
 function BreakpointManager:queueSourceSync(source, session)
   local key = session.id .. ":" .. source:identifier():toString()
@@ -153,7 +153,7 @@ function BreakpointManager:queueSourceSync(source, session)
   end)
 end
 
----@param source api.FileSource | api.VirtualSource
+---@param source api.Source
 ---@param session api.Session
 function BreakpointManager:syncSourceToSession(source, session)
   local log = Logger.get()
@@ -218,7 +218,7 @@ function BreakpointManager:syncSourceToSession(source, session)
   })
 end
 
----@param source api.FileSource | api.VirtualSource
+---@param source api.Source
 ---@param session api.Session
 ---@param breakpoints api.BreakpointCollection
 ---@param dapResponses dap.Breakpoint[]

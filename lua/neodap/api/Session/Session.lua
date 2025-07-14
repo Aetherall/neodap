@@ -238,28 +238,24 @@ function Session:findSource(predicate)
 end
 
 
+---@deprecated Use getSourceByIdentifier() instead
 ---@param location api.SourceFilePosition|api.SourceFileLine|api.SourceFile
----@return api.FileSource?
+---@return api.Source?
 function Session:getFileSourceAt(location)
-  return self:findSource(function(source)
-    local filesource = source:asFile()
-    return filesource and filesource:absolutePath() == location.path
-  end)
+  -- Legacy compatibility - convert to identifier-based lookup
+  local identifier = location:getSourceIdentifier()
+  if identifier:isFile() then
+    return self:getSourceByIdentifier(identifier)
+  end
+  return nil
 end
 
----Find virtual source by source identifier
+---@deprecated Use getSourceByIdentifier() instead
 ---@param identifier VirtualSourceIdentifier
----@return api.VirtualSource?
+---@return api.Source?
 function Session:getVirtualSourceByIdentifier(identifier)
-  return self:findSource(function(source)
-    local virtualsource = source:asVirtual()
-    if not virtualsource then
-      return false
-    end
-    
-    local source_identifier = virtualsource:identifier()
-    return source_identifier:equals(identifier)
-  end)
+  -- Legacy compatibility - delegate to unified method
+  return self:getSourceByIdentifier(identifier)
 end
 
 ---Find source by unified source identifier (preferred method)

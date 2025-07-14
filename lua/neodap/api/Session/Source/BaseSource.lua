@@ -19,12 +19,12 @@ function BaseSource:isVirtual()
   return self.type == 'virtual'
 end
 
----@return api.VirtualSource?
+---@deprecated Legacy compatibility - UnifiedSource supports all types
+---@return api.Source?
 function BaseSource:asVirtual()
   if not self:isVirtual() then
     return nil
   end
-  ---@cast self api.VirtualSource
   return self
 end
 
@@ -33,12 +33,12 @@ function BaseSource:isFile()
   return self.type == 'file'
 end
 
----@return api.FileSource?
+---@deprecated Legacy compatibility - UnifiedSource supports all types
+---@return api.Source?
 function BaseSource:asFile()
   if not self:isFile() then
     return nil
   end
-  ---@cast self api.FileSource
   return self
 end
 
@@ -47,12 +47,12 @@ function BaseSource:isGeneric()
   return self.type == 'generic'
 end
 
----@return api.GenericSource?
+---@deprecated Legacy compatibility - UnifiedSource supports all types
+---@return api.Source?
 function BaseSource:asGeneric()
   if not self:isGeneric() then
     return nil
   end
-  ---@cast self api.GenericSource
   return self
 end
 

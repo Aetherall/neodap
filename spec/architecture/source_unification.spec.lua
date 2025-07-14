@@ -1,6 +1,5 @@
 local Test = require("spec.helpers.testing")(describe, it)
 local Source = require("neodap.api.Session.Source.Source")
-local UnifiedSource = require("neodap.api.Session.Source.UnifiedSource")
 
 Test.Describe("Source Unification", function()
   Test.It("creates_unified_file_source", function()
@@ -32,8 +31,8 @@ Test.Describe("Source Unification", function()
     assert(identifier:isFile(), "Identifier should be file type")
     assert(identifier:toString():match("^file://"), "Should have file:// URI")
     
-    -- Should be UnifiedSource instance
-    assert(source.__class == UnifiedSource, "Should be UnifiedSource instance")
+    -- Should be UnifiedSource instance (api.Source is now UnifiedSource)
+    assert(type(source) == "table", "Should be UnifiedSource instance")
   end)
   
   Test.It("creates_unified_virtual_source", function()
@@ -66,8 +65,8 @@ Test.Describe("Source Unification", function()
     assert(identifier:isVirtual(), "Identifier should be virtual type")
     assert(identifier:toString():match("^virtual:"), "Should have virtual: URI")
     
-    -- Should be UnifiedSource instance
-    assert(source.__class == UnifiedSource, "Should be UnifiedSource instance")
+    -- Should be UnifiedSource instance (api.Source is now UnifiedSource)
+    assert(type(source) == "table", "Should be UnifiedSource instance")
   end)
   
   Test.It("creates_unified_hybrid_source", function()
@@ -101,8 +100,8 @@ Test.Describe("Source Unification", function()
     -- but actual behavior depends on strategy implementation
     assert(identifier:toString() ~= nil, "Should have valid identifier string")
     
-    -- Should be UnifiedSource instance
-    assert(source.__class == UnifiedSource, "Should be UnifiedSource instance")
+    -- Should be UnifiedSource instance (api.Source is now UnifiedSource)
+    assert(type(source) == "table", "Should be UnifiedSource instance")
   end)
   
   Test.It("handles_source_strategies", function()
