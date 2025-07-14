@@ -51,6 +51,8 @@ function StackNavigation:getClosestFrame(location)
   end
 
   self.logger:debug("Closest frame is ", closest and closest:location().key, " at distance ", closest_distance)
+
+  self.logger:debug("StackNavigation: Closest frame found:", vim.inspect(closest and closest.ref))
   return closest
 end
 

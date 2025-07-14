@@ -68,26 +68,38 @@ end
 
 -- Collect frame locations without loading buffers
 function FrameHighlight:collectFrameLocations(thread)
+  self.logger:info("FrameHighlight: Collecting frame locations for thread", thread.id)
+  
   local stack = thread:stack()
   if not stack then
-    self.logger:debug("FrameHighlight: No stack for thread", thread.id)
+    self.logger:warn("FrameHighlight: No stack for thread", thread.id)
     return
   end
   
   local frames = stack:frames()
   if not frames then
-    self.logger:debug("FrameHighlight: No frames for thread", thread.id)
+    self.logger:warn("FrameHighlight: No frames for thread", thread.id)
     return
   end
+  
+  self.logger:debug("FrameHighlight: Found", #frames, "frames in stack for thread", thread.id)
   
   -- Group locations by buffer URI for efficient highlighting
   local locations_by_uri = {}
   
-  for _, frame in ipairs(frames) do
+  for i, frame in ipairs(frames) do
     local location = frame:location()
     if location then
       -- Get buffer URI without loading the buffer
       local uri = location:toUri()
+      
+      self.logger:debug("FrameHighlight: Frame", i, "location:", {
+        key = location.key,
+        line = location.line,
+        column = location.column,
+        uri = uri,
+        sourceId = location.sourceId:toString()
+      })
       
       if uri and uri ~= "" then
         if not locations_by_uri[uri] then
@@ -98,7 +110,13 @@ function FrameHighlight:collectFrameLocations(thread)
           location = location,
           thread_id = thread.id
         })
+        
+        self.logger:debug("FrameHighlight: Added frame", i, "to URI:", uri)
+      else
+        self.logger:warn("FrameHighlight: Frame", i, "has empty or nil URI")
       end
+    else
+      self.logger:warn("FrameHighlight: Frame", i, "has no location")
     end
   end
   
@@ -111,9 +129,12 @@ function FrameHighlight:collectFrameLocations(thread)
     for _, loc_data in ipairs(locations) do
       table.insert(self.frame_locations[uri], loc_data)
     end
+    
+    self.logger:debug("FrameHighlight: URI", uri, "now has", #self.frame_locations[uri], "total locations")
   end
   
-  self.logger:debug("FrameHighlight: Collected", vim.tbl_count(locations_by_uri), "frame locations for thread", thread.id)
+  self.logger:info("FrameHighlight: Collected", vim.tbl_count(locations_by_uri), "URIs with frame locations for thread", thread.id)
+  self.logger:debug("FrameHighlight: Total tracked URIs:", vim.tbl_count(self.frame_locations))
   
   -- Apply highlights to already visible buffers
   self:highlightVisibleBuffers()
@@ -182,16 +203,27 @@ end
 -- Highlight a specific buffer if it has frame locations
 function FrameHighlight:highlightBuffer(bufnr)
   if not vim.api.nvim_buf_is_valid(bufnr) then
+    self.logger:debug("FrameHighlight: Invalid buffer", bufnr)
     return
   end
   
   local bufname = vim.api.nvim_buf_get_name(bufnr)
   if bufname == "" then
+    self.logger:debug("FrameHighlight: Buffer", bufnr, "has no name")
     return
   end
   
   -- Convert buffer path to URI for comparison
-  local uri = vim.uri_from_fname(bufname)
+  local uri
+  if bufname:match("^virtual://") then
+    -- Buffer name is already a virtual URI, use it directly
+    uri = bufname
+  else
+    -- File buffer, convert to URI
+    uri = vim.uri_from_fname(bufname)
+  end
+  
+  self.logger:debug("FrameHighlight: Highlighting buffer", bufnr, "name:", bufname, "uri:", uri)
   
   -- Clear existing highlights for this buffer
   vim.api.nvim_buf_clear_namespace(bufnr, self.namespace, 0, -1)
@@ -199,26 +231,46 @@ function FrameHighlight:highlightBuffer(bufnr)
   -- Check if we have frame locations for this buffer
   local locations = self.frame_locations[uri]
   if not locations or #locations == 0 then
+    self.logger:debug("FrameHighlight: No locations found for URI:", uri)
+    self.logger:debug("FrameHighlight: Available URIs:", vim.tbl_keys(self.frame_locations))
     return
   end
   
+  self.logger:debug("FrameHighlight: Found", #locations, "locations for buffer", bufname)
+  
   -- Apply highlights for each frame location
   local applied_count = 0
-  for _, loc_data in ipairs(locations) do
+  local checked_count = 0
+  
+  for i, loc_data in ipairs(locations) do
     local location = loc_data.location
+    checked_count = checked_count + 1
+    
+    self.logger:debug("FrameHighlight: Checking location", i, "thread:", loc_data.thread_id, "key:", location.key)
     
     -- Verify this location matches the current buffer
     local loc_bufnr = location:bufnr()
+    self.logger:debug("FrameHighlight: Location bufnr:", loc_bufnr, "target bufnr:", bufnr)
+    
     if loc_bufnr == bufnr then
+      self.logger:debug("FrameHighlight: Applying highlight for location:", {
+        line = location.line,
+        column = location.column,
+        key = location.key
+      })
+      
       if self:applyHighlight(bufnr, location) then
         applied_count = applied_count + 1
+        self.logger:debug("FrameHighlight: Successfully applied highlight", applied_count)
+      else
+        self.logger:warn("FrameHighlight: Failed to apply highlight for location", location.key)
       end
+    else
+      self.logger:debug("FrameHighlight: Location bufnr mismatch - skipping")
     end
   end
   
-  if applied_count > 0 then
-    self.logger:debug("FrameHighlight: Applied", applied_count, "highlights to buffer", bufname)
-  end
+  self.logger:info("FrameHighlight: Buffer", bufname, "- checked:", checked_count, "applied:", applied_count, "highlights")
 end
 
 -- Apply highlight to a specific location
@@ -226,25 +278,43 @@ function FrameHighlight:applyHighlight(bufnr, location)
   local line = (location.line or 1) - 1  -- Convert to 0-based
   local col = (location.column or 1) - 1
   
+  self.logger:debug("FrameHighlight: Applying highlight at line:", line + 1, "col:", col + 1, "bufnr:", bufnr)
+  
   -- Ensure line is within buffer bounds
   local line_count = vim.api.nvim_buf_line_count(bufnr)
+  self.logger:debug("FrameHighlight: Buffer has", line_count, "lines, target line:", line + 1)
+  
   if line >= line_count then
+    self.logger:warn("FrameHighlight: Line", line + 1, "is beyond buffer bounds (", line_count, "lines)")
     return false
   end
   
-  -- Get line content for end column
+  -- Get line content for verification
   local lines = vim.api.nvim_buf_get_lines(bufnr, line, line + 1, false)
   if #lines == 0 then
+    self.logger:warn("FrameHighlight: No lines returned for line", line + 1)
     return false
   end
   
   local line_content = lines[1]
   if not line_content then
+    self.logger:warn("FrameHighlight: Line", line + 1, "has no content")
     return false
   end
   
+  self.logger:debug("FrameHighlight: Line content:", line_content:sub(1, 50) .. (line_content:len() > 50 and "..." or ""))
+  
   -- Apply highlight to entire line
-  local ok = pcall(vim.api.nvim_buf_add_highlight,
+  self.logger:debug("FrameHighlight: Applying highlight with:", {
+    bufnr = bufnr,
+    namespace = self.namespace,
+    hl_group = self.hl_group,
+    line = line,
+    start_col = 0,
+    end_col = -1
+  })
+  
+  local ok, err = pcall(vim.api.nvim_buf_add_highlight,
     bufnr,
     self.namespace,
     self.hl_group,
@@ -253,7 +323,13 @@ function FrameHighlight:applyHighlight(bufnr, location)
     -1  -- Highlight entire line
   )
   
-  return ok
+  if not ok then
+    self.logger:error("FrameHighlight: Failed to add highlight:", err)
+    return false
+  end
+  
+  self.logger:debug("FrameHighlight: Successfully added highlight for line", line + 1)
+  return true
 end
 
 -- Highlight all currently visible buffers
