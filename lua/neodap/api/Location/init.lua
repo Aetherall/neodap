@@ -6,7 +6,7 @@ local VirtualBufferManager = require('neodap.api.VirtualBuffer.Manager')
 local VirtualBufferMetadata = require('neodap.api.VirtualBuffer.Metadata')
 
 ---@class api.LocationProps
----@field id SourceIdentifier -- Unified source identification
+---@field sourceId SourceIdentifier -- Unified source identification
 ---@field line integer? -- Optional line number (1-based)
 ---@field column integer? -- Optional column number (1-based)
 ---@field key string -- Computed unique identifier
@@ -32,7 +32,7 @@ function Location.create(opts)
 
   
   return Location:new({
-    id = opts.sourceId,
+    sourceId = opts.sourceId,
     line = opts.line,
     column = opts.column,
     key = key
@@ -94,7 +94,7 @@ function Location:adjusted(opts)
   end
 
   return Location.create({
-    sourceId = self.id,
+    sourceId = self.sourceId,
     line = new_line,
     column = new_column
   })
@@ -104,9 +104,9 @@ end
 ---@return integer?
 function Location:bufnr()
   -- Passive lookup only - use manifests(session) for creation
-  if self.id:isFile() then
+  if self.sourceId:isFile() then
     return self:_getFileBuffer()
-  elseif self.id:isVirtual() then
+  elseif self.sourceId:isVirtual() then
     return self:_getVirtualBuffer()
   end
   return nil
@@ -117,9 +117,9 @@ end
 ---@return integer? bufnr Buffer number of the manifested location
 function Location:manifests(session)
   -- Cross-session buffer management with proper lifecycle
-  if self.id:isFile() then
+  if self.sourceId:isFile() then
     return self:_getOrCreateFileBuffer()
-  elseif self.id:isVirtual() then
+  elseif self.sourceId:isVirtual() then
     return self:_getOrCreateVirtualBuffer(session)
   end
   return nil
@@ -129,16 +129,16 @@ end
 ---@return string
 function Location:toUri()
   -- Location handles physical addressing in the material world
-  if self.id:isFile() then
-    if not self.id.path then
+  if self.sourceId:isFile() then
+    if not self.sourceId.path then
       Logger.get():error("Location: File identifier missing path field")
       return ""
     end
-    return vim.uri_from_fname(self.id.path)
+    return vim.uri_from_fname(self.sourceId.path)
   else
     return string.format("virtual://%s/%s", 
-      self.id.stability_hash, 
-      self.id.name
+      self.sourceId.stability_hash, 
+      self.sourceId.name
     )
   end
 end
@@ -150,10 +150,10 @@ end
 ---Get file buffer (passive lookup only)
 ---@return integer?
 function Location:_getFileBuffer()
-  if not self.id.path then
+  if not self.sourceId.path then
     return nil
   end
-  local uri = vim.uri_from_fname(self.id.path)
+  local uri = vim.uri_from_fname(self.sourceId.path)
   local bufnr = vim.uri_to_bufnr(uri)
   return bufnr ~= -1 and bufnr or nil
 end
@@ -163,12 +163,12 @@ end
 function Location:_getVirtualBuffer()
   local registry = VirtualBufferRegistry.get()
   
-  if not self.id.stability_hash then
+  if not self.sourceId.stability_hash then
     return nil
   end
 
   -- Try lookup by stability hash first
-  local metadata = registry:getBufferByStabilityHash(self.id.stability_hash)
+  local metadata = registry:getBufferByStabilityHash(self.sourceId.stability_hash)
   return metadata and metadata:isValid() and metadata.bufnr or nil
 end
 
@@ -179,7 +179,7 @@ end
 function Location:_getOrCreateFileBuffer()
   local log = Logger.get()
   
-  if not self.id.path then
+  if not self.sourceId.path then
     log:error("Location: File identifier missing path field")
     return nil
   end
@@ -191,7 +191,7 @@ function Location:_getOrCreateFileBuffer()
   end
   
   -- Create new file buffer
-  local path = vim.fn.fnamemodify(self.id.path, ':p')
+  local path = vim.fn.fnamemodify(self.sourceId.path, ':p')
   
   if vim.fn.filereadable(path) == 0 then
     log:warn("Location: File not readable:", path)
@@ -215,7 +215,7 @@ end
 function Location:_getOrCreateVirtualBuffer(session)
   local log = Logger.get()
   
-  if not self.id:isVirtual() then
+  if not self.sourceId:isVirtual() then
     log:error("Location: Cannot create virtual buffer for non-virtual identifier")
     return nil
   end
@@ -231,7 +231,7 @@ function Location:_getOrCreateVirtualBuffer(session)
   end
   
   -- Need to create new buffer - get content from session
-  local source = session:getSource(self.id)
+  local source = session:getSource(self.sourceId)
   if not source then
     log:error("Location: No source found for virtual buffer creation")
     return nil
@@ -249,8 +249,8 @@ function Location:_getOrCreateVirtualBuffer(session)
   
   -- Detect filetype
   local filetype = VirtualBufferManager.detectFiletype(
-    self.id.name or "",
-    self.id.origin,
+    self.sourceId.name or "",
+    self.sourceId.origin,
     content
   )
   
@@ -262,11 +262,11 @@ function Location:_getOrCreateVirtualBuffer(session)
     uri = uri,
     bufnr = bufnr,
     content_hash = vim.fn.sha256(content),
-    stability_hash = self.id.stability_hash,
+    stability_hash = self.sourceId.stability_hash,
     referencing_sessions = { [session.id] = true },
     source_info = {
-      name = self.id.name,
-      origin = self.id.origin,
+      name = self.sourceId.name,
+      origin = self.sourceId.origin,
       sourceReference = source.ref.sourceReference -- Get from current session's source
     }
   })
@@ -337,9 +337,13 @@ function Location:unmark(ns)
   end
 end
 
+function Location:getSourceId()
+  return self.sourceId
+end
 
-function Location:getId()
-  return self.id
+---@param other api.Location
+function Location:sameLine(other)
+  return self.sourceId:equals(other.sourceId) and self.line == other.line
 end
 
 return Location

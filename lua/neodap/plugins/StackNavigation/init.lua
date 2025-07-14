@@ -115,8 +115,8 @@ function StackNavigation:_detectRelevantThread()
       if stack then
         local frames = stack:frames()
         for _, frame in ipairs(frames or {}) do
-          if self:_frameMatchesLocation(frame, cursor_location, cursor_bufnr) then
-            self.logger:debug("StackNavigation: Found exact match thread", thread.id)
+          local location = frame:location()
+          if location and location:sameLine(cursor_location) then
             return thread, candidate.position
           end
         end
@@ -132,8 +132,8 @@ function StackNavigation:_detectRelevantThread()
       if stack then
         local frames = stack:frames()
         for _, frame in ipairs(frames or {}) do
-          if self:_frameInSameBuffer(frame, cursor_bufnr) then
-            self.logger:debug("StackNavigation: Found same-file thread", thread.id)
+          local location = frame:location()
+          if location and location.sourceId:equals(cursor_location.sourceId) then
             return thread, candidate.position
           end
         end
@@ -154,75 +154,6 @@ function StackNavigation:_detectRelevantThread()
   local fallback = candidate_threads[1]
   self.logger:debug("StackNavigation: Using fallback thread", fallback.thread.id)
   return fallback.thread, fallback.position
-end
-
----Check if frame matches the exact cursor location
----@param frame api.Frame
----@param cursor_location api.Location
----@param cursor_bufnr integer
----@return boolean
-function StackNavigation:_frameMatchesLocation(frame, cursor_location, cursor_bufnr)
-  if not frame.ref.source or not frame.ref.line then
-    return false
-  end
-  
-  -- Get source object for frame
-  local source_obj = frame.stack.thread.session:getSourceFor(frame.ref.source)
-  if not source_obj then
-    return false
-  end
-  
-  -- Create location for frame position
-  local frame_location = Location.fromSource(source_obj, {
-    line = frame.ref.line,
-    column = frame.ref.column or 1
-  })
-  
-  local frame_bufnr = frame_location:bufnr()
-  if frame_bufnr ~= cursor_bufnr then
-    return false
-  end
-  
-  -- Check if same line (exact position match)
-  return frame.ref.line == cursor_location.line
-end
-
----Check if frame is in the same buffer as cursor
----@param frame api.Frame
----@param cursor_bufnr integer
----@return boolean
-function StackNavigation:_frameInSameBuffer(frame, cursor_bufnr)
-  if not frame.ref.source then
-    return false
-  end
-  
-  -- Get source object for frame
-  local source_obj = frame.stack.thread.session:getSourceFor(frame.ref.source)
-  if not source_obj then
-    return false
-  end
-  
-  -- Create location for frame (just need buffer check)
-  local frame_location = Location.fromSource(source_obj, {
-    line = frame.ref.line or 1,
-    column = 1
-  })
-  
-  local frame_bufnr = frame_location:bufnr()
-  return frame_bufnr == cursor_bufnr
-end
-
----Get thread by ID from all sessions
----@param thread_id integer
----@return api.Thread?
-function StackNavigation:_getThreadById(thread_id)
-  for session in self.api:eachSession() do
-    local thread = session._threads and session._threads[thread_id]
-    if thread then
-      return thread
-    end
-  end
-  return nil
 end
 
 -- Public Navigation API

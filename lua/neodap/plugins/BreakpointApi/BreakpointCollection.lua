@@ -94,8 +94,8 @@ end
 ---@return boolean
 function BreakpointCollection:_isLocationBetween(location, start, finish)
   -- Only consider positions in the same source
-  local target_id = location.id
-  local start_id = start.id
+  local target_id = location.sourceId
+  local start_id = start.sourceId
   
   if not target_id:equals(start_id) then
     return false
@@ -143,7 +143,7 @@ end
 ---@return api.BreakpointCollection
 function BreakpointCollection:atSource(source_identifier)
   return self:filter(function(breakpoint)
-    return breakpoint.location.id:equals(source_identifier)
+    return breakpoint.location.sourceId:equals(source_identifier)
   end)
 end
 

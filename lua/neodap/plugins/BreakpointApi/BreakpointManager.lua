@@ -41,7 +41,7 @@ end
 ---@return api.Breakpoint
 function BreakpointManager:addBreakpoint(location, opts)
   local log = Logger.get()
-  local identifier = location.id
+  local identifier = location.sourceId
   log:info("BreakpointManager:addBreakpoint called for location:", identifier:toString(), location.line)
   
   -- Check for existing breakpoint
@@ -60,7 +60,7 @@ function BreakpointManager:addBreakpoint(location, opts)
   
   -- Queue sync for all active sessions
   for session in self.api:eachSession() do
-    local source = session:getSource(identifier)
+    local source = session:getSource(location)
     if source then
       self:queueSourceSync(source, session)
     end
@@ -85,7 +85,7 @@ function BreakpointManager:removeBreakpoint(breakpoint)
   end
   
   -- Queue sync for all affected sessions
-  local identifier = breakpoint.location.id
+  local identifier = breakpoint.location.sourceId
   for session in self.api:eachSession() do
     local source = session:getSource(identifier)
     if source then
@@ -113,7 +113,7 @@ end
 ---@param breakpoint api.Breakpoint
 function BreakpointManager:resyncBreakpoint(breakpoint)
   -- Queue sync for all sessions that have this source
-  local identifier = breakpoint.location.id
+  local identifier = breakpoint.location.sourceId
   for session in self.api:eachSession() do
     local source = session:getSource(identifier)
     if source then

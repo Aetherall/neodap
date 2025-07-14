@@ -235,7 +235,7 @@ end
 ---@return api.Source?
 function Session:getSource(identifier)
   return self:findSource(function(source)
-    return source.id:equals(identifier:getId())
+    return source.id:equals(identifier:getSourceId())
   end)
 end
 

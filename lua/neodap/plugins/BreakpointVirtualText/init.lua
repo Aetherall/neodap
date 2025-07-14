@@ -61,8 +61,6 @@ return {
           end
           location:mark(ns, mark)
         end)
-      
-        location:SourceFile():deferUntilLoaded()
   
         mark = binding:wasMoved() and marks.adjusted or marks.bound
         location:mark(ns, mark)

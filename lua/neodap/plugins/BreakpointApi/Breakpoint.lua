@@ -23,7 +23,7 @@ function Breakpoint.atLocation(manager, location, opts)
   -- print("BREAKPOINT_LIFECYCLE: Creating breakpoint with location:", location and location.key or "NIL")
   
   local instance = Breakpoint:new({
-    id = location.key,
+    sourceId = location.key,
     manager = manager,
     location = location,
     condition = opts.condition,

@@ -3,7 +3,6 @@ local Location = require("neodap.api.Location")
 
 ---@class BreakpointApiPlugin
 ---@field onBreakpoint fun(callback: fun(breakpoint: api.Breakpoint)): fun()
----@field onBreakpointRemoved fun(callback: fun(breakpoint: api.Breakpoint)): fun()
 ---@field setBreakpoint fun(location: api.Location): api.Breakpoint
 ---@field removeBreakpoint fun(breakpoint: api.Breakpoint)
 ---@field getBreakpoints fun(): api.BreakpointCollection
@@ -26,9 +25,6 @@ local BreakpointApi = {
         return manager:onBreakpoint(callback)
       end,
 
-      onBreakpointRemoved = function(callback)
-        return manager:onBreakpointRemoved(callback)
-      end,
 
       setBreakpoint = function(location)
         return manager:addBreakpoint(location)
