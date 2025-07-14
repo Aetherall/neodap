@@ -68,8 +68,8 @@ end
 ---@return SourceIdentifier
 function SourceIdentifier.fromDapSource(dap_source, session)
   
-  local log = Logger.get()
-  log:debug(vim.inspect(dap_source, { depth = 2 }))
+  -- local log = Logger.get()
+  -- log:debug(vim.inspect(dap_source, { depth = 2 }))
   
 
   if dap_source.sourceReference and dap_source.sourceReference > 0 then
