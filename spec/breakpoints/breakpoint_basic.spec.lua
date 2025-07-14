@@ -46,11 +46,10 @@ Test.Describe("new breakpoint manager - basic functionality", function()
     end)
     
     -- Create breakpoint before session starts (tests lazy binding)
-    local location = Location.SourceFile:new({
+    local location = Location.create({
       path = vim.fn.getcwd() .. "/spec/fixtures/loop.js",
       line = 3,
-      column = 0,
-      key = vim.fn.getcwd() .. "/spec/fixtures/loop.js:3:0"
+      column = 0
     })
     
     print("Setting breakpoint at:", location.path, "line", location.line)

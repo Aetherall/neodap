@@ -84,7 +84,7 @@
 -- -- Example API usage
 -- local function demonstrateAPI(manager)
 --   -- Create a breakpoint
---   local location = Location.SourceFile.fromCursor()
+--   local location = Location.fromCursor()
 --   local breakpoint = manager:addBreakpoint(location, {
 --     condition = "x > 10",
 --     logMessage = "x is now {x}"

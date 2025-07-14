@@ -45,11 +45,10 @@ Test.Describe("ToggleBreakpoint plugin", function()
     nio.sleep(200)
     
     -- Create first breakpoint at column 2 using toggle
-    local location1 = Location.SourceFile:new({
+    local location1 = Location.create({
       path = vim.fn.getcwd() .. "/spec/fixtures/loop.js",
       line = 3,
-      column = 2,
-      key = vim.fn.getcwd() .. "/spec/fixtures/loop.js:3:2"
+      column = 2
     })
     
     print("Creating first breakpoint at column 2...")
@@ -63,11 +62,10 @@ Test.Describe("ToggleBreakpoint plugin", function()
     nio.sleep(300)
     
     -- Now try to create second breakpoint at column 0 (should detect existing at column 2)
-    local location2 = Location.SourceFile:new({
+    local location2 = Location.create({
       path = vim.fn.getcwd() .. "/spec/fixtures/loop.js",
       line = 3,
-      column = 0,
-      key = vim.fn.getcwd() .. "/spec/fixtures/loop.js:3:0"
+      column = 0
     })
     
     print("Attempting to create second breakpoint at column 0...")
@@ -125,11 +123,10 @@ Test.Describe("ToggleBreakpoint plugin", function()
     nio.sleep(200)
     
     -- Create breakpoint at column 5 (middle of statement)
-    local location = Location.SourceFile:new({
+    local location = Location.create({
       path = vim.fn.getcwd() .. "/spec/fixtures/loop.js",
       line = 3,
-      column = 5,
-      key = vim.fn.getcwd() .. "/spec/fixtures/loop.js:3:5"
+      column = 5
     })
     
     print("Toggling breakpoint at column 5...")
@@ -140,11 +137,10 @@ Test.Describe("ToggleBreakpoint plugin", function()
     nio.sleep(200)
     
     -- Toggle again at column 0 - should remove the existing breakpoint
-    local location2 = Location.SourceFile:new({
+    local location2 = Location.create({
       path = vim.fn.getcwd() .. "/spec/fixtures/loop.js",
       line = 3,
-      column = 0,
-      key = vim.fn.getcwd() .. "/spec/fixtures/loop.js:3:0"
+      column = 0
     })
     
     print("Toggling again at column 0...")
@@ -164,11 +160,10 @@ Test.Describe("ToggleBreakpoint plugin", function()
     local togglePlugin = ToggleBreakpoint.plugin(api)
     
     -- Create breakpoint without any active session
-    local location = Location.SourceFile:new({
+    local location = Location.create({
       path = vim.fn.getcwd() .. "/spec/fixtures/loop.js",
       line = 3,
-      column = 5,
-      key = vim.fn.getcwd() .. "/spec/fixtures/loop.js:3:5"
+      column = 5
     })
     
     print("Adjusting location without active session...")
@@ -187,22 +182,20 @@ Test.Describe("ToggleBreakpoint plugin", function()
     local togglePlugin = ToggleBreakpoint.plugin(api)
     
     -- Create a breakpoint at column 0
-    local location = Location.SourceFile:new({
+    local location = Location.create({
       path = vim.fn.getcwd() .. "/spec/fixtures/loop.js",
       line = 3,
-      column = 0,
-      key = vim.fn.getcwd() .. "/spec/fixtures/loop.js:3:0"
+      column = 0
     })
     
     local breakpoint = breakpointManagerApi.setBreakpoint(location)
     assert(breakpoint ~= nil, "Breakpoint should be created")
     
     -- Try to clear at column 5 (should find the breakpoint at column 0)
-    local clearLocation = Location.SourceFile:new({
+    local clearLocation = Location.create({
       path = vim.fn.getcwd() .. "/spec/fixtures/loop.js",
       line = 3,
-      column = 5,
-      key = vim.fn.getcwd() .. "/spec/fixtures/loop.js:3:5"
+      column = 5
     })
     
     print("Clearing breakpoint from column 5...")
@@ -221,11 +214,10 @@ Test.Describe("ToggleBreakpoint plugin", function()
     
     -- Create multiple breakpoints
     for i = 1, 5 do
-      local location = Location.SourceFile:new({
+      local location = Location.create({
         path = vim.fn.getcwd() .. "/spec/fixtures/loop.js",
         line = i + 2,
-        column = 0,
-        key = vim.fn.getcwd() .. "/spec/fixtures/loop.js:" .. (i + 2) .. ":0"
+        column = 0
       })
       breakpointManagerApi.setBreakpoint(location)
     end

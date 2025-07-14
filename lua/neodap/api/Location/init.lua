@@ -79,7 +79,7 @@ function Location.fromDapBinding(dapBinding)
     return nil -- Cannot identify this source
   end
   
-  return Location.createWithIdentifier({
+  return Location.create({
     source_identifier = identifier,
     line = dapBinding.line,
     column = dapBinding.column,

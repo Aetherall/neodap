@@ -4,11 +4,11 @@ local Location = require("neodap.api.Location")
 ---@class BreakpointApiPlugin
 ---@field onBreakpoint fun(callback: fun(breakpoint: api.FileSourceBreakpoint)): fun()
 ---@field onBreakpointRemoved fun(callback: fun(breakpoint: api.FileSourceBreakpoint)): fun()
----@field setBreakpoint fun(location: api.SourceFileLocation): api.FileSourceBreakpoint
+---@field setBreakpoint fun(location: api.Location): api.FileSourceBreakpoint
 ---@field removeBreakpoint fun(breakpoint: api.FileSourceBreakpoint)
 ---@field getBreakpoints fun(): api.BreakpointCollection
 ---@field getBindings fun(): api.BindingCollection
----@field toggleBreakpoint fun(self: any, location: api.SourceFileLocation): api.FileSourceBreakpoint
+---@field toggleBreakpoint fun(self: any, location: api.Location): api.FileSourceBreakpoint
 
 
 local BreakpointApi = {

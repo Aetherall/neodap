@@ -36,7 +36,7 @@ end
 
 -- Core Breakpoint Operations
 
----@param location api.SourceFilePosition
+---@param location api.Location
 ---@param opts? { condition?: string, logMessage?: string }
 ---@return api.FileSourceBreakpoint
 function BreakpointManager:addBreakpoint(location, opts)
@@ -97,7 +97,7 @@ function BreakpointManager:removeBreakpoint(breakpoint)
   breakpoint:destroy()  -- Breakpoint emits its own 'Removed' event
 end
 
----@param location api.SourceFilePosition
+---@param location api.Location
 ---@return api.FileSourceBreakpoint?
 function BreakpointManager:toggleBreakpoint(location)
   local existing = self.breakpoints:atLocation(location):first()

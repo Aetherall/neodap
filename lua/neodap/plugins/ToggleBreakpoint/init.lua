@@ -28,8 +28,8 @@ end
 
 
 ---Apply smart placement to a location based on available sessions and breakpoint locations
----@param location api.SourceFileLocation
----@return api.SourceFileLocation|nil adjusted The adjusted location, or nil if no valid placement possible
+---@param location api.Location
+---@return api.Location|nil adjusted The adjusted location, or nil if no valid placement possible
 function ToggleBreakpoint:adjustLocation(location)
   local log = Logger.get()
   
@@ -52,7 +52,7 @@ function ToggleBreakpoint:adjustLocation(location)
       local closestLocation = session:findClosestBreakpointLocation(source, location.line, location.column)
       if closestLocation then
         -- Create adjusted location based on DAP adapter's response using identifier
-        adjustedLocation = Location.createWithIdentifier({
+        adjustedLocation = Location.create({
           source_identifier = location:getSourceIdentifier(),
           line = closestLocation.line,
           column = closestLocation.column,
@@ -71,7 +71,7 @@ function ToggleBreakpoint:adjustLocation(location)
   -- If no session provided specific valid locations, use intelligent fallback
   if not adjustedLocation then
     if location.column ~= 0 then
-      adjustedLocation = Location.createWithIdentifier({
+      adjustedLocation = Location.create({
         source_identifier = location:getSourceIdentifier(),
         line = location.line,
         column = 0,
@@ -106,7 +106,7 @@ function ToggleBreakpoint:adjustLocation(location)
 end
 
 ---Check if a new breakpoint would create a duplicate binding at the same DAP location
----@param location api.SourceFileLocation
+---@param location api.Location
 ---@return boolean wouldDuplicate True if this would create a duplicate binding
 function ToggleBreakpoint:wouldCreateDuplicateBinding(location)
   local log = Logger.get()
@@ -135,7 +135,7 @@ function ToggleBreakpoint:wouldCreateDuplicateBinding(location)
 end
 
 ---Toggle a breakpoint at the given location
----@param location api.SourceFileLocation
+---@param location api.Location
 ---@return api.FileSourceBreakpoint?
 function ToggleBreakpoint:toggle(location)
   local log = Logger.get()
@@ -182,7 +182,7 @@ function ToggleBreakpoint:toggle(location)
 end
 
 ---Clear a breakpoint at the given location (considering smart placement)
----@param location api.SourceFileLocation
+---@param location api.Location
 ---@return boolean cleared True if a breakpoint was cleared
 function ToggleBreakpoint:clear(location)
   local log = Logger.get()

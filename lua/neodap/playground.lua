@@ -67,7 +67,7 @@ local function go()
   local breakpoints = api:getPluginInstance(BreakpointApi)
   api:getPluginInstance(FrameVariables)
   local stack = api:getPluginInstance(StackNavigation)
-  local ToggleBreakpoint = api:getPluginInstance(ToggleBreakpoint)
+  local toggleBreakpoint = api:getPluginInstance(ToggleBreakpoint)
 
 
   -- DebugMode.plugin(api)
@@ -94,7 +94,7 @@ local function go()
 
   vim.keymap.set("n", "<leader>db", function()
     nio.run(function()
-      ToggleBreakpoint:toggle(Location.SourceFile.fromCursor())
+      toggleBreakpoint:toggle(Location.fromCursor())
     end)
   end, { noremap = true, silent = true, desc = "Toggle Breakpoint" })
 
@@ -144,10 +144,10 @@ local function go()
       -- Only process file sources
       if source.type == 'file' then
         if source:filename() == "loop.js" then
-          -- Use BreakpointApi to add breakpoint
+          -- Use ToggleBreakpoint plugin to add breakpoint
           local Location = require('neodap.api.Location')
-          local location = Location.SourceFile.fromSource(source, { line = 3 })
-          breakpoints:setBreakpoint(location)
+          local location = Location.fromSource(source, { line = 3, column = 1 })
+          toggleBreakpoint:toggle(location)
         end
       end
     end)
