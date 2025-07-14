@@ -200,7 +200,9 @@ end
 function Source:destroy()
   if self._identifier and self:isVirtual() then
     local log = Logger.get()
-    local uri = self._identifier:toUri()
+    local Location = require('neodap.api.Location')
+    local location = Location.create({ sourceId = self._identifier })
+    local uri = location:toUri()
     log:debug("Source: Cleaning up virtual buffer for:", uri)
     local registry = self.session.api._virtual_buffer_registry
     registry:removeSessionReference(uri, self.session.id)
@@ -316,7 +318,9 @@ function Source:_getVirtualBuffer()
   end
   
   local registry = self.session.api._virtual_buffer_registry
-  local uri = identifier:toUri()
+  local Location = require('neodap.api.Location')
+  local location = Location.create({ sourceId = identifier })
+  local uri = location:toUri()
   
   log:debug("Source: Getting virtual buffer for URI:", uri)
   

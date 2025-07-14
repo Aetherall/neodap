@@ -1,6 +1,5 @@
 local Class = require('neodap.tools.class')
 local Logger = require('neodap.tools.logger')
-local VirtualBufferRegistry = require('neodap.api.VirtualBuffer.Registry')
 
 ---@class SourceIdentifierProps
 ---@field type 'file' | 'virtual'
@@ -144,49 +143,6 @@ function SourceIdentifier:equals(other)
   end
 end
 
----Get URI for buffer operations
----@return string
-function SourceIdentifier:toUri()
-  if self.type == 'file' then
-    if not self.path then
-      local log = Logger.get()
-      log:error("SourceIdentifier:toUri - File identifier missing path field")
-      return ""
-    end
-    return vim.uri_from_fname(self.path)
-  else
-    return string.format("virtual://%s/%s", 
-      self.stability_hash, 
-      self.name
-    )
-  end
-end
-
----Get buffer number for this source (session-independent lookup)
----@return integer?
-function SourceIdentifier:bufnr()
-  if self.type == 'file' then
-    if not self.path then
-      local log = Logger.get()
-      log:error("SourceIdentifier:bufnr - File identifier missing path field")
-      return nil
-    end
-    local uri = vim.uri_from_fname(self.path)
-    local bufnr = vim.uri_to_bufnr(uri)
-    return bufnr ~= -1 and bufnr or nil
-  else
-    -- Virtual source buffer lookup via singleton registry
-    local registry = VirtualBufferRegistry.get()
-    
-    if not self.stability_hash then
-      return nil
-    end
-
-    -- Try lookup by stability hash first
-    local metadata = registry:getBufferByStabilityHash(self.stability_hash)
-    return metadata and metadata:isValid() and metadata.bufnr or nil
-  end
-end
 
 ---Check if this identifier represents a file source
 ---@return boolean

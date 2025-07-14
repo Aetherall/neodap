@@ -1,5 +1,7 @@
 local Class = require('neodap.tools.class')
 local SourceIdentifier = require('neodap.api.Location.SourceIdentifier')
+local Logger = require('neodap.tools.logger')
+local VirtualBufferRegistry = require('neodap.api.VirtualBuffer.Registry')
 
 ---@class api.LocationProps
 ---@field id SourceIdentifier -- Unified source identification
@@ -95,10 +97,65 @@ function Location:adjusted(opts)
   })
 end
 
----Get buffer number for this location
+---Get buffer number for this location (concrete manifestation)
 ---@return integer?
 function Location:bufnr()
-  return self.id:bufnr()
+  -- Location handles concrete buffer operations in the physical world
+  if self.id:isFile() then
+    return self:_getFileBuffer()
+  elseif self.id:isVirtual() then
+    return self:_getVirtualBuffer()
+  end
+  return nil
+end
+
+---Get URI for buffer operations (concrete addressing)
+---@return string
+function Location:toUri()
+  -- Location handles physical addressing in the material world
+  if self.id:isFile() then
+    if not self.id.path then
+      local log = Logger.get()
+      log:error("Location:toUri - File identifier missing path field")
+      return ""
+    end
+    return vim.uri_from_fname(self.id.path)
+  else
+    return string.format("virtual://%s/%s", 
+      self.id.stability_hash, 
+      self.id.name
+    )
+  end
+end
+
+-- Private buffer implementation methods
+
+---Get file buffer (passive lookup)
+---@return integer?
+function Location:_getFileBuffer()
+  if not self.id.path then
+    local log = Logger.get()
+    log:error("Location:_getFileBuffer - File identifier missing path field")
+    return nil
+  end
+  local uri = vim.uri_from_fname(self.id.path)
+  local bufnr = vim.uri_to_bufnr(uri)
+  return bufnr ~= -1 and bufnr or nil
+end
+
+---Get virtual buffer (passive lookup)
+---@return integer?
+function Location:_getVirtualBuffer()
+  -- Virtual source buffer lookup via singleton registry
+  local registry = VirtualBufferRegistry.get()
+  
+  if not self.id.stability_hash then
+    return nil
+  end
+
+  -- Try lookup by stability hash first
+  local metadata = registry:getBufferByStabilityHash(self.id.stability_hash)
+  return metadata and metadata:isValid() and metadata.bufnr or nil
 end
 
 ---Check if two locations are equal
