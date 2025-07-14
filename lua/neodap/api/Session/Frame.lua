@@ -70,6 +70,19 @@ function Frame:variables(variablesReference)
   return response.variables
 end
 
+
+function Frame:location()
+  if not self._source then
+    return nil -- No source information available
+  end
+
+  -- Create a location from the source and frame reference
+  return Location.fromSource(self._source, {
+    line = self.ref.line,
+    column = self.ref.column
+  })
+end
+
 function Frame:up()
   return self.stack:upOf(self.ref.id)
 end
@@ -79,18 +92,14 @@ function Frame:down()
 end
 
 function Frame:jump()
-  local source = self.ref.source
-  if not source then
+
+  local location = self:location()
+
+  if not location then
     return
   end
   
-  -- Get the source object from session
-  local source_obj = self.stack.thread.session:getSourceFor(source)
-  if not source_obj then
-    return
-  end
-  
-  local bufnr = source_obj:bufnr()
+  local bufnr = location:manifests(self.stack.thread.session)
   
   if not bufnr then
     return
@@ -98,9 +107,6 @@ function Frame:jump()
   
   -- Ensure the buffer is valid before switching to it
   if not vim.api.nvim_buf_is_valid(bufnr) then
-    local Logger = require('neodap.tools.logger')
-    local log = Logger.get()
-    log:error("Frame:jump - Invalid buffer", bufnr, "for source", source.name or "unnamed")
     return
   end
   
@@ -113,54 +119,22 @@ function Frame:jump()
   local safe_column = math.max(0, (self.ref.column or 1) - 1) -- Convert to 0-based
   
   vim.api.nvim_win_set_cursor(0, { safe_line, safe_column })
-  
-  -- Log successful jump for debugging
-  local Logger = require('neodap.tools.logger')
-  local log = Logger.get()
-  log:debug("Frame:jump - Successfully jumped to", source_obj:isVirtual() and "virtual" or "file", "source", 
-            source.name or "unnamed", "at line", safe_line, "column", safe_column + 1)
 end
 
 ---@param namespace integer
 ---@param hl_group string
 function Frame:highlight(namespace, hl_group)
-  local source = self.ref.source
-  if not source then
+  local location = self:location()
+
+  if not location then
+    -- If location creation failed, return without highlighting
     return
   end
-  
-  -- Get the source object from session
-  local source_obj = self.stack.thread.session:getSourceFor(source)
-  if not source_obj then
-    return
-  end
-  
-  local bufnr = nil
-  
-  if source_obj:isFile() then
-    -- Handle file sources
-    local Location = require('neodap.api.Location')
-    local location = Location.fromSource(source_obj, {
-      line = self.ref.line,
-      column = self.ref.column
-    })
-    bufnr = location:bufnr()
-    
-  elseif source_obj:isVirtual() then
-    -- Handle virtual sources - ensure buffer is created with DAP content
-    bufnr = source_obj:bufnr() -- This triggers DAP content loading
-    
-    if not bufnr then
-      -- If buffer creation failed, return without highlighting
-      return
-    end
-    
-  else
-    -- Generic sources not navigable
-    return
-  end
-  
+
+  local bufnr = location:manifests(self.stack.thread.session)
+
   if not bufnr then
+    -- If buffer creation/lookup failed, return without highlighting
     return
   end
   

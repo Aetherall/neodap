@@ -2,6 +2,8 @@ local Class = require('neodap.tools.class')
 local SourceIdentifier = require('neodap.api.Location.SourceIdentifier')
 local Logger = require('neodap.tools.logger')
 local VirtualBufferRegistry = require('neodap.api.VirtualBuffer.Registry')
+local VirtualBufferManager = require('neodap.api.VirtualBuffer.Manager')
+local VirtualBufferMetadata = require('neodap.api.VirtualBuffer.Metadata')
 
 ---@class api.LocationProps
 ---@field id SourceIdentifier -- Unified source identification
@@ -97,14 +99,27 @@ function Location:adjusted(opts)
   })
 end
 
----Get buffer number for this location (concrete manifestation)
+---Get buffer number for this location (passive lookup)
 ---@return integer?
 function Location:bufnr()
-  -- Location handles concrete buffer operations in the physical world
+  -- Passive lookup only - use manifests(session) for creation
   if self.id:isFile() then
     return self:_getFileBuffer()
   elseif self.id:isVirtual() then
     return self:_getVirtualBuffer()
+  end
+  return nil
+end
+
+---Manifest this location in the physical world (create buffer if needed)
+---@param session api.Session Session context for content retrieval and buffer creation
+---@return integer? bufnr Buffer number of the manifested location
+function Location:manifests(session)
+  -- Cross-session buffer management with proper lifecycle
+  if self.id:isFile() then
+    return self:_getOrCreateFileBuffer()
+  elseif self.id:isVirtual() then
+    return self:_getOrCreateVirtualBuffer(session)
   end
   return nil
 end
@@ -130,12 +145,12 @@ end
 
 -- Private buffer implementation methods
 
----Get file buffer (passive lookup)
+-- Passive lookup methods (no creation)
+
+---Get file buffer (passive lookup only)
 ---@return integer?
 function Location:_getFileBuffer()
   if not self.id.path then
-    local log = Logger.get()
-    log:error("Location:_getFileBuffer - File identifier missing path field")
     return nil
   end
   local uri = vim.uri_from_fname(self.id.path)
@@ -143,10 +158,9 @@ function Location:_getFileBuffer()
   return bufnr ~= -1 and bufnr or nil
 end
 
----Get virtual buffer (passive lookup)
+---Get virtual buffer (passive lookup only)
 ---@return integer?
 function Location:_getVirtualBuffer()
-  -- Virtual source buffer lookup via singleton registry
   local registry = VirtualBufferRegistry.get()
   
   if not self.id.stability_hash then
@@ -156,6 +170,111 @@ function Location:_getVirtualBuffer()
   -- Try lookup by stability hash first
   local metadata = registry:getBufferByStabilityHash(self.id.stability_hash)
   return metadata and metadata:isValid() and metadata.bufnr or nil
+end
+
+-- Active creation methods (for cross-session buffer management)
+
+---Get or create file buffer (active creation)
+---@return integer?
+function Location:_getOrCreateFileBuffer()
+  local log = Logger.get()
+  
+  if not self.id.path then
+    log:error("Location: File identifier missing path field")
+    return nil
+  end
+  
+  -- First try passive lookup
+  local existing = self:_getFileBuffer()
+  if existing then
+    return existing
+  end
+  
+  -- Create new file buffer
+  local path = vim.fn.fnamemodify(self.id.path, ':p')
+  
+  if vim.fn.filereadable(path) == 0 then
+    log:warn("Location: File not readable:", path)
+    return nil
+  end
+  
+  local bufnr = vim.fn.bufnr(path, true)
+  
+  if bufnr == -1 then
+    log:error("Location: Failed to create buffer for:", path)
+    return nil
+  end
+  
+  log:debug("Location: Created file buffer", bufnr, "for:", path)
+  return bufnr
+end
+
+---Get or create virtual buffer (active creation with session context)
+---@param session api.Session Session for content retrieval
+---@return integer?
+function Location:_getOrCreateVirtualBuffer(session)
+  local log = Logger.get()
+  
+  if not self.id:isVirtual() then
+    log:error("Location: Cannot create virtual buffer for non-virtual identifier")
+    return nil
+  end
+  
+  -- First try passive lookup (cross-session buffer reuse)
+  local existing = self:_getVirtualBuffer()
+  if existing then
+    -- Add session reference for cross-session sharing
+    local registry = VirtualBufferRegistry.get()
+    registry:addSessionReference(self:toUri(), session.id)
+    log:debug("Location: Reusing existing virtual buffer", existing, "for session", session.id)
+    return existing
+  end
+  
+  -- Need to create new buffer - get content from session
+  local source = session:getSourceByIdentifier(self.id)
+  if not source then
+    log:error("Location: No source found for virtual buffer creation")
+    return nil
+  end
+  
+  local content = source:content()
+  if not content then
+    log:error("Location: Failed to retrieve content for virtual buffer")
+    return nil
+  end
+  
+  -- Create buffer with cross-session persistence
+  local registry = VirtualBufferRegistry.get()
+  local uri = self:toUri()
+  
+  -- Detect filetype
+  local filetype = VirtualBufferManager.detectFiletype(
+    self.id.name or "",
+    self.id.origin,
+    content
+  )
+  
+  -- Create buffer via manager
+  local bufnr = registry.manager:createBuffer(uri, content, filetype)
+  
+  -- Register in cross-session registry
+  local metadata = VirtualBufferMetadata.create({
+    uri = uri,
+    bufnr = bufnr,
+    content_hash = vim.fn.sha256(content),
+    stability_hash = self.id.stability_hash,
+    referencing_sessions = { [session.id] = true },
+    source_info = {
+      name = self.id.name,
+      origin = self.id.origin,
+      sourceReference = source.ref.sourceReference -- Get from current session's source
+    }
+  })
+  
+  registry:registerBuffer(uri, metadata)
+  
+  log:info("Location: Created virtual buffer", bufnr, "for cross-session use:", uri)
+  return bufnr
 end
 
 ---Check if two locations are equal

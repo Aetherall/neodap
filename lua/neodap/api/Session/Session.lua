@@ -1,6 +1,7 @@
 local Class = require("neodap.tools.class")
 local Thread = require("neodap.api.Session.Thread")
 local Source = require('neodap.api.Session.Source')
+local SourceIdentifier = require('neodap.api.Location.SourceIdentifier')
 local Hookable = require("neodap.transport.hookable")
 local Logger = require("neodap.tools.logger")
 
@@ -74,8 +75,9 @@ function Session:listen()
 
 
   self:onLoadedSourceNew(function(dapSource)
-    local id = Source.dap_identifier(dapSource)
-    if not id then return end
+    local identifier = SourceIdentifier.fromDapSource(dapSource, self)
+    if not identifier then return end
+    local id = identifier:toString()
 
     local existing = self._sources[id]
 
@@ -104,8 +106,9 @@ function Session:listen()
   end, { name = "SessionLoadedSourceNew_" .. uniqueId, priority = 1 })
 
   self:onLoadedSourceChanged(function(dapSource)
-    local id = Source.dap_identifier(dapSource)
-    if not id then return end
+    local identifier = SourceIdentifier.fromDapSource(dapSource, self)
+    if not identifier then return end
+    local id = identifier:toString()
 
     local existing = self._sources[id]
     if existing then
@@ -120,8 +123,9 @@ function Session:listen()
 
 
   self:onLoadedSourceRemoved(function(dapSource)
-    local id = Source.dap_identifier(dapSource)
-    if not id then return end
+    local identifier = SourceIdentifier.fromDapSource(dapSource, self)
+    if not identifier then return end
+    local id = identifier:toString()
 
     local existing = self._sources[id]
     if existing then
@@ -247,24 +251,26 @@ function Session:getSourceFor(dapSource)
     self._sources = {}
   end
 
-  local identifier = Source.dap_identifier(dapSource)
+  local identifier = SourceIdentifier.fromDapSource(dapSource, self)
   if not identifier then
     -- TODO: Should we error here ?
     return nil
   end
 
+  local id = identifier:toString()
+  
   -- Check if we already have this source cached
-  local existing = self._sources[identifier]
+  local existing = self._sources[id]
   if existing then
     return existing
   end
 
   -- Cache and return the new source
-  self._sources[identifier] = Source.instanciate(self, dapSource)
+  self._sources[id] = Source.instanciate(self, dapSource )
 
-  self.hookable:emit('SourceLoaded', self._sources[identifier])
+  self.hookable:emit('SourceLoaded', self._sources[id])
 
-  return self._sources[identifier]
+  return self._sources[id]
 end
 
 ---@param listener fun(body: dap.Breakpoint)

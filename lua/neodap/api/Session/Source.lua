@@ -2,13 +2,11 @@ local Class = require('neodap.tools.class')
 local Logger = require('neodap.tools.logger')
 local nio = require('nio')
 local SourceIdentifier = require('neodap.api.Location.SourceIdentifier')
-local VirtualBufferManager = require('neodap.api.VirtualBuffer.Manager')
-local VirtualBufferMetadata = require('neodap.api.VirtualBuffer.Metadata')
 
 ---@class api.SourceProps
+---@field id SourceIdentifier
 ---@field session api.Session
 ---@field ref dap.Source
----@field _identifier SourceIdentifier? -- Cached SourceIdentifier
 ---@field _content string? -- Cached content
 
 ---@class api.Source: api.SourceProps
@@ -21,6 +19,7 @@ local Source = Class()
 ---@return api.Source
 function Source.instanciate(session, source)
   local instance = Source:new({
+    id = SourceIdentifier.fromDapSource(source, session),
     session = session,
     ref = source,
     _identifier = nil, -- Lazy-loaded
@@ -61,16 +60,8 @@ function Source:identifier()
   return self._identifier
 end
 
----Get or create buffer for this source
----@return integer?
-function Source:bufnr()
-  if self:isVirtual() then
-    return self:_getVirtualBuffer()
-  elseif self:isFile() then
-    return self:_getFileBuffer()
-  end
-  return nil
-end
+-- REMOVED: Source:bufnr() - session-scoped objects cannot manage persistent buffers
+-- Use location:manifests(session) instead for proper lifecycle management
 
 ---Get filename for display
 ---@return string
@@ -85,7 +76,7 @@ end
 ---Get string representation
 ---@return string
 function Source:toString()
-  return string.format("Source(%s)", self:identifier():toString())
+  return string.format("Source(%s)", self.id:toString())
 end
 
 -- Content Access (Internal Use)
@@ -107,44 +98,6 @@ function Source:content()
 end
 
 -- Legacy DAP Methods (for backward compatibility)
-
----Create a unique identifier for this source, or nil if unidentifiable
----@return string | nil
-function Source:dap_identifier()
-  return Source.dap_identifier(self.ref)
-end
-
----Static function to create dap identifier from source ref
----@param source_ref dap.Source
----@return string | nil
-function Source.dap_identifier(source_ref)
-  if source_ref.sourceReference and source_ref.sourceReference > 0 then
-    return string.format("sourceReference:%d", source_ref.sourceReference)
-  elseif source_ref.path and source_ref.path ~= '' then
-    return string.format("path:%s", vim.fn.fnamemodify(source_ref.path, ':p'))
-  end
-  return nil
-end
-
----Check if this source is identifiable
----@return boolean
-function Source:isIdentifiable()
-  return self:dap_identifier() ~= nil
-end
-
----Check if this source matches a LoadedSource event
----@param loaded_source dap.Source
----@return boolean
-function Source:matchesLoadedSource(loaded_source)
-  if not self:isIdentifiable() then
-    return false
-  end
-  
-  local our_id = self:dap_identifier()
-  local their_id = Source.dap_identifier(loaded_source)
-  
-  return our_id == their_id
-end
 
 ---Check if this source matches DAP checksums
 ---@param checksums dap.Checksum[]
@@ -177,39 +130,6 @@ function Source:matchesChecksums(checksums)
   
   return false
 end
-
----Check if this source equals another source
----@param other api.Source
----@return boolean
-function Source:is(other)
-  return self == other
-end
-
----Check if this source equals another source by identifier
----@param other api.Source
----@return boolean
-function Source:equals(other)
-  if not self:isIdentifiable() or not other:isIdentifiable() then
-    return false
-  end
-  
-  return self:dap_identifier() == other:dap_identifier()
-end
-
----Cleanup when source is destroyed
-function Source:destroy()
-  if self._identifier and self:isVirtual() then
-    local log = Logger.get()
-    local Location = require('neodap.api.Location')
-    local location = Location.create({ sourceId = self._identifier })
-    local uri = location:toUri()
-    log:debug("Source: Cleaning up virtual buffer for:", uri)
-    local registry = self.session.api._virtual_buffer_registry
-    registry:removeSessionReference(uri, self.session.id)
-  end
-end
-
--- Private Implementation Methods
 
 ---Get file content by reading from filesystem
 ---@return string?
@@ -271,103 +191,6 @@ function Source:_getDapContent()
   end
   
   return result.content
-end
-
----Get or create file buffer
----@return integer?
-function Source:_getFileBuffer()
-  local log = Logger.get()
-  
-  if not self.ref.path or self.ref.path == '' then
-    log:warn("Source: No path for file buffer")
-    return nil
-  end
-  
-  local path = vim.fn.fnamemodify(self.ref.path, ':p')
-  local uri = vim.uri_from_fname(path)
-  local bufnr = vim.uri_to_bufnr(uri)
-  
-  if bufnr == -1 then
-    log:debug("Source: Creating file buffer for:", path)
-    
-    if vim.fn.filereadable(path) == 0 then
-      log:warn("Source: File not readable:", path)
-      return nil
-    end
-    
-    bufnr = vim.fn.bufnr(path, true)
-    
-    if bufnr == -1 then
-      log:error("Source: Failed to create buffer for:", path)
-      return nil
-    end
-  end
-  
-  return bufnr
-end
-
----Get or create virtual buffer
----@return integer?
-function Source:_getVirtualBuffer()
-  local log = Logger.get()
-  local identifier = self:identifier()
-  
-  if not identifier:isVirtual() then
-    log:error("Source: Cannot create virtual buffer for non-virtual source")
-    return nil
-  end
-  
-  local registry = self.session.api._virtual_buffer_registry
-  local Location = require('neodap.api.Location')
-  local location = Location.create({ sourceId = identifier })
-  local uri = location:toUri()
-  
-  log:debug("Source: Getting virtual buffer for URI:", uri)
-  
-  -- Check if buffer already exists
-  local existing = registry:getBufferByUri(uri)
-  if existing and existing:isValid() then
-    -- Add session reference and return existing buffer
-    registry:addSessionReference(uri, self.session.id)
-    log:debug("Source: Reusing existing buffer", existing.bufnr)
-    return existing.bufnr
-  end
-  
-  -- Need to create new buffer
-  local content = self:content()
-  if not content then
-    log:error("Source: Failed to retrieve content for virtual buffer")
-    return nil
-  end
-  
-  -- Detect filetype
-  local filetype = VirtualBufferManager.detectFiletype(
-    self.ref.name or "",
-    self.ref.origin,
-    content
-  )
-  
-  -- Create buffer via manager
-  local bufnr = registry.manager:createBuffer(uri, content, filetype)
-  
-  -- Register in registry
-  local metadata = VirtualBufferMetadata.create({
-    uri = uri,
-    bufnr = bufnr,
-    content_hash = vim.fn.sha256(content),
-    stability_hash = identifier.stability_hash,
-    referencing_sessions = { [self.session.id] = true },
-    source_info = {
-      name = self.ref.name,
-      origin = self.ref.origin,
-      sourceReference = self.ref.sourceReference
-    }
-  })
-  
-  registry:registerBuffer(uri, metadata)
-  
-  log:info("Source: Created virtual buffer", bufnr, "for:", uri)
-  return bufnr
 end
 
 return Source

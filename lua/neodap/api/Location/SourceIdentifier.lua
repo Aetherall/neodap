@@ -63,13 +63,10 @@ function SourceIdentifier.fromVirtualUri(uri)
 end
 
 -- Factory: Create from DAP source (session-independent)
----@param dap_source? dap.Source
----@param session? api.Session
----@return SourceIdentifier?
+---@param dap_source dap.Source
+---@param session api.Session
+---@return SourceIdentifier
 function SourceIdentifier.fromDapSource(dap_source, session)
-  if not dap_source then
-    return nil -- No source provided
-  end
   
   local log = Logger.get()
   log:debug(vim.inspect(dap_source, { depth = 2 }))
@@ -86,12 +83,9 @@ function SourceIdentifier.fromDapSource(dap_source, session)
       source_reference = dap_source.sourceReference,
       session_id = session and session.id,
     })
-  elseif dap_source.path and dap_source.path ~= '' then
-    -- File source with path
-    return SourceIdentifier.fromPath(dap_source.path)
-  else
-    return nil
   end
+
+  return SourceIdentifier.fromPath(dap_source.path or "")
 end
 
 -- Calculate stability hash for virtual sources (session-independent)
