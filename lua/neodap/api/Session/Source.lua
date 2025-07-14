@@ -1,6 +1,7 @@
 local Class = require('neodap.tools.class')
 local Logger = require('neodap.tools.logger')
 local SourceIdentifier = require('neodap.api.Location.SourceIdentifier')
+local Location = require("neodap.api.Location")
 
 ---@class api.SourceProps
 ---@field id SourceIdentifier
@@ -25,6 +26,10 @@ function Source.instanciate(session, source)
     _content = nil     -- Lazy-loaded
   })
   return instance
+end
+
+function Source:location()
+  return Location.fromSource(self, {})
 end
 
 -- Core Type Checking Methods
@@ -172,6 +177,35 @@ function Source:_getDapContent()
   end
   
   return result.content
+end
+
+
+---@param opts { line?: integer }
+---@return fun(): api.Location?
+function Source:breakpointLocations(opts)
+  local line = opts.line or 1
+
+  local result = self.session.ref.calls:breakpointLocations({
+    source = self.ref,
+    line = line,
+  }):wait()
+
+  if not result or not result.breakpoints then
+    return function() return nil end
+  end
+
+  local index = 0
+    return function()
+      index = index + 1
+      if index > #result.breakpoints then
+        return nil
+      end
+      local loc = result.breakpoints[index]
+      if not loc then
+        return nil
+      end
+      return Location.fromSource(self, loc)
+    end
 end
 
 return Source

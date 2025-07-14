@@ -346,4 +346,20 @@ function Location:sameLine(other)
   return self.sourceId:equals(other.sourceId) and self.line == other.line
 end
 
+---@param other api.Location
+function Location:distance(other)
+  -- Different sources are infinitely far apart
+  if not self.sourceId:equals(other.sourceId) then
+    return math.huge
+  end
+
+  -- Different lines are 1000 units apart
+  if self.line ~= other.line then
+    return 1000 + math.abs((self.column or 0) - (other.column or 0))
+  end
+
+  -- Same line, calculate column distance
+  return math.abs((self.column or 0) - (other.column or 0))
+end
+
 return Location
