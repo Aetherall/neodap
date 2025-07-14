@@ -406,6 +406,36 @@ function Session:getBreakpointLocations(source, line, column)
 end
 
 
+---@param opts { filter: 'stopped' | 'all' | 'running' }?
+---@return fun(): api.Thread?
+function Session:eachThread(opts)
+  local keys = vim.tbl_keys(self._threads)
+  local index = 0
+
+  local filter = opts and opts.filter or 'all'
+  return function()
+    index = index + 1
+    if index > #keys then
+      return nil
+    end
+
+    local threadId = keys[index]
+    local thread = self._threads[threadId]
+
+    if not thread then
+      return nil -- Thread was removed
+    end
+
+    if filter == 'stopped' and not thread.stopped then
+      return nil -- Skip running threads
+    elseif filter == 'running' and thread.stopped then
+      return nil -- Skip stopped threads
+    end
+
+    return thread
+  end
+end
+
 
 
 ---Find the closest valid breakpoint location to the requested position

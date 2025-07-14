@@ -348,9 +348,9 @@ end
 
 ---@param other api.Location
 function Location:distance(other)
-  -- Different sources are infinitely far apart
+  -- Different sources are 1000_0000 units apart
   if not self.sourceId:equals(other.sourceId) then
-    return math.huge
+    return 10000000
   end
 
   -- Different lines are 1000 units apart

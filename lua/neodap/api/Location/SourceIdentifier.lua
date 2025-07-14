@@ -116,7 +116,7 @@ function SourceIdentifier:toString()
   else
     return string.format("virtual:%s:%s", 
       self.stability_hash,
-      self.origin
+      self.name or "unnamed"
     )
   end
 end
