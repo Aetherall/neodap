@@ -1,14 +1,14 @@
 local Logger = require("neodap.tools.logger")
 local Class = require("neodap.tools.class")
 local NvimAsync = require("neodap.tools.async")
-local Location = require("neodap.api.Location")
 
 ---@class neodap.plugin.FrameHighlightProps
 ---@field api Api
 ---@field logger Logger
 ---@field namespace integer
----@field frame_locations table<string, { location: api.Location, thread_id: integer }[]> -- URI -> location data
----@field hl_group string
+---@field highlights table<integer, {location: api.Location, frame_index: integer}[]> -- thread_id -> frame data
+---@field top_frame_hl_group string
+---@field other_frame_hl_group string
 
 ---@class neodap.plugin.FrameHighlight: neodap.plugin.FrameHighlightProps
 ---@field new Constructor<neodap.plugin.FrameHighlightProps>
@@ -24,14 +24,22 @@ function FrameHighlight.plugin(api)
     api = api,
     logger = logger,
     namespace = vim.api.nvim_create_namespace("neodap_frame_highlight"),
-    frame_locations = {},
-    hl_group = "NeodapFrameHighlight"
+    highlights = {},
+    top_frame_hl_group = "NeodapTopFrameHighlight",
+    other_frame_hl_group = "NeodapOtherFrameHighlight"
   })
   
-  -- Setup highlight group if it doesn't exist
-  vim.api.nvim_set_hl(0, instance.hl_group, { 
+  -- Setup highlight groups
+  vim.api.nvim_set_hl(0, instance.top_frame_hl_group, { 
     default = true, 
-    link = "CursorLine" 
+    bg = "#FF8C00", -- Orange background for top frame
+    blend = 90,
+  })
+  
+  vim.api.nvim_set_hl(0, instance.other_frame_hl_group, { 
+    default = true, 
+    bg = "#20B2AA", -- Bluish-green background for other frames
+    blend = 90,
   })
   
   instance:listen()
@@ -66,280 +74,103 @@ function FrameHighlight:listen()
   end, { name = self.name .. ".onSession" })
 end
 
--- Collect frame locations without loading buffers
+-- Collect frame locations and apply highlights directly
 function FrameHighlight:collectFrameLocations(thread)
   self.logger:info("FrameHighlight: Collecting frame locations for thread", thread.id)
   
   local stack = thread:stack()
   if not stack then
-    self.logger:warn("FrameHighlight: No stack for thread", thread.id)
     return
   end
   
   local frames = stack:frames()
   if not frames then
-    self.logger:warn("FrameHighlight: No frames for thread", thread.id)
     return
   end
   
-  self.logger:debug("FrameHighlight: Found", #frames, "frames in stack for thread", thread.id)
-  
-  -- Group locations by buffer URI for efficient highlighting
-  local locations_by_uri = {}
-  
+  -- Collect all locations from frames with their indices
+  local frame_data = {}
   for i, frame in ipairs(frames) do
     local location = frame:location()
     if location then
-      -- Get buffer URI without loading the buffer
-      local uri = location:toUri()
-      
-      self.logger:debug("FrameHighlight: Frame", i, "location:", {
-        key = location.key,
-        line = location.line,
-        column = location.column,
-        uri = uri,
-        sourceId = location.sourceId:toString()
+      table.insert(frame_data, {
+        location = location,
+        frame_index = i
       })
+    end
+  end
+  
+  -- Store frame data for this thread
+  self.highlights[thread.id] = frame_data
+  self.logger:info("FrameHighlight: Stored", #frame_data, "locations for thread", thread.id)
+  
+  -- Apply highlights to all stored locations
+  self:highlightAllVisibleLocations()
+end
+
+-- Highlight all stored locations that are currently visible
+function FrameHighlight:highlightAllVisibleLocations()
+  self.logger:debug("FrameHighlight: Highlighting all visible locations")
+  
+  for thread_id, frame_data in pairs(self.highlights) do
+    for _, data in ipairs(frame_data) do
+      local location = data.location
+      local frame_index = data.frame_index
       
-      if uri and uri ~= "" then
-        if not locations_by_uri[uri] then
-          locations_by_uri[uri] = {}
-        end
-        
-        table.insert(locations_by_uri[uri], {
-          location = location,
-          thread_id = thread.id
-        })
-        
-        self.logger:debug("FrameHighlight: Added frame", i, "to URI:", uri)
-      else
-        self.logger:warn("FrameHighlight: Frame", i, "has empty or nil URI")
-      end
-    else
-      self.logger:warn("FrameHighlight: Frame", i, "has no location")
+      -- Use orange for top frame (index 1), bluish-green for others
+      local hl_group = frame_index == 1 and self.top_frame_hl_group or self.other_frame_hl_group
+      
+      location:highlight(self.namespace, hl_group)
+      
+      self.logger:debug("FrameHighlight: Highlighted frame", frame_index, "with", hl_group, "at", location.key)
     end
   end
-  
-  -- Merge with existing locations
-  for uri, locations in pairs(locations_by_uri) do
-    if not self.frame_locations[uri] then
-      self.frame_locations[uri] = {}
-    end
-    
-    for _, loc_data in ipairs(locations) do
-      table.insert(self.frame_locations[uri], loc_data)
-    end
-    
-    self.logger:debug("FrameHighlight: URI", uri, "now has", #self.frame_locations[uri], "total locations")
-  end
-  
-  self.logger:info("FrameHighlight: Collected", vim.tbl_count(locations_by_uri), "URIs with frame locations for thread", thread.id)
-  self.logger:debug("FrameHighlight: Total tracked URIs:", vim.tbl_count(self.frame_locations))
-  
-  -- Apply highlights to already visible buffers
-  self:highlightVisibleBuffers()
 end
 
 -- Remove frame highlights for a specific thread
 function FrameHighlight:removeThreadFrames(thread)
-  local removed_count = 0
-  
-  -- Remove locations associated with this thread
-  for uri, locations in pairs(self.frame_locations) do
-    local original_count = #locations
-    
-    self.frame_locations[uri] = vim.tbl_filter(function(loc_data)
-      return loc_data.thread_id ~= thread.id
-    end, locations)
-    
-    removed_count = removed_count + (original_count - #self.frame_locations[uri])
-    
-    -- Clean up empty entries
-    if #self.frame_locations[uri] == 0 then
-      self.frame_locations[uri] = nil
-    end
+  local frame_data = self.highlights[thread.id]
+  if not frame_data then
+    self.logger:debug("FrameHighlight: No locations to remove for thread", thread.id)
+    return
   end
   
-  self.logger:debug("FrameHighlight: Removed", removed_count, "frame locations for thread", thread.id)
+  -- Unhighlight all locations for this thread
+  for _, data in ipairs(frame_data) do
+    data.location:unhighlight(self.namespace)
+  end
   
-  -- Update visible buffers
-  self:highlightVisibleBuffers()
+  -- Remove from storage
+  self.highlights[thread.id] = nil
+  self.logger:debug("FrameHighlight: Removed", #frame_data, "locations for thread", thread.id)
 end
 
 -- Setup autocommands to react to buffer events
 function FrameHighlight:setupAutocommands()
   local group = vim.api.nvim_create_augroup("FrameHighlight", { clear = true })
   
-  -- When a buffer becomes visible, apply highlights
+  -- When a buffer becomes visible, apply highlights to all stored locations
   vim.api.nvim_create_autocmd({"BufEnter", "BufWinEnter", "BufReadPost"}, {
     group = group,
-    callback = function(args)
+    callback = function()
       NvimAsync.run(function()
-        if vim.api.nvim_buf_is_valid(args.buf) then
-          self:highlightBuffer(args.buf)
-        end
+        self:highlightAllVisibleLocations()
       end)
     end,
     desc = "Apply frame highlights when buffer becomes visible"
   })
   
-  -- When switching windows, ensure highlights are applied
-  vim.api.nvim_create_autocmd("WinEnter", {
-    group = group,
-    callback = function()
-      NvimAsync.run(function()
-        local bufnr = vim.api.nvim_get_current_buf()
-        if vim.api.nvim_buf_is_valid(bufnr) then
-          self:highlightBuffer(bufnr)
-        end
-      end)
-    end,
-    desc = "Apply frame highlights when entering window"
-  })
-  
   self.logger:debug("FrameHighlight: Autocommands setup complete")
-end
-
--- Highlight a specific buffer if it has frame locations
-function FrameHighlight:highlightBuffer(bufnr)
-  if not vim.api.nvim_buf_is_valid(bufnr) then
-    self.logger:debug("FrameHighlight: Invalid buffer", bufnr)
-    return
-  end
-  
-  local bufname = vim.api.nvim_buf_get_name(bufnr)
-  if bufname == "" then
-    self.logger:debug("FrameHighlight: Buffer", bufnr, "has no name")
-    return
-  end
-  
-  -- Convert buffer path to URI for comparison
-  local uri
-  if bufname:match("^virtual://") then
-    -- Buffer name is already a virtual URI, use it directly
-    uri = bufname
-  else
-    -- File buffer, convert to URI
-    uri = vim.uri_from_fname(bufname)
-  end
-  
-  self.logger:debug("FrameHighlight: Highlighting buffer", bufnr, "name:", bufname, "uri:", uri)
-  
-  -- Clear existing highlights for this buffer
-  vim.api.nvim_buf_clear_namespace(bufnr, self.namespace, 0, -1)
-  
-  -- Check if we have frame locations for this buffer
-  local locations = self.frame_locations[uri]
-  if not locations or #locations == 0 then
-    self.logger:debug("FrameHighlight: No locations found for URI:", uri)
-    self.logger:debug("FrameHighlight: Available URIs:", vim.tbl_keys(self.frame_locations))
-    return
-  end
-  
-  self.logger:debug("FrameHighlight: Found", #locations, "locations for buffer", bufname)
-  
-  -- Apply highlights for each frame location
-  local applied_count = 0
-  local checked_count = 0
-  
-  for i, loc_data in ipairs(locations) do
-    local location = loc_data.location
-    checked_count = checked_count + 1
-    
-    self.logger:debug("FrameHighlight: Checking location", i, "thread:", loc_data.thread_id, "key:", location.key)
-    
-    -- Verify this location matches the current buffer
-    local loc_bufnr = location:bufnr()
-    self.logger:debug("FrameHighlight: Location bufnr:", loc_bufnr, "target bufnr:", bufnr)
-    
-    if loc_bufnr == bufnr then
-      self.logger:debug("FrameHighlight: Applying highlight for location:", {
-        line = location.line,
-        column = location.column,
-        key = location.key
-      })
-      
-      if self:applyHighlight(bufnr, location) then
-        applied_count = applied_count + 1
-        self.logger:debug("FrameHighlight: Successfully applied highlight", applied_count)
-      else
-        self.logger:warn("FrameHighlight: Failed to apply highlight for location", location.key)
-      end
-    else
-      self.logger:debug("FrameHighlight: Location bufnr mismatch - skipping")
-    end
-  end
-  
-  self.logger:info("FrameHighlight: Buffer", bufname, "- checked:", checked_count, "applied:", applied_count, "highlights")
-end
-
--- Apply highlight to a specific location
-function FrameHighlight:applyHighlight(bufnr, location)
-  self.logger:debug("FrameHighlight: Applying highlight at line:", location.line, "col:", location.column, "bufnr:", bufnr)
-  
-  -- Create a location adjusted to start from column 1 for entire line highlighting
-  local line_start_location = location:adjusted({ column = 1 })
-  
-  -- Use the new Location highlight method (defaults to end of line)
-  local extmark_id = line_start_location:highlight(self.namespace, self.hl_group)
-  
-  if extmark_id then
-    self.logger:debug("FrameHighlight: Successfully applied highlight with extmark ID:", extmark_id)
-    return true
-  else
-    self.logger:warn("FrameHighlight: Failed to apply highlight for location:", location.key)
-    return false
-  end
-end
-
--- Highlight all currently visible buffers
-function FrameHighlight:highlightVisibleBuffers()
-  -- Get unique buffers from all windows
-  local visible_buffers = {}
-  
-  for _, winid in ipairs(vim.api.nvim_list_wins()) do
-    if vim.api.nvim_win_is_valid(winid) then
-      local bufnr = vim.api.nvim_win_get_buf(winid)
-      if vim.api.nvim_buf_is_valid(bufnr) then
-        visible_buffers[bufnr] = true
-      end
-    end
-  end
-  
-  -- Apply highlights to each visible buffer
-  for bufnr, _ in pairs(visible_buffers) do
-    self:highlightBuffer(bufnr)
-  end
-end
-
--- Get current highlight statistics
-function FrameHighlight:getStats()
-  local total_locations = 0
-  local uri_count = vim.tbl_count(self.frame_locations)
-  local thread_ids = {}
-  
-  for _, locations in pairs(self.frame_locations) do
-    total_locations = total_locations + #locations
-    for _, loc_data in ipairs(locations) do
-      thread_ids[loc_data.thread_id] = true
-    end
-  end
-  
-  return {
-    total_locations = total_locations,
-    uri_count = uri_count,
-    thread_count = vim.tbl_count(thread_ids)
-  }
 end
 
 -- Cleanup method
 function FrameHighlight:destroy()
   self.logger:debug("FrameHighlight: Destroying plugin")
   
-  -- Clear all highlights from all buffers
-  for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
-    if vim.api.nvim_buf_is_valid(bufnr) then
-      pcall(vim.api.nvim_buf_clear_namespace, bufnr, self.namespace, 0, -1)
+  -- Unhighlight all stored locations
+  for _, frame_data in pairs(self.highlights) do
+    for _, data in ipairs(frame_data) do
+      data.location:unhighlight(self.namespace)
     end
   end
   
@@ -347,7 +178,7 @@ function FrameHighlight:destroy()
   pcall(vim.api.nvim_del_augroup_by_name, "FrameHighlight")
   
   -- Clear state
-  self.frame_locations = {}
+  self.highlights = {}
   
   self.logger:info("FrameHighlight: Plugin destroyed")
 end

@@ -4,6 +4,7 @@ local Logger = require('neodap.tools.logger')
 local VirtualBufferRegistry = require('neodap.api.VirtualBuffer.Registry')
 local VirtualBufferManager = require('neodap.api.VirtualBuffer.Manager')
 local VirtualBufferMetadata = require('neodap.api.VirtualBuffer.Metadata')
+local logger = require("neodap.tools.logger")
 
 ---@class api.LocationProps
 ---@field sourceId SourceIdentifier -- Unified source identification
@@ -30,7 +31,6 @@ function Location.create(opts)
     key = key .. ":" .. opts.column
   end
 
-  
   return Location:new({
     sourceId = opts.sourceId,
     line = opts.line,
@@ -381,6 +381,7 @@ function Location:highlight(ns, hl_group, opts)
   end
 
   -- Create new highlight (no existing check needed)
+  logger:get():debug("Highlighting location at", start_line, start_col, "to", end_line, end_col)
   return vim.api.nvim_buf_set_extmark(bufnr, ns, start_line, start_col, {
     end_row = end_line,
     end_col = end_col,
