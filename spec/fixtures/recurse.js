@@ -4,6 +4,5 @@ function fibo(n){
   return fibo(n - 1) + fibo(n - 2);
 }
 
-
-
-setTimeout(() => fibo(1000000), 1000);
+// Test with smaller number for debugging
+setTimeout(() => fibo(5), 1000);
