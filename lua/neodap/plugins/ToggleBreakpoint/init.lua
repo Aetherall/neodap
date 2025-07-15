@@ -52,7 +52,7 @@ function ToggleBreakpoint:adjust(location)
 end
 
 ---@param location api.Location?
-ToggleBreakpoint.toggle = NvimAsync.defer(function(self, location)
+function ToggleBreakpoint:toggle(location)
   local target = location or Location.fromCursor()
   
   local adjusted = self:adjust(target)
@@ -64,7 +64,11 @@ ToggleBreakpoint.toggle = NvimAsync.defer(function(self, location)
   end
   
   self.breakpointApi.setBreakpoint(adjusted)
-end)
+end
 
+-- Auto-wrapped version for vim context boundaries
+function ToggleBreakpoint:Toggle(location)
+  return self:toggle(location)
+end
 
 return ToggleBreakpoint

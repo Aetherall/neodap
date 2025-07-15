@@ -72,24 +72,20 @@ end
 -- Set up manual commands for debug mode
 function DebugMode:setupCommands()
     vim.api.nvim_create_user_command("NeodapDebugModeEnter", function()
-        self:enterDebugMode()
+        self:EnterDebugMode()
     end, { desc = "Enter Neodap debug mode" })
 
     vim.api.nvim_create_user_command("NeodapDebugModeExit", function()
-        self:exitDebugMode()
+        self:ExitDebugMode()
     end, { desc = "Exit Neodap debug mode" })
 
     vim.api.nvim_create_user_command("NeodapDebugModeToggle", function()
-        if self.is_active then
-            self:exitDebugMode()
-        else
-            self:enterDebugMode()
-        end
+        self:ToggleDebugMode()
     end, { desc = "Toggle Neodap debug mode" })
 
     -- Add convenient keymap for entering debug mode
     vim.keymap.set("n", "<leader>dm", function()
-        self:enterDebugMode()
+        self:EnterDebugMode()
     end, { desc = "Enter Neodap debug mode" })
 end
 
@@ -122,6 +118,51 @@ function DebugMode:enterDebugMode()
 
     -- Navigate to smart closest frame when entering debug mode
     self:jumpToCurrentFrame()
+end
+
+-- Auto-wrapped versions for vim context boundaries
+function DebugMode:EnterDebugMode()
+    return self:enterDebugMode()
+end
+
+function DebugMode:ExitDebugMode()
+    return self:exitDebugMode()
+end
+
+function DebugMode:ToggleDebugMode()
+    if self.is_active then
+        self:exitDebugMode()
+    else
+        self:enterDebugMode()
+    end
+end
+
+function DebugMode:NavigateDown()
+    self:navigateDown()
+end
+
+function DebugMode:SmartRightKey()
+    self:smartRightKey()
+end
+
+function DebugMode:StepOver()
+    self:stepOver()
+end
+
+function DebugMode:StepOut()
+    self:stepOut()
+end
+
+function DebugMode:JumpToCurrentFrame()
+    self:jumpToCurrentFrame()
+end
+
+function DebugMode:ShowStackFrameTelescope()
+    self:showStackFrameTelescope()
+end
+
+function DebugMode:ShowHelp()
+    self:showHelp()
 end
 
 -- Exit debug mode: restore original mappings and status
@@ -169,31 +210,31 @@ function DebugMode:installDebugMappings()
     local opts = { noremap = true, silent = true, desc = "DebugMode: " }
 
     -- Arrow keys only - preserve hjkl for normal navigation
-    vim.keymap.set('n', '<Left>', NvimAsync.defer(function() self:navigateDown() end),
+    vim.keymap.set('n', '<Left>', function() self:NavigateDown() end,
         vim.tbl_extend('force', opts, { desc = opts.desc .. "Navigate down stack (towards callee)" }))
-    vim.keymap.set('n', '<Right>', NvimAsync.defer(function() self:smartRightKey() end),
+    vim.keymap.set('n', '<Right>', function() self:SmartRightKey() end,
         vim.tbl_extend('force', opts, { desc = opts.desc .. "Smart: step in if top frame, navigate up otherwise" }))
-    vim.keymap.set('n', '<Down>', NvimAsync.defer(function() self:stepOver() end),
+    vim.keymap.set('n', '<Down>', function() self:StepOver() end,
         vim.tbl_extend('force', opts, { desc = opts.desc .. "Step over (next line)" }))
-    vim.keymap.set('n', '<Up>', NvimAsync.defer(function() self:stepOut() end),
+    vim.keymap.set('n', '<Up>', function() self:StepOut() end,
         vim.tbl_extend('force', opts, { desc = opts.desc .. "Step out (return to caller)" }))
 
     -- Jump to current frame
-    vim.keymap.set('n', '<CR>', NvimAsync.defer(function() self:jumpToCurrentFrame() end),
+    vim.keymap.set('n', '<CR>', function() self:JumpToCurrentFrame() end,
         vim.tbl_extend('force', opts, { desc = opts.desc .. "Jump to current frame" }))
 
     -- Exit debug mode
-    vim.keymap.set('n', '<Esc>', NvimAsync.defer(function() self:exitDebugMode() end),
+    vim.keymap.set('n', '<Esc>', function() self:ExitDebugMode() end,
         vim.tbl_extend('force', opts, { desc = opts.desc .. "Exit debug mode" }))
-    vim.keymap.set('n', 'q', NvimAsync.defer(function() self:exitDebugMode() end),
+    vim.keymap.set('n', 'q', function() self:ExitDebugMode() end,
         vim.tbl_extend('force', opts, { desc = opts.desc .. "Exit debug mode" }))
 
     -- Stack frame telescope
-    vim.keymap.set('n', 's', NvimAsync.defer(function() self:showStackFrameTelescope() end),
+    vim.keymap.set('n', 's', function() self:ShowStackFrameTelescope() end,
         vim.tbl_extend('force', opts, { desc = opts.desc .. "Show stack frame telescope" }))
 
     -- Help
-    vim.keymap.set('n', '?', NvimAsync.defer(function() self:showHelp() end),
+    vim.keymap.set('n', '?', function() self:ShowHelp() end,
         vim.tbl_extend('force', opts, { desc = opts.desc .. "Show help" }))
 
     self.logger:debug("DebugMode: Installed debug key mappings (arrow keys only)")

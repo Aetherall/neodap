@@ -94,6 +94,19 @@ function StackNavigation:top()
     end
 end
 
+-- Auto-wrapped versions for vim context boundaries
+function StackNavigation:Up()
+    return self:up()
+end
+
+function StackNavigation:Down()
+    return self:down()
+end
+
+function StackNavigation:Top()
+    return self:top()
+end
+
 -- Smart Selection Methods
 
 ---Get all frames at the given location
@@ -367,7 +380,7 @@ function StackNavigation:setupListeners()
             -- Clear navigation state for all threads in this session when session terminates
             if self.navigation_states[session.id] then
                 for thread_id, _ in pairs(self.navigation_states[session.id]) do
-                    self:clearThreadNavigationState(session.id, thread.id)
+                    self:clearThreadNavigationState(session.id, thread_id)
                 end
             end
         end)

@@ -109,9 +109,7 @@ function ScopeViewer:listen()
     vim.api.nvim_create_autocmd("User", {
         pattern = "NeodapStackNavigationChanged",
         callback = function(event)
-            NvimAsync.run(function()
-                self:onNavigationChanged(event.data)
-            end)
+            self:OnNavigationChanged(event.data)
         end,
         group = vim.api.nvim_create_augroup("NeodapScopeViewer", { clear = true }),
     })
@@ -119,9 +117,7 @@ function ScopeViewer:listen()
     -- Listen for cursor movement to update ScopeViewer
     vim.api.nvim_create_autocmd("CursorMoved", {
         callback = function()
-            NvimAsync.run(function()
-                self:onGlobalCursorMoved()
-            end)
+            self:OnGlobalCursorMoved()
         end,
         group = vim.api.nvim_create_augroup("NeodapScopeViewer", { clear = false }),
     })
@@ -130,9 +126,7 @@ function ScopeViewer:listen()
     vim.api.nvim_create_autocmd("User", {
         pattern = "NeodapDebugOverlayLeftSelect",
         callback = function(event)
-            NvimAsync.run(function()
-                self:onPanelSelect(event.data.line)
-            end)
+            self:OnPanelSelect(event.data.line)
         end,
         group = vim.api.nvim_create_augroup("NeodapScopeViewer", { clear = false }),
     })
@@ -141,12 +135,27 @@ function ScopeViewer:listen()
     vim.api.nvim_create_autocmd("User", {
         pattern = "NeodapDebugOverlayLeftToggle",
         callback = function(event)
-            NvimAsync.run(function()
-                self:onPanelToggle(event.data.line)
-            end)
+            self:OnPanelToggle(event.data.line)
         end,
         group = vim.api.nvim_create_augroup("NeodapScopeViewer", { clear = false }),
     })
+end
+
+-- Auto-wrapped versions for vim context boundaries
+function ScopeViewer:OnNavigationChanged(event_data)
+    return self:onNavigationChanged(event_data)
+end
+
+function ScopeViewer:OnGlobalCursorMoved()
+    return self:onGlobalCursorMoved()
+end
+
+function ScopeViewer:OnPanelSelect(line)
+    return self:onPanelSelect(line)
+end
+
+function ScopeViewer:OnPanelToggle(line)
+    return self:onPanelToggle(line)
 end
 
 -- Event Handling Methods

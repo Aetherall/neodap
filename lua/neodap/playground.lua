@@ -134,9 +134,7 @@ local function go()
     end)
 
     vim.keymap.set("n", "<leader>db", function()
-        nio.run(function()
-            toggleBreakpoint:toggle()
-        end)
+        toggleBreakpoint:Toggle()
     end, { noremap = true, silent = true, desc = "Toggle Breakpoint" })
 
     vim.keymap.set("n", "<leader>dc", function()
@@ -159,12 +157,12 @@ local function go()
 
 
     vim.keymap.set("n", "<leader>du", function()
-        stack:up()
+        stack:Up()
     end, { noremap = true, silent = true, desc = "Step Out" })
 
 
     vim.keymap.set("n", "<leader>dd", function()
-        stack:down()
+        stack:Down()
     end, { noremap = true, silent = true, desc = "Jump to Stopped Frame" })
 
     -- Add command to show log file path

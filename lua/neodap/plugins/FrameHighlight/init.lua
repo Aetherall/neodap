@@ -127,6 +127,11 @@ function FrameHighlight:highlightAllVisibleLocations()
   end
 end
 
+-- Auto-wrapped version for vim context boundaries
+function FrameHighlight:HighlightAllVisibleLocations()
+  return self:highlightAllVisibleLocations()
+end
+
 -- Remove frame highlights for a specific thread
 function FrameHighlight:removeThreadFrames(thread)
   local frame_data = self.highlights[thread.id]
@@ -153,9 +158,7 @@ function FrameHighlight:setupAutocommands()
   vim.api.nvim_create_autocmd({"BufEnter", "BufWinEnter", "BufReadPost"}, {
     group = group,
     callback = function()
-      NvimAsync.run(function()
-        self:highlightAllVisibleLocations()
-      end)
+      self:HighlightAllVisibleLocations()
     end,
     desc = "Apply frame highlights when buffer becomes visible"
   })

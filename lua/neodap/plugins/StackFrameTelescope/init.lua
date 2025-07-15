@@ -47,8 +47,13 @@ end
 
 function StackFrameTelescope:setup_commands()
   vim.api.nvim_create_user_command("NeodapStackFrameTelescope", function()
-    self:show_frame_picker()
+    self:ShowFramePicker()
   end, { desc = "Show stack frame telescope picker" })
+end
+
+-- Auto-wrapped version for vim context boundaries
+function StackFrameTelescope:ShowFramePicker()
+  return self:show_frame_picker()
 end
 
 function StackFrameTelescope:listen()
@@ -101,7 +106,7 @@ function StackFrameTelescope:show_frame_picker()
         actions.close(prompt_bufnr)
         
         if selection and selection.frame then
-          self:jump_to_frame(selection.frame)
+          self:JumpToFrame(selection.frame)
         end
       end)
       
@@ -326,17 +331,20 @@ function StackFrameTelescope:jump_to_frame(frame)
     return
   end
   
-  NvimAsync.run(function()
-    local success, error_msg = pcall(function()
-      frame:jump()
-      self.logger:info("StackFrameTelescope: Jumped to frame", frame.ref.id)
-    end)
-    
-    if not success then
-      self.logger:error("StackFrameTelescope: Failed to jump to frame", error_msg)
-      vim.notify("Failed to jump to frame: " .. tostring(error_msg), vim.log.levels.ERROR)
-    end
+  local success, error_msg = pcall(function()
+    frame:jump()
+    self.logger:info("StackFrameTelescope: Jumped to frame", frame.ref.id)
   end)
+  
+  if not success then
+    self.logger:error("StackFrameTelescope: Failed to jump to frame", error_msg)
+    vim.notify("Failed to jump to frame: " .. tostring(error_msg), vim.log.levels.ERROR)
+  end
+end
+
+-- Auto-wrapped version for vim context boundaries
+function StackFrameTelescope:JumpToFrame(frame)
+  return self:jump_to_frame(frame)
 end
 
 function StackFrameTelescope:is_available()
