@@ -3,15 +3,13 @@ local Class = require("neodap.tools.class")
 local Location = require("neodap.api.Location")
 local NvimAsync = require("neodap.tools.async")
 local StackNavigation = require("neodap.plugins.StackNavigation")
-local CallStackViewer = require("neodap.plugins.CallStackViewer")
-local ScopeViewer = require("neodap.plugins.ScopeViewer")
+local DebugOverlay = require("neodap.plugins.DebugOverlay")
 
 ---@class neodap.plugin.DebugModeProps
 ---@field api Api
 ---@field logger Logger
 ---@field stackNavigation neodap.plugin.StackNavigation
----@field callStackViewer neodap.plugin.CallStackViewer
----@field scopeViewer neodap.plugin.ScopeViewer
+---@field debugOverlay neodap.plugin.DebugOverlay
 ---@field namespace integer
 ---@field is_active boolean
 ---@field original_maps table
@@ -31,8 +29,7 @@ function DebugMode.plugin(api)
     api = api,
     logger = logger,
     stackNavigation = api:getPluginInstance(StackNavigation),
-    callStackViewer = api:getPluginInstance(CallStackViewer),
-    scopeViewer = api:getPluginInstance(ScopeViewer),
+    debugOverlay = api:getPluginInstance(DebugOverlay),
     namespace = vim.api.nvim_create_namespace("neodap_debug_mode"),
     is_active = false,
     original_maps = {},
@@ -117,12 +114,9 @@ function DebugMode:enterDebugMode()
   -- Show mode message
   vim.api.nvim_echo({{ "-- DEBUG --", "ModeMsg" }}, false, {})
   
-  -- Show CallStackViewer and ScopeViewer when entering debug mode
-  if self.callStackViewer then
-    self.callStackViewer:show()
-  end
-  if self.scopeViewer then
-    self.scopeViewer:show()
+  -- Show DebugOverlay when entering debug mode
+  if self.debugOverlay then
+    self.debugOverlay:show()
   end
   
   -- Navigate to smart closest frame when entering debug mode
@@ -145,12 +139,9 @@ function DebugMode:exitDebugMode()
   -- Clear status line updates
   self:clearStatusLine()
   
-  -- Hide CallStackViewer and ScopeViewer when exiting debug mode
-  if self.callStackViewer then
-    self.callStackViewer:hide()
-  end
-  if self.scopeViewer then
-    self.scopeViewer:hide()
+  -- Hide DebugOverlay when exiting debug mode
+  if self.debugOverlay then
+    self.debugOverlay:hide()
   end
   
   -- Clear mode message

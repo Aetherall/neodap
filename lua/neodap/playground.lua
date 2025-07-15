@@ -13,6 +13,20 @@ local function setup_runtime_paths()
         end
     end
 
+
+    local nvim_nui_path = os.getenv("NUI_NVIM_PATH")
+
+    if nvim_nui_path and vim.fn.isdirectory(nvim_nui_path) == 1 then
+        vim.opt.rtp:prepend(nvim_nui_path)
+    else
+        local ok = pcall(require, "nui")
+        if not ok then
+            -- If nui is not found, we can still function for basic operations
+            -- vim.notify("nui.nvim not found, some UI features may not work", vim.log.levels.WARN)
+        end
+    end
+
+
     -- Set up project paths relative to current working directory
     local cwd = vim.fn.getcwd()
     vim.opt.rtp:prepend(cwd)

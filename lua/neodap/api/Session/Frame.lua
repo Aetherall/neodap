@@ -54,6 +54,9 @@ function Frame:scopes()
     threadId = self.stack.thread.id,
   }):wait()
 
+  if not response or not response.scopes then
+    return nil
+  end
 
   self._scopes = vim.tbl_map(function(scope)
     return Scope.instanciate(self, scope)
