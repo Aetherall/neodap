@@ -51,7 +51,7 @@ end
 
 function CallStackViewer:get_current_stack()
   -- Use StackNavigation to find the closest frame, then get its stack
-  local closest_frame = self.stackNavigation:getClosestFrame()
+  local closest_frame = self.stackNavigation:getSmartClosestFrame()
   if closest_frame then
     return closest_frame.stack, closest_frame.stack.thread
   end
@@ -65,9 +65,6 @@ function CallStackViewer:get_current_stack()
   return nil, nil
 end
 
-function CallStackViewer:get_closest_frame(location)
-  return self.stackNavigation:getClosestFrame(location)
-end
 
 function CallStackViewer:show()
   local stack, thread = self:get_current_stack()
@@ -81,13 +78,12 @@ function CallStackViewer:show()
   self:render(stack, thread)
   
   -- Highlight current frame based on cursor position
-  local cursor_location = Location.fromCursor()
-  if cursor_location then
-    local closest_frame = self:get_closest_frame(cursor_location)
-    if closest_frame then
-      self:highlight_frame_by_id(closest_frame.ref.id)
-    end
-  end
+  local cursor = Location.fromCursor()
+  
+  local frame = self.stackNavigation:getSmartClosestFrame(cursor)
+  if not frame then return end
+
+  self:highlight_frame_by_id(frame.ref.id)
 end
 
 function CallStackViewer:hide()

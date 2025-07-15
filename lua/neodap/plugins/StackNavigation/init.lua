@@ -20,11 +20,8 @@ function StackNavigation.plugin(api)
   local instance = StackNavigation:new({
     api = api,
     logger = logger,
-    navigation_state = {
-      current_frame_id = nil,
-      thread_id = nil,
-      session_id = nil,
-    },
+    -- Per-thread navigation state: [session_id][thread_id] = { current_frame_id }
+    navigation_states = {},
   })
   
   instance:setupListeners()
@@ -139,18 +136,15 @@ function StackNavigation:selectBestCandidate(candidates, location)
   -- Sort candidates by stack depth (topmost first)
   table.sort(candidates, function(a, b) return a.ref.id < b.ref.id end)
   
-  -- Strategy: Prefer frame closest to current navigation context
-  local current_frame = self:validateNavigationContext()
-  if current_frame then
-    -- Find frame adjacent to current context
-    for _, candidate in ipairs(candidates) do
-      if candidate.stack.thread.id == current_frame.stack.thread.id then
-        -- Same thread - prefer frames close to current depth
-        local current_depth = current_frame.ref.id
-        local candidate_depth = candidate.ref.id
-        if math.abs(candidate_depth - current_depth) <= 1 then
-          return candidate
-        end
+  -- Strategy: Prefer frame closest to current navigation context for the same thread
+  for _, candidate in ipairs(candidates) do
+    local current_frame = self:validateNavigationContext(candidate.stack.thread)
+    if current_frame then
+      -- Find frame adjacent to current context in the same thread
+      local current_depth = current_frame.ref.id
+      local candidate_depth = candidate.ref.id
+      if math.abs(candidate_depth - current_depth) <= 1 then
+        return candidate
       end
     end
   end
@@ -166,8 +160,15 @@ end
 function StackNavigation:getSmartClosestFrame(location)
   local target = location or Location.fromCursor()
   
-  -- First try to use navigation context if valid
-  local current_frame = self:validateNavigationContext()
+  -- Find the current thread based on cursor location
+  local current_thread = self:getCurrentThread()
+  if not current_thread then
+    -- No stopped thread found - fall back to original method
+    return self:getClosestFrame(target)
+  end
+  
+  -- First try to use navigation context if valid for this thread
+  local current_frame = self:validateNavigationContext(current_thread)
   if current_frame then
     return current_frame
   end
@@ -180,62 +181,152 @@ function StackNavigation:getSmartClosestFrame(location)
     return self:getClosestFrame(target)
   end
   
+  -- Filter candidates to prefer frames from the current thread
+  local thread_candidates = {}
+  for _, candidate in ipairs(candidates) do
+    if candidate.stack.thread.id == current_thread.id then
+      table.insert(thread_candidates, candidate)
+    end
+  end
+  
+  -- Use thread-specific candidates if available, otherwise use all candidates
+  local final_candidates = #thread_candidates > 0 and thread_candidates or candidates
+  
   -- Use smart candidate selection for multiple frames
-  return self:selectBestCandidate(candidates, target)
+  return self:selectBestCandidate(final_candidates, target)
 end
 
 -- Navigation State Management Methods
 
----Validate that the current navigation state is still valid
----@return api.Frame?
-function StackNavigation:validateNavigationContext()
-  if not self.navigation_state.current_frame_id then
+---Get the current thread that the cursor is in
+---@return api.Thread?
+function StackNavigation:getCurrentThread()
+  local cursor_location = Location.fromCursor()
+  if not cursor_location then
     return nil
   end
   
-  -- Find the tracked frame in current thread state
+  -- Find the thread that has a frame at the cursor location
   for session in self.api:eachSession() do
-    if session.id == self.navigation_state.session_id then
-      for thread in session:eachThread({ filter = 'stopped' }) do
-        if thread.id == self.navigation_state.thread_id then
-          local stack = thread:stack()
-          if stack then
-            for frame in stack:eachFrame() do
-              if frame.ref.id == self.navigation_state.current_frame_id then
-                return frame
-              end
-            end
+    for thread in session:eachThread({ filter = 'stopped' }) do
+      local stack = thread:stack()
+      if stack then
+        for frame in stack:eachFrame({ sourceId = cursor_location.sourceId }) do
+          local frame_location = frame:location()
+          if frame_location and frame_location:distance(cursor_location) < 1000 then
+            return thread
           end
         end
       end
     end
   end
   
-  -- Frame no longer exists - clear state
-  self:clearNavigationState()
+  -- Fallback: return any stopped thread
+  for session in self.api:eachSession() do
+    for thread in session:eachThread({ filter = 'stopped' }) do
+      return thread
+    end
+  end
+  
+  return nil
+end
+
+---Get navigation state for a specific thread
+---@param session_id number
+---@param thread_id number
+---@return table?
+function StackNavigation:getThreadNavigationState(session_id, thread_id)
+  if not self.navigation_states[session_id] then
+    return nil
+  end
+  return self.navigation_states[session_id][thread_id]
+end
+
+---Set navigation state for a specific thread
+---@param session_id number
+---@param thread_id number
+---@param frame_id number
+function StackNavigation:setThreadNavigationState(session_id, thread_id, frame_id)
+  if not self.navigation_states[session_id] then
+    self.navigation_states[session_id] = {}
+  end
+  self.navigation_states[session_id][thread_id] = {
+    current_frame_id = frame_id
+  }
+end
+
+---Clear navigation state for a specific thread
+---@param session_id number
+---@param thread_id number
+function StackNavigation:clearThreadNavigationState(session_id, thread_id)
+  if not self.navigation_states[session_id] then
+    return
+  end
+  
+  local had_state = self.navigation_states[session_id][thread_id] ~= nil
+  self.navigation_states[session_id][thread_id] = nil
+  
+  -- Clean up empty session entry
+  local has_threads = false
+  for _ in pairs(self.navigation_states[session_id]) do
+    has_threads = true
+    break
+  end
+  if not has_threads then
+    self.navigation_states[session_id] = nil
+  end
+  
+  if had_state then
+    self.logger:debug("StackNavigation: Cleared navigation state for thread", thread_id, "in session", session_id)
+  end
+end
+
+---Validate that the current navigation state is still valid for a specific thread
+---@param thread api.Thread
+---@return api.Frame?
+function StackNavigation:validateNavigationContext(thread)
+  local thread_state = self:getThreadNavigationState(thread.session.id, thread.id)
+  if not thread_state or not thread_state.current_frame_id then
+    return nil
+  end
+  
+  -- Find the tracked frame in the thread's stack
+  local stack = thread:stack()
+  if stack then
+    for frame in stack:eachFrame() do
+      if frame.ref.id == thread_state.current_frame_id then
+        return frame
+      end
+    end
+  end
+  
+  -- Frame no longer exists - clear state for this thread
+  self:clearThreadNavigationState(thread.session.id, thread.id)
   return nil
 end
 
 ---Update navigation state with current frame
 ---@param frame api.Frame
 function StackNavigation:updateNavigationState(frame)
-  self.navigation_state.current_frame_id = frame.ref.id
-  self.navigation_state.thread_id = frame.stack.thread.id
-  self.navigation_state.session_id = frame.stack.thread.session.id
-  
+  self:setThreadNavigationState(frame.stack.thread.session.id, frame.stack.thread.id, frame.ref.id)
   self.logger:debug("StackNavigation: Updated navigation state to frame", frame.ref.id, "in thread", frame.stack.thread.id)
 end
 
----Clear navigation state
+---Clear navigation state (legacy method - now clears all states)
 function StackNavigation:clearNavigationState()
-  local had_state = self.navigation_state.current_frame_id ~= nil
+  local had_state = false
+  for session_id, session_states in pairs(self.navigation_states) do
+    for thread_id, _ in pairs(session_states) do
+      had_state = true
+      break
+    end
+    if had_state then break end
+  end
   
-  self.navigation_state.current_frame_id = nil
-  self.navigation_state.thread_id = nil
-  self.navigation_state.session_id = nil
+  self.navigation_states = {}
   
   if had_state then
-    self.logger:debug("StackNavigation: Cleared navigation state")
+    self.logger:debug("StackNavigation: Cleared all navigation states")
   end
 end
 
@@ -244,20 +335,22 @@ function StackNavigation:setupListeners()
   self.api:onSession(function(session)
     session:onThread(function(thread)
       thread:onStopped(function()
-        -- Clear navigation state when thread stops (new stop event)
-        self:clearNavigationState()
+        -- Clear navigation state for this specific thread when it stops (new stop event)
+        self:clearThreadNavigationState(session.id, thread.id)
       end)
       
       thread:onResumed(function()
-        -- Clear navigation state when thread resumes
-        self:clearNavigationState()
+        -- Clear navigation state for this specific thread when it resumes
+        self:clearThreadNavigationState(session.id, thread.id)
       end)
     end)
     
     session:onTerminated(function()
-      -- Clear navigation state when session terminates
-      if self.navigation_state.session_id == session.id then
-        self:clearNavigationState()
+      -- Clear navigation state for all threads in this session when session terminates
+      if self.navigation_states[session.id] then
+        for thread_id, _ in pairs(self.navigation_states[session.id]) do
+          self:clearThreadNavigationState(session.id, thread_id)
+        end
       end
     end)
   end, { name = self.name .. ".setupListeners" })

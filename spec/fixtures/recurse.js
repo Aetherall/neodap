@@ -5,4 +5,4 @@ function fibo(n){
 }
 
 // Test with smaller number for debugging
-setTimeout(() => fibo(5), 1000);
+setTimeout(() => fibo(500), 1000);
