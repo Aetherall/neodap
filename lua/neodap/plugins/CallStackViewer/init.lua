@@ -133,6 +133,14 @@ function CallStackViewer:listen()
     end,
     group = vim.api.nvim_create_augroup("NeodapCallStackViewer", { clear = true }),
   })
+  
+  -- Listen for cursor movement to update CallStackViewer hover
+  vim.api.nvim_create_autocmd("CursorMoved", {
+    callback = function()
+      self:onGlobalCursorMoved()
+    end,
+    group = vim.api.nvim_create_augroup("NeodapCallStackViewer", { clear = false }),
+  })
 end
 
 -- Event Handling Methods
@@ -153,6 +161,32 @@ function CallStackViewer:onNavigationChanged(event_data)
     self.logger:debug("CallStackViewer: Navigation event for current thread, updating highlight")
     self:highlight_frame_by_id(event_data.frame_id)
   end
+end
+
+function CallStackViewer:onGlobalCursorMoved()
+  -- Only update if window is open
+  if not self:is_window_open() then
+    return
+  end
+  
+  -- Skip if cursor is in the CallStackViewer window itself
+  if vim.api.nvim_get_current_win() == self.window:get_winid() then
+    return
+  end
+  
+  -- Get the smart closest frame for current cursor position
+  local cursor = Location.fromCursor()
+  if not cursor then
+    return
+  end
+  
+  local frame = self.stackNavigation:getSmartClosestFrame(cursor)
+  if not frame then
+    return
+  end
+  
+  -- Update CallStackViewer cursor position to hover over the closest frame
+  self:highlight_frame_by_id(frame.ref.id)
 end
 
 -- Window Management Methods

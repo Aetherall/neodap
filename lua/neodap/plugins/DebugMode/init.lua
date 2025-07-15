@@ -3,11 +3,15 @@ local Class = require("neodap.tools.class")
 local Location = require("neodap.api.Location")
 local NvimAsync = require("neodap.tools.async")
 local StackNavigation = require("neodap.plugins.StackNavigation")
+local CallStackViewer = require("neodap.plugins.CallStackViewer")
+local ScopeViewer = require("neodap.plugins.ScopeViewer")
 
 ---@class neodap.plugin.DebugModeProps
 ---@field api Api
 ---@field logger Logger
 ---@field stackNavigation neodap.plugin.StackNavigation
+---@field callStackViewer neodap.plugin.CallStackViewer
+---@field scopeViewer neodap.plugin.ScopeViewer
 ---@field namespace integer
 ---@field is_active boolean
 ---@field original_maps table
@@ -27,6 +31,8 @@ function DebugMode.plugin(api)
     api = api,
     logger = logger,
     stackNavigation = api:getPluginInstance(StackNavigation),
+    callStackViewer = api:getPluginInstance(CallStackViewer),
+    scopeViewer = api:getPluginInstance(ScopeViewer),
     namespace = vim.api.nvim_create_namespace("neodap_debug_mode"),
     is_active = false,
     original_maps = {},
@@ -82,6 +88,11 @@ function DebugMode:setupCommands()
       self:enterDebugMode()
     end
   end, { desc = "Toggle Neodap debug mode" })
+  
+  -- Add convenient keymap for entering debug mode
+  vim.keymap.set("n", "<leader>dm", function()
+    self:enterDebugMode()
+  end, { desc = "Enter Neodap debug mode" })
 end
 
 -- Enter debug mode: install key mappings and update status
@@ -105,6 +116,17 @@ function DebugMode:enterDebugMode()
   
   -- Show mode message
   vim.api.nvim_echo({{ "-- DEBUG --", "ModeMsg" }}, false, {})
+  
+  -- Show CallStackViewer and ScopeViewer when entering debug mode
+  if self.callStackViewer then
+    self.callStackViewer:show()
+  end
+  if self.scopeViewer then
+    self.scopeViewer:show()
+  end
+  
+  -- Navigate to smart closest frame when entering debug mode
+  self:jumpToCurrentFrame()
 end
 
 -- Exit debug mode: restore original mappings and status
@@ -122,6 +144,14 @@ function DebugMode:exitDebugMode()
   
   -- Clear status line updates
   self:clearStatusLine()
+  
+  -- Hide CallStackViewer and ScopeViewer when exiting debug mode
+  if self.callStackViewer then
+    self.callStackViewer:hide()
+  end
+  if self.scopeViewer then
+    self.scopeViewer:hide()
+  end
   
   -- Clear mode message
   vim.api.nvim_echo({{ "", "Normal" }}, false, {})
