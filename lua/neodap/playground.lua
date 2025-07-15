@@ -145,7 +145,7 @@ local function go()
     session:onSourceLoaded(function(source)
       -- Only process file sources
       if source:isFile() then
-        if source:filename() == "loop.js" then
+        if source:filename() == "recurse.js" then
           -- Use ToggleBreakpoint plugin to add breakpoint
           local Location = require('neodap.api.Location')
           local location = Location.fromSource(source, { line = 3, column = 1 })
@@ -166,7 +166,7 @@ local function go()
     session:start({
       configuration = {
         type = "pwa-node",
-        program = vim.fn.getcwd() .. "/spec/fixtures/loop.js",
+        program = vim.fn.getcwd() .. "/spec/fixtures/recurse.js",
         cwd = vim.fn.getcwd(),
       },
       request = "launch",

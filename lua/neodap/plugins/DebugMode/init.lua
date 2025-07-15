@@ -146,25 +146,25 @@ end
 function DebugMode:installDebugMappings()
   local opts = { noremap = true, silent = true, desc = "DebugMode: " }
   
-  -- Stack navigation
+  -- Enhanced navigation and stepping
   vim.keymap.set('n', 'h', function() self:navigateDown() end, 
-    vim.tbl_extend('force', opts, { desc = opts.desc .. "Navigate down stack" }))
-  vim.keymap.set('n', 'l', function() self:navigateUp() end, 
-    vim.tbl_extend('force', opts, { desc = opts.desc .. "Navigate up stack" }))
-  vim.keymap.set('n', 'j', function() self:navigateDown() end, 
-    vim.tbl_extend('force', opts, { desc = opts.desc .. "Navigate down stack" }))
-  vim.keymap.set('n', 'k', function() self:navigateUp() end, 
-    vim.tbl_extend('force', opts, { desc = opts.desc .. "Navigate up stack" }))
+    vim.tbl_extend('force', opts, { desc = opts.desc .. "Navigate down stack (towards callee)" }))
+  vim.keymap.set('n', 'l', function() self:smartRightKey() end, 
+    vim.tbl_extend('force', opts, { desc = opts.desc .. "Smart: step in if top frame, navigate up otherwise" }))
+  vim.keymap.set('n', 'j', function() self:stepOver() end, 
+    vim.tbl_extend('force', opts, { desc = opts.desc .. "Step over (next line)" }))
+  vim.keymap.set('n', 'k', function() self:stepOut() end, 
+    vim.tbl_extend('force', opts, { desc = opts.desc .. "Step out (return to caller)" }))
   
   -- Arrow keys
   vim.keymap.set('n', '<Left>', function() self:navigateDown() end, 
-    vim.tbl_extend('force', opts, { desc = opts.desc .. "Navigate down stack" }))
-  vim.keymap.set('n', '<Right>', function() self:navigateUp() end, 
-    vim.tbl_extend('force', opts, { desc = opts.desc .. "Navigate up stack" }))
-  vim.keymap.set('n', '<Down>', function() self:navigateDown() end, 
-    vim.tbl_extend('force', opts, { desc = opts.desc .. "Navigate down stack" }))
-  vim.keymap.set('n', '<Up>', function() self:navigateUp() end, 
-    vim.tbl_extend('force', opts, { desc = opts.desc .. "Navigate up stack" }))
+    vim.tbl_extend('force', opts, { desc = opts.desc .. "Navigate down stack (towards callee)" }))
+  vim.keymap.set('n', '<Right>', function() self:smartRightKey() end, 
+    vim.tbl_extend('force', opts, { desc = opts.desc .. "Smart: step in if top frame, navigate up otherwise" }))
+  vim.keymap.set('n', '<Down>', function() self:stepOver() end, 
+    vim.tbl_extend('force', opts, { desc = opts.desc .. "Step over (next line)" }))
+  vim.keymap.set('n', '<Up>', function() self:stepOut() end, 
+    vim.tbl_extend('force', opts, { desc = opts.desc .. "Step out (return to caller)" }))
   
   -- Jump to current frame
   vim.keymap.set('n', '<CR>', function() self:jumpToCurrentFrame() end, 
@@ -227,6 +227,61 @@ function DebugMode:navigateDown()
   self:updateStatusLine()
 end
 
+-- Step operations using thread from current frame
+function DebugMode:stepIn()
+  NvimAsync.run(function()
+    local closest = self:getClosestFrame()
+    if closest and closest.stack and closest.stack.thread then
+      closest.stack.thread:stepIn()
+      vim.api.nvim_echo({{ "DebugMode: Step Into", "Normal" }}, false, {})
+    else
+      vim.api.nvim_echo({{ "DebugMode: No active thread for step in", "WarningMsg" }}, false, {})
+    end
+  end)
+end
+
+function DebugMode:stepOut()
+  NvimAsync.run(function()
+    local closest = self:getClosestFrame()
+    if closest and closest.stack and closest.stack.thread then
+      closest.stack.thread:stepOut()
+      vim.api.nvim_echo({{ "DebugMode: Step Out", "Normal" }}, false, {})
+    else
+      vim.api.nvim_echo({{ "DebugMode: No active thread for step out", "WarningMsg" }}, false, {})
+    end
+  end)
+end
+
+function DebugMode:stepOver()
+  NvimAsync.run(function()
+    local closest = self:getClosestFrame()
+    if closest and closest.stack and closest.stack.thread then
+      closest.stack.thread:stepOver()
+      vim.api.nvim_echo({{ "DebugMode: Step Over", "Normal" }}, false, {})
+    else
+      vim.api.nvim_echo({{ "DebugMode: No active thread for step over", "WarningMsg" }}, false, {})
+    end
+  end)
+end
+
+-- Intelligent right key: stepIn if on top frame, navigate up otherwise
+function DebugMode:smartRightKey()
+  local closest = self:getClosestFrame()
+  if not closest then
+    vim.api.nvim_echo({{ "DebugMode: No frame available", "WarningMsg" }}, false, {})
+    return
+  end
+  
+  local top_frame = closest.stack:top()
+  if closest == top_frame then
+    -- On top frame: step into
+    self:stepIn()
+  else
+    -- Not on top frame: navigate up stack
+    self:navigateUp()
+  end
+end
+
 -- Jump to current frame using StackNavigation
 function DebugMode:jumpToCurrentFrame()
   NvimAsync.run(function()
@@ -246,19 +301,23 @@ function DebugMode:showHelp()
   local help_lines = {
     "=== Neodap Debug Mode Help ===",
     "",
-    "Navigation:",
-    "  h/→ : Navigate down stack (towards caller)",
-    "  l/← : Navigate up stack (towards callee)", 
-    "  j/↓ : Navigate down stack (towards callee)",
-    "  k/↑ : Navigate up stack (towards caller)",
+    "Stack Navigation:",
+    "  h/← : Navigate down stack (towards callee)",
+    "  l/→ : Smart navigation/stepping:",
+    "         • If on top frame: Step into function calls",
+    "         • If not on top: Navigate up stack (towards caller)",
+    "",
+    "Execution Control:",
+    "  j/↓ : Step over (next line, same level)",
+    "  k/↑ : Step out (return to caller)",
     "",
     "Actions:",
-    "  <CR>  : Jump to current frame",
+    "  <CR>  : Jump to current frame location",
     "  <Esc> : Exit debug mode",
-    "  q     : Exit debug mode",
+    "  q     : Exit debug mode", 
     "  ?     : Show this help",
     "",
-    "Status shows: [current frame] / [total frames]"
+    "Status: [current frame] / [total frames] location"
   }
   
   vim.api.nvim_echo(vim.tbl_map(function(line) return { line, "Normal" } end, help_lines), false, {})
@@ -266,33 +325,33 @@ end
 
 -- Update status line to show debug mode info
 function DebugMode:updateStatusLine()
-  if not self.is_active then return end
+  -- if not self.is_active then return end
   
-  local closest = self:getClosestFrame()
-  if closest then
-    local stack = closest.stack
-    local frames = stack:frames()
-    local current_index = stack:indexOf(closest.ref.id)
-    local total_frames = #frames
+  -- local closest = self:getClosestFrame()
+  -- if closest then
+  --   local stack = closest.stack
+  --   local frames = stack:frames()
+  --   local current_index = stack:indexOf(closest.ref.id)
+  --   local total_frames = #frames
     
-    local status = string.format("DEBUG [%d/%d] %s", 
-      current_index or 0, 
-      total_frames,
-      closest:location() and closest:location().key or "unknown")
+  --   local status = string.format("DEBUG [%d/%d] %s", 
+  --     current_index or 0, 
+  --     total_frames,
+  --     closest:location() and closest:location().key or "unknown")
     
-    vim.g.neodap_debug_mode_status = status
-  else
-    vim.g.neodap_debug_mode_status = "DEBUG [no frames]"
-  end
+  --   vim.g.neodap_debug_mode_status = status
+  -- else
+  --   vim.g.neodap_debug_mode_status = "DEBUG [no frames]"
+  -- end
   
-  -- Trigger status line refresh
-  vim.cmd("redrawstatus")
+  -- -- Trigger status line refresh
+  -- vim.cmd("redrawstatus")
 end
 
 -- Clear status line
 function DebugMode:clearStatusLine()
-  vim.g.neodap_debug_mode_status = nil
-  vim.cmd("redrawstatus")
+  -- vim.g.neodap_debug_mode_status = nil
+  -- vim.cmd("redrawstatus")
 end
 
 -- Cleanup method
