@@ -69,6 +69,7 @@ function StackNavigation:up()
     if parent then 
       parent:jump()
       self:updateNavigationState(parent)
+      self:emitNavigationEvent(parent, "up")
     end 
   end)
 end
@@ -81,6 +82,7 @@ function StackNavigation:down()
     if child then 
       child:jump()
       self:updateNavigationState(child)
+      self:emitNavigationEvent(child, "down")
     end 
   end)
 end
@@ -93,6 +95,7 @@ function StackNavigation:top()
     if top then 
       top:jump()
       self:updateNavigationState(top)
+      self:emitNavigationEvent(top, "top")
     end
   end)
 end
@@ -330,6 +333,26 @@ function StackNavigation:clearNavigationState()
   end
 end
 
+---Emit navigation event for other plugins to listen to
+---@param frame api.Frame
+---@param direction string
+function StackNavigation:emitNavigationEvent(frame, direction)
+  vim.schedule(function()
+    vim.api.nvim_exec_autocmds("User", {
+      pattern = "NeodapStackNavigationChanged",
+      data = {
+        frame_id = frame.ref.id,
+        thread_id = frame.stack.thread.id,
+        session_id = frame.stack.thread.session.id,
+        direction = direction,
+        timestamp = os.time()
+      }
+    })
+  end)
+  
+  self.logger:debug("StackNavigation: Emitted navigation event", direction, "for frame", frame.ref.id)
+end
+
 ---Setup reactive listeners for state management
 function StackNavigation:setupListeners()
   self.api:onSession(function(session)
@@ -349,7 +372,7 @@ function StackNavigation:setupListeners()
       -- Clear navigation state for all threads in this session when session terminates
       if self.navigation_states[session.id] then
         for thread_id, _ in pairs(self.navigation_states[session.id]) do
-          self:clearThreadNavigationState(session.id, thread_id)
+          self:clearThreadNavigationState(session.id, thread.id)
         end
       end
     end)

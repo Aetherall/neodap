@@ -27,6 +27,7 @@ function CallStackViewer.plugin(api)
     frame_map = {},
     current_frame_line = nil,
     highlight_namespace = vim.api.nvim_create_namespace("neodap_callstack_viewer"),
+    last_highlighted_frame_id = nil,
   })
   
   instance:setup_commands()
@@ -119,6 +120,35 @@ function CallStackViewer:listen()
       self:hide()
     end)
   end, { name = self.name .. ".onSession" })
+  
+  -- Listen for stack navigation events
+  vim.api.nvim_create_autocmd("User", {
+    pattern = "NeodapStackNavigationChanged",
+    callback = function(event)
+      self:onNavigationChanged(event.data)
+    end,
+    group = vim.api.nvim_create_augroup("NeodapCallStackViewer", { clear = true }),
+  })
+end
+
+-- Event Handling Methods
+function CallStackViewer:onNavigationChanged(event_data)
+  -- Only update if window is open
+  if not self:is_window_open() then
+    return
+  end
+  
+  -- Check if this navigation event affects the currently displayed thread
+  local current_stack, current_thread = self:get_current_stack()
+  if not current_thread then
+    return
+  end
+  
+  -- Only update if the navigation event is for the currently displayed thread
+  if event_data.thread_id == current_thread.id and event_data.session_id == current_thread.session.id then
+    self.logger:debug("CallStackViewer: Navigation event for current thread, updating highlight")
+    self:highlight_frame_by_id(event_data.frame_id)
+  end
 end
 
 -- Window Management Methods
@@ -406,6 +436,7 @@ end
 function CallStackViewer:clear_frame_highlight()
   self:clear_window_namespace(self.highlight_namespace)
   self.current_frame_line = nil
+  self.last_highlighted_frame_id = nil
 end
 
 function CallStackViewer:select_frame(line)
@@ -447,12 +478,15 @@ function CallStackViewer:update_current_frame_highlight()
     return
   end
   
-  -- Use StackNavigation to find the closest frame
-  local closest_frame = self.stackNavigation:getClosestFrame(cursor_location)
+  -- Use StackNavigation to find the smart closest frame (considers per-thread state)
+  local closest_frame = self.stackNavigation:getSmartClosestFrame(cursor_location)
   
-  if closest_frame then
+  -- Track last highlighted frame to prevent unnecessary updates
+  if closest_frame and closest_frame.ref.id ~= self.last_highlighted_frame_id then
+    self.last_highlighted_frame_id = closest_frame.ref.id
     self:highlight_frame_by_id(closest_frame.ref.id)
-  else
+  elseif not closest_frame and self.last_highlighted_frame_id then
+    self.last_highlighted_frame_id = nil
     self:clear_frame_highlight()
   end
 end
