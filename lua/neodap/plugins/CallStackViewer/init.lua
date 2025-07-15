@@ -318,7 +318,10 @@ function CallStackViewer:render(stack, thread)
   -- Set up highlights
   self:setup_highlights()
   
-  self:update_current_frame_highlight()
+  -- Schedule frame highlighting to ensure buffer is populated
+  vim.schedule(function()
+    self:update_current_frame_highlight()
+  end)
 end
 
 function CallStackViewer:highlight_frame_at_line(bufnr, line)
@@ -332,7 +335,12 @@ function CallStackViewer:highlight_frame_at_line(bufnr, line)
 end
 
 function CallStackViewer:highlight_frame_by_id(frame_id)
-  for i, frame in ipairs(self.frames or {}) do
+  if not self.frames or #self.frames == 0 then
+    self.logger:debug("CallStackViewer: No frames available for highlighting")
+    return
+  end
+  
+  for i, frame in ipairs(self.frames) do
     if frame.ref.id == frame_id then
       self:highlight_frame(i)
       break
@@ -366,6 +374,12 @@ function CallStackViewer:highlight_frame(line_num)
     return
   end
   
+  -- Check if debug overlay is available and visible
+  if not self.debugOverlay or not self.debugOverlay:is_open() then
+    self.logger:debug("CallStackViewer: Debug overlay not available for highlighting")
+    return
+  end
+  
   self.current_frame_line = line_num
   
   if line_num > 0 and line_num <= #(self.frames or {}) then
@@ -377,24 +391,38 @@ function CallStackViewer:highlight_frame(line_num)
       if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
         vim.api.nvim_buf_clear_namespace(bufnr, self.highlight_namespace, 0, -1)
         
-        -- Add current frame highlight
-        vim.api.nvim_buf_add_highlight(
-          bufnr,
-          self.highlight_namespace,
-          "NeodapCallStackCurrent",
-          line_num - 1,
-          0,
-          -1
-        )
-        
-        -- Set cursor position
-        vim.api.nvim_win_set_cursor(winid, {line_num, 0})
+        -- Check if the line exists in the buffer
+        local line_count = vim.api.nvim_buf_line_count(bufnr)
+        if line_num <= line_count then
+          -- Add current frame highlight
+          vim.api.nvim_buf_add_highlight(
+            bufnr,
+            self.highlight_namespace,
+            "NeodapCallStackCurrent",
+            line_num - 1,
+            0,
+            -1
+          )
+          
+          -- Set cursor position
+          vim.api.nvim_win_set_cursor(winid, {line_num, 0})
+        else
+          self.logger:warn("CallStackViewer: Attempted to highlight line", line_num, "but buffer only has", line_count, "lines")
+        end
       end
     end
   end
 end
 
 function CallStackViewer:clear_frame_highlight()
+  -- Check if debug overlay is available and visible
+  if not self.debugOverlay or not self.debugOverlay:is_open() then
+    self.logger:debug("CallStackViewer: Debug overlay not available for clearing highlights")
+    self.current_frame_line = nil
+    self.last_highlighted_frame_id = nil
+    return
+  end
+  
   -- Clear highlights in the overlay's right panel
   local winid = self.debugOverlay:get_right_panel_winid()
   if winid and vim.api.nvim_win_is_valid(winid) then

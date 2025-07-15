@@ -4,12 +4,14 @@ local Location = require("neodap.api.Location")
 local NvimAsync = require("neodap.tools.async")
 local StackNavigation = require("neodap.plugins.StackNavigation")
 local DebugOverlay = require("neodap.plugins.DebugOverlay")
+local StackFrameTelescope = require("neodap.plugins.StackFrameTelescope")
 
 ---@class neodap.plugin.DebugModeProps
 ---@field api Api
 ---@field logger Logger
 ---@field stackNavigation neodap.plugin.StackNavigation
 ---@field debugOverlay neodap.plugin.DebugOverlay
+---@field stackFrameTelescope neodap.plugin.StackFrameTelescope
 ---@field namespace integer
 ---@field is_active boolean
 ---@field original_maps table
@@ -30,6 +32,7 @@ function DebugMode.plugin(api)
     logger = logger,
     stackNavigation = api:getPluginInstance(StackNavigation),
     debugOverlay = api:getPluginInstance(DebugOverlay),
+    stackFrameTelescope = api:getPluginInstance(StackFrameTelescope),
     namespace = vim.api.nvim_create_namespace("neodap_debug_mode"),
     is_active = false,
     original_maps = {},
@@ -152,7 +155,7 @@ end
 function DebugMode:saveOriginalMappings()
   self.original_maps = {}
   
-  local keys_to_save = { '<Left>', '<Down>', '<Up>', '<Right>', '<CR>', '<Esc>', 'q', '?' }
+  local keys_to_save = { '<Left>', '<Down>', '<Up>', '<Right>', '<CR>', '<Esc>', 'q', '?', 's' }
   
   for _, key in ipairs(keys_to_save) do
     local existing = vim.fn.maparg(key, 'n', false, true)
@@ -187,6 +190,10 @@ function DebugMode:installDebugMappings()
   vim.keymap.set('n', 'q', function() self:exitDebugMode() end, 
     vim.tbl_extend('force', opts, { desc = opts.desc .. "Exit debug mode" }))
   
+  -- Stack frame telescope
+  vim.keymap.set('n', 's', function() self:showStackFrameTelescope() end, 
+    vim.tbl_extend('force', opts, { desc = opts.desc .. "Show stack frame telescope" }))
+  
   -- Help
   vim.keymap.set('n', '?', function() self:showHelp() end, 
     vim.tbl_extend('force', opts, { desc = opts.desc .. "Show help" }))
@@ -196,7 +203,7 @@ end
 
 -- Restore original key mappings
 function DebugMode:restoreOriginalMappings()
-  local keys_to_restore = { '<Left>', '<Down>', '<Up>', '<Right>', '<CR>', '<Esc>', 'q', '?' }
+  local keys_to_restore = { '<Left>', '<Down>', '<Up>', '<Right>', '<CR>', '<Esc>', 'q', '?', 's' }
   
   for _, key in ipairs(keys_to_restore) do
     -- Delete our mapping
@@ -307,6 +314,16 @@ function DebugMode:jumpToCurrentFrame()
   end)
 end
 
+-- Show stack frame telescope
+function DebugMode:showStackFrameTelescope()
+  if not self.stackFrameTelescope:is_available() then
+    vim.api.nvim_echo({{ "DebugMode: Telescope not available", "WarningMsg" }}, false, {})
+    return
+  end
+  
+  self.stackFrameTelescope:show_frame_picker()
+end
+
 -- Show help message
 function DebugMode:showHelp()
   local help_lines = {
@@ -324,6 +341,7 @@ function DebugMode:showHelp()
     "",
     "Actions:",
     "  <CR>  : Jump to current frame location",
+    "  s     : Show stack frame telescope browser",
     "  <Esc> : Exit debug mode",
     "  q     : Exit debug mode", 
     "  ?     : Show this help",

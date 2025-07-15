@@ -13,6 +13,17 @@ local function setup_runtime_paths()
         end
     end
 
+    local plenary_path = os.getenv("PLENARY_NVIM_PATH")
+    if plenary_path and vim.fn.isdirectory(plenary_path) == 1 then
+        vim.opt.rtp:prepend(plenary_path)
+    else
+        local ok = pcall(require, "plenary")
+        if not ok then
+            -- If plenary is not found, we can still function for basic operations
+            -- vim.notify("plenary.nvim not found, some features may not work", vim.log.levels.WARN)
+        end
+    end
+
 
     local nvim_nui_path = os.getenv("NUI_NVIM_PATH")
 
@@ -26,6 +37,17 @@ local function setup_runtime_paths()
         end
     end
 
+    local telescope_path = os.getenv("TELESCOPE_NVIM_PATH")
+
+    if telescope_path and vim.fn.isdirectory(telescope_path) == 1 then
+        vim.opt.rtp:prepend(telescope_path)
+    else
+        local ok = pcall(require, "telescope")
+        if not ok then
+            -- If telescope is not found, we can still function for basic operations
+            -- vim.notify("telescope.nvim not found, some telescope features may not work", vim.log.levels.WARN)
+        end
+    end
 
     -- Set up project paths relative to current working directory
     local cwd = vim.fn.getcwd()
