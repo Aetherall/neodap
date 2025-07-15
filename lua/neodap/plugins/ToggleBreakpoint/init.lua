@@ -52,21 +52,19 @@ function ToggleBreakpoint:adjust(location)
 end
 
 ---@param location api.Location?
-function ToggleBreakpoint:toggle(location)
-  NvimAsync.run(function()
-    local target = location or Location.fromCursor()
-    
-    local adjusted = self:adjust(target)
-    
-    local existingBreakpoint = self.breakpointApi.getBreakpoints():atLocation(adjusted):first()
-    if existingBreakpoint then
-      self.breakpointApi.removeBreakpoint(existingBreakpoint)
-      return
-    end
-    
-    self.breakpointApi.setBreakpoint(adjusted)
-  end)
-end
+ToggleBreakpoint.toggle = NvimAsync.defer(function(self, location)
+  local target = location or Location.fromCursor()
+  
+  local adjusted = self:adjust(target)
+  
+  local existingBreakpoint = self.breakpointApi.getBreakpoints():atLocation(adjusted):first()
+  if existingBreakpoint then
+    self.breakpointApi.removeBreakpoint(existingBreakpoint)
+    return
+  end
+  
+  self.breakpointApi.setBreakpoint(adjusted)
+end)
 
 
 return ToggleBreakpoint

@@ -113,5 +113,19 @@ function NvimAsync.run(coroutine_func, event, options)
   return fake_task
 end
 
+--- Creates a fire-and-forget async wrapper for a function
+--- Useful for vim autocommands, keybindings, and other sync contexts
+--- that need to trigger async operations
+---@param func function The function to wrap
+---@return function wrapped_func The async wrapper that runs in NvimAsync context
+function NvimAsync.defer(func)
+  return function(...)
+    local args = { ... }
+    NvimAsync.run(function()
+      return func(unpack(args))
+    end)
+    -- Returns immediately (fire-and-forget)
+  end
+end
 
 return NvimAsync
