@@ -60,6 +60,7 @@ local function go()
   local ToggleBreakpoint = require("neodap.plugins.ToggleBreakpoint")
   local StackNavigation = require("neodap.plugins.StackNavigation")
   local FrameHighlight = require("neodap.plugins.FrameHighlight")
+  local CallStackViewer = require("neodap.plugins.CallStackViewer")
 
   api:getPluginInstance(JumpToStoppedFrame)
   -- api:getPluginInstance(HighlightCurrentFrame)
@@ -70,6 +71,7 @@ local function go()
   local toggleBreakpoint = api:getPluginInstance(ToggleBreakpoint)
   api:getPluginInstance(FrameHighlight)
   api:getPluginInstance(require("neodap.plugins.DebugMode"))
+  api:getPluginInstance(CallStackViewer)
 
 
   -- DebugMode.plugin(api)
