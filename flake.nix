@@ -45,6 +45,7 @@
           # Neovim plugins for development
           vimPlugins.nvim-nio
           vimPlugins.plenary-nvim
+          vimPlugins.nui-nvim
 
           # make for building/testing
           gnumake
@@ -60,11 +61,13 @@
 
           # Provide nvim-nio as environment variable if needed
           export NVIM_NIO_PATH="${pkgs.vimPlugins.nvim-nio}"
+          export NUI_NVIM_PATH="${pkgs.vimPlugins.nui-nvim}"
 
           echo "🧪 Neodap development environment ready!"
           echo "📚 Library paths for .luarc.json:"
           echo "  Neovim runtime: ${pkgs.neovim}/share/nvim/runtime/lua"
           echo "  nvim-nio: ${pkgs.vimPlugins.nvim-nio}/lua"
+          echo "  nui-nvim: ${pkgs.vimPlugins.nui-nvim}/lua"
           echo "  busted: ${pkgs.luajitPackages.busted}/share/lua/5.1"
 
           echo "Run 'nix run .#test-all' to run tests"

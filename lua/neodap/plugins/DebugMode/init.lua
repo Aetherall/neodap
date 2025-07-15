@@ -18,7 +18,7 @@ local StackNavigation = require("neodap.plugins.StackNavigation")
 local DebugMode = Class()
 
 DebugMode.name = "DebugMode"
-DebugMode.description = "Custom vim mode for stack navigation using hjkl keys"
+DebugMode.description = "Custom vim mode for stack navigation using arrow keys (preserves hjkl for normal navigation)"
 
 function DebugMode.plugin(api)
   local logger = Logger.get()
@@ -131,7 +131,7 @@ end
 function DebugMode:saveOriginalMappings()
   self.original_maps = {}
   
-  local keys_to_save = { 'h', 'j', 'k', 'l', '<Left>', '<Down>', '<Up>', '<Right>', '<CR>', '<Esc>', 'q', '?' }
+  local keys_to_save = { '<Left>', '<Down>', '<Up>', '<Right>', '<CR>', '<Esc>', 'q', '?' }
   
   for _, key in ipairs(keys_to_save) do
     local existing = vim.fn.maparg(key, 'n', false, true)
@@ -146,17 +146,7 @@ end
 function DebugMode:installDebugMappings()
   local opts = { noremap = true, silent = true, desc = "DebugMode: " }
   
-  -- Enhanced navigation and stepping
-  vim.keymap.set('n', 'h', function() self:navigateDown() end, 
-    vim.tbl_extend('force', opts, { desc = opts.desc .. "Navigate down stack (towards callee)" }))
-  vim.keymap.set('n', 'l', function() self:smartRightKey() end, 
-    vim.tbl_extend('force', opts, { desc = opts.desc .. "Smart: step in if top frame, navigate up otherwise" }))
-  vim.keymap.set('n', 'j', function() self:stepOver() end, 
-    vim.tbl_extend('force', opts, { desc = opts.desc .. "Step over (next line)" }))
-  vim.keymap.set('n', 'k', function() self:stepOut() end, 
-    vim.tbl_extend('force', opts, { desc = opts.desc .. "Step out (return to caller)" }))
-  
-  -- Arrow keys
+  -- Arrow keys only - preserve hjkl for normal navigation
   vim.keymap.set('n', '<Left>', function() self:navigateDown() end, 
     vim.tbl_extend('force', opts, { desc = opts.desc .. "Navigate down stack (towards callee)" }))
   vim.keymap.set('n', '<Right>', function() self:smartRightKey() end, 
@@ -180,12 +170,12 @@ function DebugMode:installDebugMappings()
   vim.keymap.set('n', '?', function() self:showHelp() end, 
     vim.tbl_extend('force', opts, { desc = opts.desc .. "Show help" }))
   
-  self.logger:debug("DebugMode: Installed debug key mappings")
+  self.logger:debug("DebugMode: Installed debug key mappings (arrow keys only)")
 end
 
 -- Restore original key mappings
 function DebugMode:restoreOriginalMappings()
-  local keys_to_restore = { 'h', 'j', 'k', 'l', '<Left>', '<Down>', '<Up>', '<Right>', '<CR>', '<Esc>', 'q', '?' }
+  local keys_to_restore = { '<Left>', '<Down>', '<Up>', '<Right>', '<CR>', '<Esc>', 'q', '?' }
   
   for _, key in ipairs(keys_to_restore) do
     -- Delete our mapping
@@ -301,15 +291,15 @@ function DebugMode:showHelp()
   local help_lines = {
     "=== Neodap Debug Mode Help ===",
     "",
-    "Stack Navigation:",
-    "  h/← : Navigate down stack (towards callee)",
-    "  l/→ : Smart navigation/stepping:",
-    "         • If on top frame: Step into function calls",
-    "         • If not on top: Navigate up stack (towards caller)",
+    "Stack Navigation (Arrow Keys Only):",
+    "  ←  : Navigate down stack (towards callee)",
+    "  →  : Smart navigation/stepping:",
+    "        • If on top frame: Step into function calls",
+    "        • If not on top: Navigate up stack (towards caller)",
     "",
     "Execution Control:",
-    "  j/↓ : Step over (next line, same level)",
-    "  k/↑ : Step out (return to caller)",
+    "  ↓  : Step over (next line, same level)",
+    "  ↑  : Step out (return to caller)",
     "",
     "Actions:",
     "  <CR>  : Jump to current frame location",
@@ -317,6 +307,7 @@ function DebugMode:showHelp()
     "  q     : Exit debug mode", 
     "  ?     : Show this help",
     "",
+    "Note: hjkl keys remain available for normal navigation",
     "Status: [current frame] / [total frames] location"
   }
   

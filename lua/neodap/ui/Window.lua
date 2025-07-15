@@ -19,6 +19,12 @@ local Window = Class()
 ---Create a new Window instance
 ---@param config neodap.ui.WindowConfig
 function Window:new(config)
+  -- Try to require nui.nvim, first check environment paths
+  local nui_path = os.getenv("NUI_NVIM_PATH")
+  if nui_path and vim.fn.isdirectory(nui_path) == 1 then
+    vim.opt.rtp:prepend(nui_path)
+  end
+  
   -- Try to require nui.nvim, provide graceful fallback
   local ok, Popup = pcall(require, "nui.popup")
   if not ok then

@@ -2,6 +2,7 @@ local Logger = require("neodap.tools.logger")
 local Class = require("neodap.tools.class")
 local Location = require("neodap.api.Location")
 local StackNavigation = require("neodap.plugins.StackNavigation")
+local UI = require("neodap.ui")
 
 ---@class neodap.plugin.CallStackViewerProps
 ---@field api Api
@@ -103,10 +104,13 @@ function CallStackViewer:listen()
   self.api:onSession(function(session)
     session:onThread(function(thread)
       thread:onStopped(function(stopped_event)
-        if self:is_window_open() then
-          local stack = thread:stack()
-          self:render(stack, thread)
+        -- Automatically show the window when debug session stops (breakpoint hit, etc.)
+        if not self:is_window_open() then
+          self:open_window()
         end
+        
+        local stack = thread:stack()
+        self:render(stack, thread)
       end)
       
       thread:onResumed(function()
@@ -154,37 +158,47 @@ end
 -- Window Management Methods
 function CallStackViewer:create_window()
   if not self.window then
-    self.window = {
-      bufnr = nil,
-      winid = nil,
-      config = {
-        relative = "editor",
-        width = 60,
-        height = 20,
-        col = vim.o.columns - 65,
-        row = 5,
-        style = "minimal",
-        border = "rounded",
-        title = " Call Stack ",
-        title_pos = "center",
+    self.window = UI.Window:new({
+      title = " Call Stack ",
+      size = { width = 60, height = 20 },
+      position = { col = vim.o.columns - 65, row = 5 },
+      enter = false, -- Don't take focus when showing
+      win_options = {
+        cursorline = true,
+        wrap = false,
+        number = false,
+        relativenumber = false,
+        signcolumn = "no",
+      },
+      keymaps = {
+        ["q"] = function() self:hide() end,
+        ["<Esc>"] = function() self:hide() end,
+        ["<CR>"] = function() self:on_window_select() end,
+        ["o"] = function() self:on_window_select() end,
       }
-    }
+    })
+    
+    -- Set buffer options
+    local bufnr = self.window:get_bufnr()
+    if bufnr then
+      vim.api.nvim_buf_set_option(bufnr, "buftype", "nofile")
+      vim.api.nvim_buf_set_option(bufnr, "bufhidden", "hide")
+      vim.api.nvim_buf_set_option(bufnr, "filetype", "neodap-callstack")
+      vim.api.nvim_buf_set_option(bufnr, "modifiable", false)
+      
+      -- Set up cursor movement detection for auto-navigation
+      vim.api.nvim_create_autocmd("CursorMoved", {
+        buffer = bufnr,
+        callback = function()
+          self:on_cursor_moved()
+        end,
+        desc = "CallStackViewer: Navigate to frame on cursor movement"
+      })
+    end
+    
+    self:setup_window_highlights()
   end
   return self.window
-end
-
-function CallStackViewer:create_buffer()
-  if self.window.bufnr and vim.api.nvim_buf_is_valid(self.window.bufnr) then
-    return self.window.bufnr
-  end
-  
-  self.window.bufnr = vim.api.nvim_create_buf(false, true)
-  vim.api.nvim_buf_set_option(self.window.bufnr, "buftype", "nofile")
-  vim.api.nvim_buf_set_option(self.window.bufnr, "bufhidden", "hide")
-  vim.api.nvim_buf_set_option(self.window.bufnr, "filetype", "neodap-callstack")
-  vim.api.nvim_buf_set_option(self.window.bufnr, "modifiable", false)
-  
-  return self.window.bufnr
 end
 
 function CallStackViewer:open_window()
@@ -193,90 +207,79 @@ function CallStackViewer:open_window()
   end
   
   self:create_window()
-  self:create_buffer()
-  
-  self.window.winid = vim.api.nvim_open_win(self.window.bufnr, false, self.window.config)
-  
-  vim.api.nvim_win_set_option(self.window.winid, "cursorline", true)
-  vim.api.nvim_win_set_option(self.window.winid, "wrap", false)
-  vim.api.nvim_win_set_option(self.window.winid, "number", false)
-  vim.api.nvim_win_set_option(self.window.winid, "relativenumber", false)
-  vim.api.nvim_win_set_option(self.window.winid, "signcolumn", "no")
-  
-  self:setup_window_keymaps()
-  self:setup_window_highlights()
+  self.window:show()
 end
 
 function CallStackViewer:close_window()
-  if self.window and self.window.winid and vim.api.nvim_win_is_valid(self.window.winid) then
-    vim.api.nvim_win_close(self.window.winid, true)
-  end
   if self.window then
-    self.window.winid = nil
+    self.window:hide()
   end
 end
 
 function CallStackViewer:is_window_open()
-  return self.window and self.window.winid and vim.api.nvim_win_is_valid(self.window.winid)
+  return self.window and self.window:is_open()
 end
 
 function CallStackViewer:clear_window()
-  if not self.window or not self.window.bufnr or not vim.api.nvim_buf_is_valid(self.window.bufnr) then
-    return
+  if self.window then
+    self.window:clear()
   end
-  
-  vim.api.nvim_buf_set_option(self.window.bufnr, "modifiable", true)
-  vim.api.nvim_buf_set_lines(self.window.bufnr, 0, -1, false, {})
-  vim.api.nvim_buf_set_option(self.window.bufnr, "modifiable", false)
 end
 
 function CallStackViewer:set_window_lines(lines)
-  if not self.window or not self.window.bufnr or not vim.api.nvim_buf_is_valid(self.window.bufnr) then
-    return
+  if self.window then
+    self.window:set_lines(lines)
   end
-  
-  vim.api.nvim_buf_set_option(self.window.bufnr, "modifiable", true)
-  vim.api.nvim_buf_set_lines(self.window.bufnr, 0, -1, false, lines)
-  vim.api.nvim_buf_set_option(self.window.bufnr, "modifiable", false)
 end
 
-function CallStackViewer:add_window_highlight(line, col_start, col_end, hl_group)
-  if not self.window or not self.window.bufnr then
-    return
+function CallStackViewer:add_window_highlight(line, col_start, col_end, hl_group, namespace)
+  if self.window then
+    self.window:add_highlight(line, col_start, col_end, hl_group, namespace)
   end
-  
-  vim.api.nvim_buf_add_highlight(
-    self.window.bufnr,
-    -1,
-    hl_group,
-    line,
-    col_start,
-    col_end
-  )
 end
 
 function CallStackViewer:clear_window_namespace(ns_id)
-  if not self.window or not self.window.bufnr then
-    return
+  if self.window then
+    self.window:clear_highlights(ns_id)
   end
-  
-  vim.api.nvim_buf_clear_namespace(self.window.bufnr, ns_id, 0, -1)
-end
-
-function CallStackViewer:setup_window_keymaps()
-  local opts = { buffer = self.window.bufnr, nowait = true }
-  
-  vim.keymap.set("n", "q", function() self:close_window() end, opts)
-  vim.keymap.set("n", "<Esc>", function() self:close_window() end, opts)
-  vim.keymap.set("n", "<CR>", function() self:on_window_select() end, opts)
-  vim.keymap.set("n", "o", function() self:on_window_select() end, opts)
 end
 
 function CallStackViewer:on_window_select()
-  local cursor = vim.api.nvim_win_get_cursor(self.window.winid)
-  local line = cursor[1]
-  
+  local line, _ = self.window:get_cursor()
   self:select_frame(line)
+end
+
+function CallStackViewer:on_cursor_moved()
+  -- Navigate to the frame under the cursor automatically
+  local line, _ = self.window:get_cursor()
+  self:navigate_to_frame(line)
+end
+
+function CallStackViewer:find_target_window()
+  -- Find any window that's not the CallStackViewer
+  for _, win in ipairs(vim.api.nvim_list_wins()) do
+    if win ~= self.window:get_winid() then
+      return win
+    end
+  end
+  return nil
+end
+
+function CallStackViewer:navigate_to_frame(line)
+  local frame = self.frame_map and self.frame_map[line]
+  if not frame then
+    return
+  end
+  
+  pcall(function()
+    local target_win = self:find_target_window()
+    if target_win then
+      local current_win = vim.api.nvim_get_current_win()
+      vim.api.nvim_set_current_win(target_win)
+      frame:jump()  -- Does all the hard work: location, manifests, cursor
+      vim.api.nvim_set_current_win(current_win)  -- Keep focus on CallStackViewer
+    end
+  end)
 end
 
 function CallStackViewer:setup_window_highlights()
@@ -290,11 +293,11 @@ function CallStackViewer:setup_window_highlights()
 end
 
 function CallStackViewer:get_window_id()
-  return self.window and self.window.winid
+  return self.window and self.window:get_winid()
 end
 
 function CallStackViewer:get_window_bufnr()
-  return self.window and self.window.bufnr
+  return self.window and self.window:get_bufnr()
 end
 
 -- Rendering Methods
@@ -418,17 +421,16 @@ function CallStackViewer:highlight_frame(line_num)
   self.current_frame_line = line_num
   
   if line_num > 0 and line_num <= #(self.frames or {}) then
-    vim.api.nvim_buf_add_highlight(
-      self:get_window_bufnr(),
-      self.highlight_namespace,
-      "NeodapCallStackCurrent",
+    self:add_window_highlight(
       line_num - 1,
       0,
-      -1
+      -1,
+      "NeodapCallStackCurrent",
+      self.highlight_namespace
     )
     
-    if self:get_window_id() then
-      vim.api.nvim_win_set_cursor(self:get_window_id(), {line_num, 0})
+    if self:is_window_open() then
+      self.window:set_cursor(line_num, 0)
     end
   end
 end
@@ -441,35 +443,18 @@ end
 
 function CallStackViewer:select_frame(line)
   local frame = self.frame_map and self.frame_map[line]
-  if not frame or not frame.ref.source then
+  if not frame then
     return
   end
   
-  local source = frame.stack.thread.session:source(frame.ref.source)
-  local location = Location.fromSource(source, {
-    line = frame.ref.line,
-    column = frame.ref.column
-  })
-  
-  local bufnr = location:manifests(frame.stack.thread.session)
-  if bufnr then
-    vim.schedule(function()
-      for _, win in ipairs(vim.api.nvim_list_wins()) do
-        if vim.api.nvim_win_get_buf(win) == bufnr then
-          vim.api.nvim_set_current_win(win)
-          if frame.ref.line then
-            vim.api.nvim_win_set_cursor(win, {frame.ref.line, frame.ref.column or 0})
-          end
-          return
-        end
-      end
-      
-      vim.cmd("buffer " .. bufnr)
-      if frame.ref.line then
-        vim.api.nvim_win_set_cursor(0, {frame.ref.line, frame.ref.column or 0})
-      end
-    end)
-  end
+  pcall(function()
+    local target_win = self:find_target_window()
+    if target_win then
+      vim.api.nvim_set_current_win(target_win)
+      frame:jump()  -- Does all the hard work: location, manifests, cursor
+      -- Keep focus on target window for actual selection
+    end
+  end)
 end
 
 function CallStackViewer:update_current_frame_highlight()
