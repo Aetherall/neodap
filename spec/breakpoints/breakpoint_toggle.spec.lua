@@ -1,8 +1,9 @@
 local Test = require("spec.helpers.testing")(describe, it)
 local P = require("spec.helpers.prepare")
 local prepare = P.prepare
-local NewBreakpointManager = require("neodap.api.Breakpoint.BreakpointManager")
-local Location = require("neodap.api.Breakpoint.Location")
+local NewBreakpointManager = require("neodap.plugins.BreakpointApi.BreakpointManager")
+local Location = require("neodap.api.Location")
+local SourceIdentifier = require("neodap.api.Location.SourceIdentifier")
 local nio = require("nio")
 
 Test.Describe("new breakpoint manager - toggle functionality", function()
@@ -13,11 +14,10 @@ Test.Describe("new breakpoint manager - toggle functionality", function()
     local breakpointManager = NewBreakpointManager.create(api)
     
     -- Create location for toggle testing
-    local location = Location.SourceFile:new({
-      path = vim.fn.getcwd() .. "/spec/fixtures/loop.js",
+    local location = Location.create({
+      sourceId = SourceIdentifier.fromPath(vim.fn.getcwd() .. "/spec/fixtures/loop.js"),
       line = 3,
-      column = 0,
-      key = vim.fn.getcwd() .. "/spec/fixtures/loop.js:3:0"
+      column = 0
     })
     
     print("Testing toggle functionality at:", location.path, "line", location.line)
@@ -100,8 +100,7 @@ Test.Describe("new breakpoint manager - toggle functionality", function()
       end)
       
       session:onSourceLoaded(function(source)
-        local fileSource = source:asFile()
-        if fileSource and fileSource:filename() == "loop.js" then
+        if source:isFile() and source:filename() == "loop.js" then
           sourceLoaded.trigger()
         end
       end)

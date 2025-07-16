@@ -66,7 +66,8 @@ log:snapshot(bufnr, "After breakpoint set")
 
 **Logger Features:**
 - **Namespace Support**: `Logger.get("namespace")` creates separate instances per namespace
-- **Single Shared Log File**: All logger instances write to `log/neodap.log`
+- **Process-Specific Log Files**: Each process gets its own numbered log file (`log/neodap.0.log`, `log/neodap.1.log`, etc.)
+- **Shared Within Process**: All logger instances within the same process share the same log file
 - **Structured Output**: Includes timestamp, log level, namespace, source location, and message
 - **Table Inspection**: Automatically formats Lua tables using `vim.inspect()`
 - **Line Buffering**: Immediate writes for real-time debugging
@@ -86,7 +87,7 @@ log:snapshot(bufnr, "After breakpoint set")
 - Use `warn()` for recoverable issues or unusual conditions
 - Use `error()` for serious problems requiring attention
 - Include relevant context data as additional arguments or tables
-- The logger automatically handles file creation, numbering, and location tracking
+- The logger automatically handles file creation, process-specific numbering, and location tracking
 
 ## Development Workflow
 
@@ -148,8 +149,8 @@ make test PATTERN=breakpoint_hit             # Run tests matching pattern
 make test spec/breakpoints/ PATTERN=toggle   # Run tests in folder with pattern
 
 # View logs
-make log                    # Show the log file
-make log FILTER=ERROR       # Show only ERROR lines from log file
+make log                    # Show the latest numbered log file
+make log FILTER=ERROR       # Show only ERROR lines from latest log
 make log FILTER=breakpoint  # Show lines containing "breakpoint"
 
 # Run playground with lazy.nvim

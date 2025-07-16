@@ -1,8 +1,9 @@
 local Test = require("spec.helpers.testing")(describe, it)
 local P = require("spec.helpers.prepare")
 local prepare = P.prepare
-local NewBreakpointManager = require("neodap.api.Breakpoint.BreakpointManager")
-local Location = require("neodap.api.Breakpoint.Location")
+local NewBreakpointManager = require("neodap.plugins.BreakpointApi.BreakpointManager")
+local Location = require("neodap.api.Location")
+local SourceIdentifier = require("neodap.api.Location.SourceIdentifier")
 
 Test.Describe("new breakpoint manager - removal events", function()
   Test.It("should properly trigger Unbound and Removed hooks when breakpoint is deleted", function()
@@ -33,7 +34,7 @@ Test.Describe("new breakpoint manager - removal events", function()
     
     -- Create breakpoint before session starts
     local location = Location.create({
-      path = vim.fn.getcwd() .. "/spec/fixtures/loop.js",
+      sourceId = SourceIdentifier.fromPath(vim.fn.getcwd() .. "/spec/fixtures/loop.js"),
       line = 3,
       column = 0
     })
@@ -64,9 +65,8 @@ Test.Describe("new breakpoint manager - removal events", function()
       end)
       
       session:onSourceLoaded(function(source)
-        local fileSource = source:asFile()
-        if fileSource and fileSource:filename() == "loop.js" then
-          print("✓ Target source loaded:", fileSource:identifier())
+        if source:isFile() and source:filename() == "loop.js" then
+          print("✓ Target source loaded:", source:toString())
           sourceLoaded.trigger()
         end
       end)
@@ -105,12 +105,12 @@ Test.Describe("new breakpoint manager - removal events", function()
     print("=== Testing Removal Event Flow ===")
     
     -- Set up removal event listeners BEFORE removing
-    binding:onUnbound(function()
+    binding:onDispose(function()
       print("✓ Binding Unbound event from binding itself")
       bindingUnbound.trigger()
     end)
     
-    breakpoint:onRemoved(function()
+    breakpoint:onDispose(function()
       print("✓ Breakpoint Removed event from breakpoint itself")
       breakpointRemoved.trigger()
     end)

@@ -1,8 +1,9 @@
 local Test = require("spec.helpers.testing")(describe, it)
 local P = require("spec.helpers.prepare")
 local prepare = P.prepare
-local NewBreakpointManager = require("neodap.api.Breakpoint.BreakpointManager")
-local Location = require("neodap.api.Breakpoint.Location")
+local NewBreakpointManager = require("neodap.plugins.BreakpointApi.BreakpointManager")
+local Location = require("neodap.api.Location")
+local SourceIdentifier = require("neodap.api.Location.SourceIdentifier")
 
 Test.Describe("new breakpoint manager - multiple breakpoints", function()
   Test.It("should handle multiple breakpoints and session termination correctly", function()
@@ -40,7 +41,7 @@ Test.Describe("new breakpoint manager - multiple breakpoints", function()
         end
         
         -- Track unbinding events
-        binding:onUnbound(function()
+        binding:onDispose(function()
           unboundCount = unboundCount + 1
           print("✓ Binding", unboundCount, "unbound for breakpoint:", breakpoint.id)
           
@@ -53,23 +54,20 @@ Test.Describe("new breakpoint manager - multiple breakpoints", function()
     
     -- Create multiple breakpoints at different lines
     local locations = {
-      Location.SourceFile:new({
-        path = vim.fn.getcwd() .. "/spec/fixtures/loop.js",
+      Location.create({
+        sourceId = SourceIdentifier.fromPath(vim.fn.getcwd() .. "/spec/fixtures/loop.js"),
         line = 3,
-        column = 0,
-        key = vim.fn.getcwd() .. "/spec/fixtures/loop.js:3:0"
+        column = 0
       }),
-      Location.SourceFile:new({
-        path = vim.fn.getcwd() .. "/spec/fixtures/loop.js",
+      Location.create({
+        sourceId = SourceIdentifier.fromPath(vim.fn.getcwd() .. "/spec/fixtures/loop.js"),
         line = 4,
-        column = 0,
-        key = vim.fn.getcwd() .. "/spec/fixtures/loop.js:4:0"
+        column = 0
       }),
-      Location.SourceFile:new({
-        path = vim.fn.getcwd() .. "/spec/fixtures/loop.js",
+      Location.create({
+        sourceId = SourceIdentifier.fromPath(vim.fn.getcwd() .. "/spec/fixtures/loop.js"),
         line = 5,
-        column = 0,
-        key = vim.fn.getcwd() .. "/spec/fixtures/loop.js:5:0"
+        column = 0
       })
     }
     

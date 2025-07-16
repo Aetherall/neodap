@@ -1,8 +1,9 @@
 local Test = require("spec.helpers.testing")(describe, it)
 local P = require("spec.helpers.prepare")
 local prepare = P.prepare
-local NewBreakpointManager = require("neodap.api.Breakpoint.BreakpointManager")
-local Location = require("neodap.api.Breakpoint.Location")
+local NewBreakpointManager = require("neodap.plugins.BreakpointApi.BreakpointManager")
+local Location = require("neodap.api.Location")
+local SourceIdentifier = require("neodap.api.Location.SourceIdentifier")
 
 Test.Describe("new breakpoint manager - basic functionality", function()
   Test.It("should set breakpoint and hit correctly with lazy binding", function()
@@ -47,7 +48,7 @@ Test.Describe("new breakpoint manager - basic functionality", function()
     
     -- Create breakpoint before session starts (tests lazy binding)
     local location = Location.create({
-      path = vim.fn.getcwd() .. "/spec/fixtures/loop.js",
+      sourceId = SourceIdentifier.fromPath(vim.fn.getcwd() .. "/spec/fixtures/loop.js"),
       line = 3,
       column = 0
     })
@@ -78,9 +79,8 @@ Test.Describe("new breakpoint manager - basic functionality", function()
       end)
       
       session:onSourceLoaded(function(source)
-        local fileSource = source:asFile()
-        if fileSource and fileSource:filename() == "loop.js" then
-          print("✓ Target source loaded:", fileSource:identifier())
+        if source:isFile() and source:filename() == "loop.js" then
+          print("✓ Target source loaded:", source:toString())
           sourceLoaded.trigger()
         end
       end)
@@ -130,7 +130,7 @@ Test.Describe("new breakpoint manager - basic functionality", function()
     local bindingUnbound = Test.spy("bindingUnbound")
     
     -- Register for removal events
-    breakpoint:onRemoved(function()
+    breakpoint:onDispose(function()
       print("✓ Breakpoint removal event from breakpoint itself")
       breakpointRemoved.trigger()
     end)
@@ -138,7 +138,7 @@ Test.Describe("new breakpoint manager - basic functionality", function()
     -- Get the binding through the hierarchical API for cleanup testing
     local bindingForCleanup = breakpoint:getBindings():first()
     assert(bindingForCleanup ~= nil, "Binding should exist for cleanup test")
-    bindingForCleanup:onUnbound(function()
+    bindingForCleanup:onDispose(function()
       print("✓ Binding unbound event from binding itself")
       bindingUnbound.trigger()
     end)

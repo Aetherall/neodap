@@ -1,8 +1,9 @@
 local Test = require("spec.helpers.testing")(describe, it)
 local P = require("spec.helpers.prepare")
 local prepare = P.prepare
-local NewBreakpointManager = require("neodap.api.Breakpoint.BreakpointManager")
-local Location = require("neodap.api.Breakpoint.Location")
+local NewBreakpointManager = require("neodap.plugins.BreakpointApi.BreakpointManager")
+local Location = require("neodap.api.Location")
+local SourceIdentifier = require("neodap.api.Location.SourceIdentifier")
 local nio = require("nio")
 
 Test.Describe("breakpoint cross line toggle", function()
@@ -28,11 +29,10 @@ Test.Describe("breakpoint cross line toggle", function()
     end)
     
     -- Create breakpoint at line 3, column 0 (will be moved to line 4, column 2 by DAP)
-    local originalLocation = Location.SourceFile:new({
-      path = vim.fn.getcwd() .. "/spec/fixtures/loop.js",
+    local originalLocation = Location.create({
+      sourceId = SourceIdentifier.fromPath(vim.fn.getcwd() .. "/spec/fixtures/loop.js"),
       line = 3,
-      column = 0,
-      key = vim.fn.getcwd() .. "/spec/fixtures/loop.js:3:0"
+      column = 0
     })
     
     print("Creating breakpoint at:", originalLocation.key)
@@ -46,8 +46,7 @@ Test.Describe("breakpoint cross line toggle", function()
       end)
       
       session:onSourceLoaded(function(source)
-        local fileSource = source:asFile()
-        if fileSource and fileSource:filename() == "loop.js" then
+        if source:isFile() and source:filename() == "loop.js" then
           sourceLoaded.trigger()
         end
       end)
@@ -68,11 +67,10 @@ Test.Describe("breakpoint cross line toggle", function()
     print("Breakpoint adjusted from line 3 column 0 to line 4 column 2")
     
     -- Test that we can toggle at the middle of a line between original and adjusted
-    local middleLocation = Location.SourceFile:new({
-      path = vim.fn.getcwd() .. "/spec/fixtures/loop.js",
+    local middleLocation = Location.create({
+      sourceId = SourceIdentifier.fromPath(vim.fn.getcwd() .. "/spec/fixtures/loop.js"),
       line = 3,
-      column = 5,  -- Later on the original line
-      key = vim.fn.getcwd() .. "/spec/fixtures/loop.js:3:5"
+      column = 5  -- Later on the original line
     })
 
     print("=== Testing Toggle at Middle Position (Line 3, Column 5) ===")

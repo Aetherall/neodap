@@ -1,8 +1,9 @@
 local Test = require("spec.helpers.testing")(describe, it)
 local P = require("spec.helpers.prepare")
 local prepare = P.prepare
-local NewBreakpointManager = require("neodap.api.Breakpoint.BreakpointManager")
-local Location = require("neodap.api.Breakpoint.Location")
+local NewBreakpointManager = require("neodap.plugins.BreakpointApi.BreakpointManager")
+local Location = require("neodap.api.Location")
+local SourceIdentifier = require("neodap.api.Location.SourceIdentifier")
 local nio = require("nio")
 
 Test.Describe("breakpoint multiline range matching", function()
@@ -28,11 +29,10 @@ Test.Describe("breakpoint multiline range matching", function()
     end)
     
     -- Create breakpoint at line 3, column 0 (will be moved to line 4, column 2 by DAP)
-    local originalLocation = Location.SourceFile:new({
-      path = vim.fn.getcwd() .. "/spec/fixtures/loop.js",
+    local originalLocation = Location.create({
+      sourceId = SourceIdentifier.fromPath(vim.fn.getcwd() .. "/spec/fixtures/loop.js"),
       line = 3,
-      column = 0,
-      key = vim.fn.getcwd() .. "/spec/fixtures/loop.js:3:0"
+      column = 0
     })
     
     print("Creating breakpoint at:", originalLocation.key)
@@ -46,8 +46,7 @@ Test.Describe("breakpoint multiline range matching", function()
       end)
       
       session:onSourceLoaded(function(source)
-        local fileSource = source:asFile()
-        if fileSource and fileSource:filename() == "loop.js" then
+        if source:isFile() and source:filename() == "loop.js" then
           sourceLoaded.trigger()
         end
       end)
@@ -78,11 +77,10 @@ Test.Describe("breakpoint multiline range matching", function()
     }
     
     for _, pos in ipairs(testPositions) do
-      local testLocation = Location.SourceFile:new({
-        path = vim.fn.getcwd() .. "/spec/fixtures/loop.js",
+      local testLocation = Location.create({
+        sourceId = SourceIdentifier.fromPath(vim.fn.getcwd() .. "/spec/fixtures/loop.js"),
         line = pos.line,
-        column = pos.column,
-        key = vim.fn.getcwd() .. "/spec/fixtures/loop.js:" .. pos.line .. ":" .. pos.column
+        column = pos.column
       })
       
       print("Testing position", pos.desc, "(" .. pos.line .. ":" .. pos.column .. ")")
@@ -99,11 +97,10 @@ Test.Describe("breakpoint multiline range matching", function()
     }
     
     for _, pos in ipairs(outsidePositions) do
-      local testLocation = Location.SourceFile:new({
-        path = vim.fn.getcwd() .. "/spec/fixtures/loop.js",
+      local testLocation = Location.create({
+        sourceId = SourceIdentifier.fromPath(vim.fn.getcwd() .. "/spec/fixtures/loop.js"),
         line = pos.line,
-        column = pos.column,
-        key = vim.fn.getcwd() .. "/spec/fixtures/loop.js:" .. pos.line .. ":" .. pos.column
+        column = pos.column
       })
       
       print("Testing position outside range", pos.desc, "(" .. pos.line .. ":" .. pos.column .. ")")
@@ -134,11 +131,10 @@ Test.Describe("breakpoint multiline range matching", function()
     end)
     
     -- Create breakpoint at line 5, column 10 (will be moved to line 3, column 2 by DAP)
-    local originalLocation = Location.SourceFile:new({
-      path = vim.fn.getcwd() .. "/spec/fixtures/loop.js",
+    local originalLocation = Location.create({
+      sourceId = SourceIdentifier.fromPath(vim.fn.getcwd() .. "/spec/fixtures/loop.js"),
       line = 5,
-      column = 10,
-      key = vim.fn.getcwd() .. "/spec/fixtures/loop.js:5:10"
+      column = 10
     })
     
     local breakpoint = breakpointManager:addBreakpoint(originalLocation)
@@ -148,8 +144,7 @@ Test.Describe("breakpoint multiline range matching", function()
     api:onSession(function(session)
       session:onInitialized(sessionInitialized.trigger)
       session:onSourceLoaded(function(source)
-        local fileSource = source:asFile()
-        if fileSource and fileSource:filename() == "loop.js" then
+        if source:isFile() and source:filename() == "loop.js" then
           sourceLoaded.trigger()
         end
       end)
@@ -180,11 +175,10 @@ Test.Describe("breakpoint multiline range matching", function()
     }
     
     for _, pos in ipairs(testPositions) do
-      local testLocation = Location.SourceFile:new({
-        path = vim.fn.getcwd() .. "/spec/fixtures/loop.js",
+      local testLocation = Location.create({
+        sourceId = SourceIdentifier.fromPath(vim.fn.getcwd() .. "/spec/fixtures/loop.js"),
         line = pos.line,
-        column = pos.column,
-        key = vim.fn.getcwd() .. "/spec/fixtures/loop.js:" .. pos.line .. ":" .. pos.column
+        column = pos.column
       })
       
       local breakpoints = breakpointManager.breakpoints:atLocation(testLocation)

@@ -1,8 +1,9 @@
 local Test = require("spec.helpers.testing")(describe, it)
 local P = require("spec.helpers.prepare")
 local prepare = P.prepare
-local NewBreakpointManager = require("neodap.api.Breakpoint.BreakpointManager")
-local Location = require("neodap.api.Breakpoint.Location")
+local NewBreakpointManager = require("neodap.plugins.BreakpointApi.BreakpointManager")
+local Location = require("neodap.api.Location")
+local SourceIdentifier = require("neodap.api.Location.SourceIdentifier")
 local nio = require("nio")
 
 Test.Describe("breakpoint toggle with adjusted position", function()
@@ -34,11 +35,10 @@ Test.Describe("breakpoint toggle with adjusted position", function()
     end)
     
     -- Create breakpoint at column 0 (will be moved to column 2 by DAP)
-    local originalLocation = Location.SourceFile:new({
-      path = vim.fn.getcwd() .. "/spec/fixtures/loop.js",
+    local originalLocation = Location.create({
+      sourceId = SourceIdentifier.fromPath(vim.fn.getcwd() .. "/spec/fixtures/loop.js"),
       line = 3,
-      column = 0,  -- User places at start of line
-      key = vim.fn.getcwd() .. "/spec/fixtures/loop.js:3:0"
+      column = 0  -- User places at start of line
     })
     
     print("Creating breakpoint at original location:", originalLocation.key)
@@ -52,8 +52,7 @@ Test.Describe("breakpoint toggle with adjusted position", function()
       end)
       
       session:onSourceLoaded(function(source)
-        local fileSource = source:asFile()
-        if fileSource and fileSource:filename() == "loop.js" then
+        if source:isFile() and source:filename() == "loop.js" then
           sourceLoaded.trigger()
         end
       end)
@@ -89,11 +88,10 @@ Test.Describe("breakpoint toggle with adjusted position", function()
     print("=== Testing Toggle Using Visual Position ===")
     
     -- Create location based on where the breakpoint visually appears
-    local visualLocation = Location.SourceFile:new({
-      path = vim.fn.getcwd() .. "/spec/fixtures/loop.js",
+    local visualLocation = Location.create({
+      sourceId = SourceIdentifier.fromPath(vim.fn.getcwd() .. "/spec/fixtures/loop.js"),
       line = actualLocation.line,
-      column = actualLocation.column,  -- Use the actual adjusted position
-      key = vim.fn.getcwd() .. "/spec/fixtures/loop.js:" .. actualLocation.line .. ":" .. actualLocation.column
+      column = actualLocation.column  -- Use the actual adjusted position
     })
     
     print("Attempting to toggle breakpoint at visual location:", visualLocation.key)

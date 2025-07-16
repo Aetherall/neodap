@@ -1,8 +1,9 @@
 local Test = require("spec.helpers.testing")(describe, it)
 local P = require("spec.helpers.prepare")
 local prepare = P.prepare
-local NewBreakpointManager = require("neodap.api.Breakpoint.BreakpointManager")
-local Location = require("neodap.api.Breakpoint.Location")
+local NewBreakpointManager = require("neodap.plugins.BreakpointApi.BreakpointManager")
+local Location = require("neodap.api.Location")
+local SourceIdentifier = require("neodap.api.Location.SourceIdentifier")
 local nio = require("nio")
 
 Test.Describe("new breakpoint manager - binding updates", function()
@@ -53,11 +54,10 @@ Test.Describe("new breakpoint manager - binding updates", function()
     
     -- Create breakpoint at column 0 (DAP will adjust to column 2 for the actual statement)
     -- Line 3 in loop.js: "	console.log("ALoop iteration: ", i++);"
-    local location = Location.SourceFile:new({
-      path = vim.fn.getcwd() .. "/spec/fixtures/loop.js",
+    local location = Location.create({
+      sourceId = SourceIdentifier.fromPath(vim.fn.getcwd() .. "/spec/fixtures/loop.js"),
       line = 3,
-      column = 0, -- User places at start of line
-      key = vim.fn.getcwd() .. "/spec/fixtures/loop.js:3:0"
+      column = 0 -- User places at start of line
     })
     
     print("Creating breakpoint at column 0 (DAP should adjust to column 2)...")
@@ -82,8 +82,7 @@ Test.Describe("new breakpoint manager - binding updates", function()
       end)
       
       session:onSourceLoaded(function(source)
-        local fileSource = source:asFile()
-        if fileSource and fileSource:filename() == "loop.js" then
+        if source:isFile() and source:filename() == "loop.js" then
           sourceLoaded.trigger()
         end
       end)

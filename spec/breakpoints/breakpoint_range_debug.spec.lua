@@ -1,8 +1,9 @@
 local Test = require("spec.helpers.testing")(describe, it)
 local P = require("spec.helpers.prepare")
 local prepare = P.prepare
-local NewBreakpointManager = require("neodap.api.Breakpoint.BreakpointManager")
-local Location = require("neodap.api.Breakpoint.Location")
+local NewBreakpointManager = require("neodap.plugins.BreakpointApi.BreakpointManager")
+local Location = require("neodap.api.Location")
+local SourceIdentifier = require("neodap.api.Location.SourceIdentifier")
 local nio = require("nio")
 
 Test.Describe("breakpoint range matching debug", function()
@@ -30,11 +31,10 @@ Test.Describe("breakpoint range matching debug", function()
     end)
     
     -- Create breakpoint at column 0 (will be moved to column 2 by DAP)
-    local originalLocation = Location.SourceFile:new({
-      path = vim.fn.getcwd() .. "/spec/fixtures/loop.js",
+    local originalLocation = Location.create({
+      sourceId = SourceIdentifier.fromPath(vim.fn.getcwd() .. "/spec/fixtures/loop.js"),
       line = 3,
-      column = 0,
-      key = vim.fn.getcwd() .. "/spec/fixtures/loop.js:3:0"
+      column = 0
     })
     
     print("Creating breakpoint at original location:", originalLocation.key)
@@ -48,8 +48,7 @@ Test.Describe("breakpoint range matching debug", function()
       end)
       
       session:onSourceLoaded(function(source)
-        local fileSource = source:asFile()
-        if fileSource and fileSource:filename() == "loop.js" then
+        if source:isFile() and source:filename() == "loop.js" then
           sourceLoaded.trigger()
         end
       end)
@@ -66,11 +65,10 @@ Test.Describe("breakpoint range matching debug", function()
     nio.sleep(200)
     
     -- Test range matching at column 1 (between 0 and 2)
-    local testLocation = Location.SourceFile:new({
-      path = vim.fn.getcwd() .. "/spec/fixtures/loop.js",
+    local testLocation = Location.create({
+      sourceId = SourceIdentifier.fromPath(vim.fn.getcwd() .. "/spec/fixtures/loop.js"),
       line = 3,
-      column = 1,
-      key = vim.fn.getcwd() .. "/spec/fixtures/loop.js:3:1"
+      column = 1
     })
     
     print("=== Testing Range Matching at Column 1 ===")
