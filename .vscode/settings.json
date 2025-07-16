@@ -14,5 +14,15 @@
     "Lua.workspace.checkThirdParty": false,
     "Lua.type.inferParamType": true,
     "Lua.type.weakUnionCheck": false,
-    "nix.formatterPath": "alejandra"
+    "nix.formatterPath": "alejandra",
+    "files.exclude": {
+        "**/.git": true,
+        "**/.svn": true,
+        "**/.hg": true,
+        "**/.DS_Store": true,
+        "**/Thumbs.db": true,
+        "**/.cache": true,
+        "**/.direnv": true,
+        "**/.claude": true,
+    }
 }

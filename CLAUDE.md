@@ -90,34 +90,25 @@ log:snapshot(bufnr, "After breakpoint set")
 
 ## Development Workflow
 
-### lazy.nvim Integration (Modern Approach)
+### lazy.nvim Integration (Default Approach)
 
-Neodap now supports lazy.nvim for enhanced plugin management and testing:
+Neodap uses lazy.nvim by default for enhanced plugin management and testing:
 
 #### **Testing with lazy.nvim minit**
 - **Automatic dependency management**: lazy.nvim automatically downloads and manages all required plugins
-- **Isolated environments**: Each test run gets a clean plugin environment in `.tests/`
+- **Isolated environments**: Each test run gets a clean plugin environment in `.lazy-interpreter/`
 - **Built-in busted integration**: Uses lazy.nvim's minit functionality for seamless testing
 - **Faster setup**: No manual dependency resolution needed
+- **Silent by default**: Clean output with optional verbose mode via `LAZY_DEBUG=1`
 
-```bash
-# Use lazy.nvim minit for testing
-NEODAP_USE_LAZY=1 make test
-
-# Environment variable controls interpreter selection
-export NEODAP_USE_LAZY=1  # Use lazy.nvim minit
-unset NEODAP_USE_LAZY     # Use original nvim-busted-interpreter
-```
-
-#### **Enhanced Playground with lazy.nvim**
+#### **Enhanced Playground**
 - **Modern plugin ecosystem**: Access to full lazy.nvim plugin ecosystem
 - **Development plugins**: Includes treesitter, trouble.nvim, and more
 - **Better UI**: Enhanced interface with lazy.nvim's UI components
 - **Plugin development**: Better debugging and development experience
 
 ```bash
-make play-lazy              # Enhanced playground with lazy.nvim
-make play                   # Original playground (Nix-based)
+make play                   # Playground with lazy.nvim
 ```
 
 #### **lazy.nvim Interpreter for Piped Code**
@@ -128,19 +119,16 @@ make play                   # Original playground (Nix-based)
 
 ```bash
 # Run code directly
-echo 'print("Hello from lazy.nvim!")' | make lazy-interpreter
+echo 'print("Hello from lazy.nvim!")' | make run
 
 # Run script files
-cat test-script.lua | make lazy-interpreter
-
-# Silent mode (no lazy.nvim setup output)
-cat test-script.lua | make lazy-interpreter-silent
+cat test-script.lua | make run
 
 # Direct execution (advanced)
 echo 'print("Test")' | ./spec/lazy-lua-interpreter.lua
 
 # Debug mode (shows all lazy.nvim output)
-echo 'print("Debug")' | LAZY_DEBUG=1 ./spec/lazy-lua-interpreter.lua
+echo 'print("Debug")' | LAZY_DEBUG=1 make run
 ```
 
 #### **Dependency Management**
@@ -152,45 +140,44 @@ echo 'print("Debug")' | LAZY_DEBUG=1 ./spec/lazy-lua-interpreter.lua
 Use the provided Makefile for simplified development workflow:
 
 ```bash
-# Run tests - various options
+# Run tests with lazy.nvim (default)
 make test                                    # Run all tests in spec/
 make test spec/core/neodap_core.spec.lua     # Run specific test file
 make test PATTERN=breakpoint_hit             # Run tests matching pattern
 make test spec/breakpoints/ PATTERN=toggle   # Run tests in folder with pattern
-
-# Run tests with lazy.nvim minit (modern approach)
-NEODAP_USE_LAZY=1 make test                 # Use lazy.nvim minit for testing
-NEODAP_USE_LAZY=1 make test spec/core/neodap_core.spec.lua
 
 # View logs
 make log                    # Show latest log file
 make log FILTER=ERROR       # Show only ERROR lines from latest log
 make log FILTER=breakpoint  # Show lines containing "breakpoint"
 
-# Run playground
-make play                   # Start neodap playground (original)
-make play-lazy              # Start neodap playground with lazy.nvim
+# Run playground with lazy.nvim
+make play                   # Start neodap playground
 
 # Run lazy.nvim interpreter for piped code execution
-echo 'print("Hello World")' | make lazy-interpreter
-cat script.lua | make lazy-interpreter
-cat script.lua | make lazy-interpreter-silent  # Silent mode (no lazy.nvim output)
+echo 'print("Hello World")' | make run
+cat script.lua | make run
+
+# Debug mode (verbose output)
+LAZY_DEBUG=1 make test                      # Show verbose testing output
+echo 'print("Hello")' | LAZY_DEBUG=1 make run  # Show verbose interpreter output
 ```
 
 ### Direct Commands (Advanced)
 If you need to use nix commands directly:
 
 ```bash
-# Single test file - ONLY RELIABLE METHOD
+# Single test file with lazy.nvim
 nix run .#test spec/core/neodap_core.spec.lua -- --verbose
 
 # Run with pattern filter - IMPORTANT: Use snake_case test names
 nix run .#test spec/core/neodap_core.spec.lua -- --pattern "breakpoint_hit"
 
+# Direct interpreter execution
+./spec/lazy-lua-interpreter.lua
+
 # ❌ PROBLEMATIC: Spaces in test names cause imprecise matching
 # --pattern "it should" will match "it does" AND "should work" (word-based matching)
-
-# ❌ DON'T USE: Direct busted, lua, or npm commands
 ```
 
 ### Common Development Patterns
@@ -348,17 +335,17 @@ Test.assert.spy(stopped_spy).was_called()
 #### **lazy.nvim Bootstrap Failures**
 - **Problem**: lazy.nvim bootstrap fails due to network issues or curl problems
 - **Solution**: Ensure internet connectivity and curl is available
-- **Fallback**: Use original interpreter with `unset NEODAP_USE_LAZY`
+- **Debug**: Use `LAZY_DEBUG=1` to see detailed bootstrap output
 
 #### **Plugin Installation Issues**
 - **Problem**: lazy.nvim fails to install plugins or times out
 - **Solution**: Clear `.tests/` directory and retry
-- **Command**: `rm -rf .tests && NEODAP_USE_LAZY=1 make test`
+- **Command**: `rm -rf .tests && make test`
 
-#### **Environment Variable Issues**
-- **Problem**: Tests use wrong interpreter despite setting `NEODAP_USE_LAZY=1`
-- **Solution**: Check shell environment and .busted configuration
-- **Debug**: `echo $NEODAP_USE_LAZY` should show "1"
+#### **Silent Mode Issues**
+- **Problem**: Need to see lazy.nvim setup output for debugging
+- **Solution**: Use debug mode to see all output
+- **Command**: `LAZY_DEBUG=1 make test` or `LAZY_DEBUG=1 make run`
 
 #### **Plugin Compatibility**
 - **Problem**: Plugin conflicts or version mismatches

@@ -1,18 +1,16 @@
 # Neodap Development Makefile
 
-.PHONY: help test log play
+.PHONY: help test log play run
 
 # Default target
 help:
 	@echo "Neodap Development Commands"
 	@echo ""
 	@echo "Usage:"
-	@echo "  make test [TARGET] [PATTERN=pattern]  - Run tests"
+	@echo "  make test [TARGET] [PATTERN=pattern]  - Run tests with lazy.nvim"
 	@echo "  make log [FILTER=filter]             - Show latest log with optional filter" 
-	@echo "  make play                            - Run playground (original)"
-	@echo "  make play-lazy                       - Run playground with lazy.nvim"
-	@echo "  make lazy-interpreter                - Run lazy.nvim interpreter (for piped code)"
-	@echo "  make lazy-interpreter-silent         - Run lazy.nvim interpreter silently"
+	@echo "  make play                            - Run playground with lazy.nvim"
+	@echo "  make run                             - Run lazy.nvim interpreter (for piped code)"
 	@echo ""
 	@echo "Examples:"
 	@echo "  make test                                    # Run all tests in spec/"
@@ -21,14 +19,14 @@ help:
 	@echo "  make test spec/breakpoints/ PATTERN=toggle   # Run tests in folder with pattern"
 	@echo "  make log                                     # Show latest log"
 	@echo "  make log FILTER=ERROR                        # Show only ERROR lines from latest log"
-	@echo "  echo 'print(\"Hello\")' | make lazy-interpreter  # Run code with lazy.nvim setup"
-	@echo "  cat script.lua | make lazy-interpreter         # Run script with lazy.nvim setup"
-	@echo "  cat script.lua | make lazy-interpreter-silent  # Run script silently (no lazy.nvim output)"
+	@echo "  echo 'print(\"Hello\")' | make run           # Run code with lazy.nvim setup"
+	@echo "  cat script.lua | make run                    # Run script with lazy.nvim setup"
 	@echo ""
-	@echo "Testing with lazy.nvim:"
-	@echo "  NEODAP_USE_LAZY=1 make test                 # Use lazy.nvim minit for testing"
+	@echo "Debug mode:"
+	@echo "  LAZY_DEBUG=1 make test                      # Show verbose testing output"
+	@echo "  echo 'print(\"Hello\")' | LAZY_DEBUG=1 make run  # Show verbose interpreter output"
 
-# Test command - handles both file/folder and optional pattern
+# Test command - uses lazy.nvim by default
 test:
 ifdef PATTERN
 	@echo "Running tests: $(or $(word 2,$(MAKECMDGOALS)),spec/) with pattern: $(PATTERN)"
@@ -53,26 +51,14 @@ log:
 		cat "$$LATEST_LOG"; \
 	fi
 
-# Playground command (original)
+# INTERACTIVE PLAYGROUND: do not run
 play:
 	@echo "Starting Neodap playground..."
-	nix run .#test-nvim
-
-# Enhanced playground with lazy.nvim
-play-lazy:
-	@echo "Starting Neodap playground with lazy.nvim..."
-	nix run .#test-nvim-lazy
+	nix run .#play
 
 # Run lazy.nvim interpreter with piped code
-lazy-interpreter:
-	@echo "Running lazy.nvim interpreter..."
-	@echo "Usage: echo 'print(\"Hello World\")' | make lazy-interpreter"
-	@echo "   or: cat script.lua | make lazy-interpreter"
-	@./spec/lazy-lua-interpreter.lua
-
-# Run lazy.nvim interpreter silently (suppresses lazy.nvim setup output)
-lazy-interpreter-silent:
-	@./spec/lazy-lua-interpreter.lua
+run:
+	@./bin/interpreter.lua
 
 # Handle additional arguments for test target
 %:

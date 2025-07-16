@@ -1,16 +1,9 @@
--- Choose interpreter based on environment variable
--- Set NEODAP_USE_LAZY=1 to use lazy.nvim minit interpreter
--- Default is the original nvim-busted-interpreter.lua
-local interpreter = os.getenv("NEODAP_USE_LAZY") == "1" 
-  and "./spec/lazy-busted-interpreter.lua"
-  or "./spec/nvim-busted-interpreter.lua"
-
 return {
   default = {
     verbose = true,
     ROOT = { "spec/", "lua/" },
     pattern = ".?spec.lua$",
-    lua = interpreter,
+    lua = "./bin/busted.lua",
     lpath = "lua/?.lua;lua/?/init.lua",
     -- output = "plainTerminal",
     coverage = false,

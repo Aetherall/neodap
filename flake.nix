@@ -101,32 +101,15 @@
       };
 
       # Test runner
-      packages.test-all = pkgs.writeShellScriptBin "neodap-test" ''
-        export LUA_PATH="./lua/?.lua;./lua/?/init.lua;$LUA_PATH"
-        export LUA_CPATH="${pkgs.luajitPackages.luafilesystem}/lib/lua/5.1/?.so;${pkgs.luajitPackages.luasystem}/lib/lua/5.1/?.so;$LUA_CPATH"
-        ${pkgs.luajitPackages.busted}/bin/busted spec/ --verbose
-      '';
-
-      # Test runner
       packages.test = pkgs.writeShellScriptBin "neodap-test" ''
         export LUA_PATH="./lua/?.lua;./lua/?/init.lua;$LUA_PATH"
         export LUA_CPATH="${pkgs.luajitPackages.luafilesystem}/lib/lua/5.1/?.so;${pkgs.luajitPackages.luasystem}/lib/lua/5.1/?.so;$LUA_CPATH"
         ${pkgs.luajitPackages.busted}/bin/busted $@
       '';
 
-      # Run Neovim Init (original playground)
-      packages.test-nvim = pkgs.writeShellScriptBin "neodap-test-nvim" ''
-        NEODAP_PLAYGROUND=1 nvim -u NONE -U NONE -N -i NONE -V1 -S ./lua/neodap/playground.lua
-      '';
-
       # Run Neovim Init with lazy.nvim (enhanced playground)
-      packages.test-nvim-lazy = pkgs.writeShellScriptBin "neodap-test-nvim-lazy" ''
+      packages.play = pkgs.writeShellScriptBin "playground" ''
         NEODAP_PLAYGROUND=1 nvim -u NONE -U NONE -N -i NONE -V1 -S ./lua/neodap/playground-lazy.lua
-      '';
-
-      # Linter runner
-      packages.lint = pkgs.writeShellScriptBin "neodap-lint" ''
-        ${pkgs.luaPackages.luacheck}/bin/luacheck lua/ --globals vim
       '';
     });
 }

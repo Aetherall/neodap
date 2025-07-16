@@ -10,7 +10,7 @@ end
 _G._LAZY_LUA_INTERPRETER_LOADED = true
 
 -- Set up isolated environment
-vim.env.LAZY_STDPATH = ".lazy-interpreter"
+vim.env.LAZY_STDPATH = ".cache/interpreter"
 
 -- Bootstrap lazy.nvim
 load(vim.fn.system("curl -s https://raw.githubusercontent.com/folke/lazy.nvim/main/bootstrap.lua"))()
