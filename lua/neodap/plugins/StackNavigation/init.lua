@@ -62,7 +62,7 @@ function StackNavigation:getClosestFrame(location)
 end
 
 ---Navigate up the call stack (towards caller)
-function StackNavigation:up()
+function StackNavigation:Up()
     local current = self:getSmartClosestFrame()
     local parent = current and current:up()
     if parent then
@@ -73,7 +73,7 @@ function StackNavigation:up()
 end
 
 ---Navigate down the call stack (towards callee)
-function StackNavigation:down()
+function StackNavigation:Down()
     local current = self:getSmartClosestFrame()
     local child = current and current:down()
     if child then
@@ -84,7 +84,7 @@ function StackNavigation:down()
 end
 
 ---Navigate to top frame (most recent call)
-function StackNavigation:top()
+function StackNavigation:Top()
     local current = self:getSmartClosestFrame()
     local top = current and current.stack:top()
     if top then

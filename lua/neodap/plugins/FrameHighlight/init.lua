@@ -105,11 +105,11 @@ function FrameHighlight:collectFrameLocations(thread)
   self.logger:info("FrameHighlight: Stored", #frame_data, "locations for thread", thread.id)
   
   -- Apply highlights to all stored locations
-  self:highlightAllVisibleLocations()
+  self:HighlightAllVisibleLocations()
 end
 
 -- Highlight all stored locations that are currently visible
-function FrameHighlight:highlightAllVisibleLocations()
+function FrameHighlight:HighlightAllVisibleLocations()
   self.logger:debug("FrameHighlight: Highlighting all visible locations")
   
   for thread_id, frame_data in pairs(self.highlights) do
@@ -126,6 +126,7 @@ function FrameHighlight:highlightAllVisibleLocations()
     end
   end
 end
+
 
 
 -- Remove frame highlights for a specific thread

@@ -53,17 +53,17 @@ function DebugMode:listen()
         session:onThread(function(thread)
             -- Auto-enter debug mode when thread stops
             thread:onStopped(function()
-                self:enterDebugMode()
+                self:EnterDebugMode()
             end, { name = self.name .. ".onStopped" })
 
             -- Auto-exit debug mode when thread resumes
             thread:onResumed(function()
-                self:exitDebugMode()
+                self:ExitDebugMode()
             end, { name = self.name .. ".onResumed" })
 
             -- Auto-exit debug mode when thread exits
             thread:onExited(function()
-                self:exitDebugMode()
+                self:ExitDebugMode()
             end, { name = self.name .. ".onExited" })
         end, { name = self.name .. ".onThread" })
     end, { name = self.name .. ".onSession" })
@@ -90,7 +90,7 @@ function DebugMode:setupCommands()
 end
 
 -- Enter debug mode: install key mappings and update status
-function DebugMode:enterDebugMode()
+function DebugMode:EnterDebugMode()
     if self.is_active then
         self.logger:debug("DebugMode: Already active, ignoring enter request")
         return
@@ -117,12 +117,20 @@ function DebugMode:enterDebugMode()
     end
 
     -- Navigate to smart closest frame when entering debug mode
-    self:jumpToCurrentFrame()
+    self:JumpToCurrentFrame()
 end
 
 
+function DebugMode:ToggleDebugMode()
+    if self.is_active then
+        self:ExitDebugMode()
+    else
+        self:EnterDebugMode()
+    end
+end
+
 -- Exit debug mode: restore original mappings and status
-function DebugMode:exitDebugMode()
+function DebugMode:ExitDebugMode()
     if not self.is_active then
         self.logger:debug("DebugMode: Not active, ignoring exit request")
         return
@@ -230,13 +238,13 @@ end
 
 -- Navigate up the call stack using StackNavigation
 function DebugMode:navigateUp()
-    self.stackNavigation:up()
+    self.stackNavigation:Up()
     self:updateStatusLine()
 end
 
 -- Navigate down the call stack using StackNavigation
-function DebugMode:navigateDown()
-    self.stackNavigation:down()
+function DebugMode:NavigateDown()
+    self.stackNavigation:Down()
     self:updateStatusLine()
 end
 
@@ -251,7 +259,7 @@ function DebugMode:stepIn()
     end
 end
 
-function DebugMode:stepOut()
+function DebugMode:StepOut()
     local closest = self:getClosestFrame()
     if closest and closest.stack and closest.stack.thread then
         closest.stack.thread:stepOut()
@@ -261,7 +269,7 @@ function DebugMode:stepOut()
     end
 end
 
-function DebugMode:stepOver()
+function DebugMode:StepOver()
     local closest = self:getClosestFrame()
     if closest and closest.stack and closest.stack.thread then
         closest.stack.thread:stepOver()
@@ -272,7 +280,7 @@ function DebugMode:stepOver()
 end
 
 -- Intelligent right key: stepIn if on top frame, navigate up otherwise
-function DebugMode:smartRightKey()
+function DebugMode:SmartRightKey()
     local closest = self:getClosestFrame()
     if not closest then
         vim.api.nvim_echo({ { "DebugMode: No frame available", "WarningMsg" } }, false, {})
@@ -290,7 +298,7 @@ function DebugMode:smartRightKey()
 end
 
 -- Jump to current frame using StackNavigation
-function DebugMode:jumpToCurrentFrame()
+function DebugMode:JumpToCurrentFrame()
     local closest = self:getClosestFrame()
     if closest then
         closest:jump()
@@ -302,17 +310,17 @@ function DebugMode:jumpToCurrentFrame()
 end
 
 -- Show stack frame telescope
-function DebugMode:showStackFrameTelescope()
+function DebugMode:ShowStackFrameTelescope()
     if not self.stackFrameTelescope:is_available() then
         vim.api.nvim_echo({ { "DebugMode: Telescope not available", "WarningMsg" } }, false, {})
         return
     end
 
-    self.stackFrameTelescope:show_frame_picker()
+    self.stackFrameTelescope:ShowFramePicker()
 end
 
 -- Show help message
-function DebugMode:showHelp()
+function DebugMode:ShowHelp()
     local help_lines = {
         "=== Neodap Debug Mode Help ===",
         "",
@@ -377,7 +385,7 @@ function DebugMode:destroy()
 
     -- Exit debug mode if active
     if self.is_active then
-        self:exitDebugMode()
+        self:ExitDebugMode()
     end
 
     -- Clear autocommands

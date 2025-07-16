@@ -63,7 +63,7 @@ function ScopeViewer:show()
         self.debugOverlay:show()
     end
 
-    self:render(frame)
+    self:Render(frame)
 end
 
 function ScopeViewer:hide()
@@ -89,7 +89,7 @@ function ScopeViewer:listen()
 
                 local frame = self:get_current_frame()
                 if frame then
-                    self:render(frame)
+                    self:Render(frame)
                 end
             end)
 
@@ -143,7 +143,7 @@ end
 
 
 -- Event Handling Methods
-function ScopeViewer:onNavigationChanged(event_data)
+function ScopeViewer:OnNavigationChanged(event_data)
     -- Only update if overlay is open
     if not self.debugOverlay:is_open() then
         return
@@ -152,11 +152,11 @@ function ScopeViewer:onNavigationChanged(event_data)
     -- Get the current frame and render its scopes
     local frame = self:get_current_frame()
     if frame then
-        self:render(frame)
+        self:Render(frame)
     end
 end
 
-function ScopeViewer:onGlobalCursorMoved()
+function ScopeViewer:OnGlobalCursorMoved()
     -- Only update if overlay is open
     if not self.debugOverlay:is_open() then
         return
@@ -176,19 +176,19 @@ function ScopeViewer:onGlobalCursorMoved()
 
     -- Update ScopeViewer to show scopes for the current frame
     if not self.current_frame or self.current_frame.ref.id ~= frame.ref.id then
-        self:render(frame)
+        self:Render(frame)
     end
 end
 
 -- Panel interaction methods
-function ScopeViewer:onPanelSelect(line)
+function ScopeViewer:OnPanelSelect(line)
     local scope = self.scope_map[line]
     if scope then
         self:toggle_scope_expansion(scope)
     end
 end
 
-function ScopeViewer:onPanelToggle(line)
+function ScopeViewer:OnPanelToggle(line)
     local scope = self.scope_map[line]
     if scope then
         self:toggle_scope_expansion(scope)
@@ -200,7 +200,7 @@ function ScopeViewer:toggle_scope_expansion(scope)
     if ref and ref > 0 then
         self.expanded_scopes[ref] = not self.expanded_scopes[ref]
         if self.current_frame then
-            self:render(self.current_frame)
+            self:Render(self.current_frame)
         end
     end
 end
@@ -216,7 +216,7 @@ function ScopeViewer:setup_highlights()
 end
 
 -- Rendering Methods
-function ScopeViewer:render(frame)
+function ScopeViewer:Render(frame)
     if not frame then
         self.debugOverlay:set_left_panel_content({ "No frame available" }, {}, { scope_map = {} })
         return

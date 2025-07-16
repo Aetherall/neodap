@@ -76,7 +76,7 @@ function StackFrameTelescope:get_current_stack()
   return nil, nil
 end
 
-function StackFrameTelescope:show_frame_picker()
+function StackFrameTelescope:ShowFramePicker()
   local stack, thread = self:get_current_stack()
   
   if not stack then
@@ -322,7 +322,7 @@ function StackFrameTelescope:create_frame_previewer()
   })
 end
 
-function StackFrameTelescope:jump_to_frame(frame)
+function StackFrameTelescope:JumpToFrame(frame)
   if not frame then
     return
   end
@@ -338,10 +338,6 @@ function StackFrameTelescope:jump_to_frame(frame)
   end
 end
 
--- Auto-wrapped version for vim context boundaries
-function StackFrameTelescope:JumpToFrame(frame)
-  return self:jump_to_frame(frame)
-end
 
 function StackFrameTelescope:is_available()
   return telescope_available

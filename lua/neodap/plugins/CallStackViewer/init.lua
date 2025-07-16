@@ -134,9 +134,7 @@ function CallStackViewer:listen()
   vim.api.nvim_create_autocmd("User", {
     pattern = "NeodapStackNavigationChanged",
     callback = function(event)
-      NvimAsync.run(function()
-        self:onNavigationChanged(event.data)
-      end)
+        self:OnNavigationChanged(event.data)
     end,
     group = vim.api.nvim_create_augroup("NeodapCallStackViewer", { clear = true }),
   })
@@ -144,9 +142,7 @@ function CallStackViewer:listen()
   -- Listen for cursor movement to update CallStackViewer hover
   vim.api.nvim_create_autocmd("CursorMoved", {
     callback = function()
-      NvimAsync.run(function()
-        self:onGlobalCursorMoved()
-      end)
+        self:OnGlobalCursorMoved()
     end,
     group = vim.api.nvim_create_augroup("NeodapCallStackViewer", { clear = false }),
   })
@@ -155,16 +151,14 @@ function CallStackViewer:listen()
   vim.api.nvim_create_autocmd("User", {
     pattern = "NeodapDebugOverlayRightSelect",
     callback = function(event)
-      NvimAsync.run(function()
-        self:onPanelSelect(event.data.line)
-      end)
+        self:OnPanelSelect(event.data.line)
     end,
     group = vim.api.nvim_create_augroup("NeodapCallStackViewer", { clear = false }),
   })
 end
 
 -- Event Handling Methods
-function CallStackViewer:onNavigationChanged(event_data)
+function CallStackViewer:OnNavigationChanged(event_data)
   -- Only update if overlay is open
   if not self.debugOverlay:is_open() then
     return
@@ -183,7 +177,7 @@ function CallStackViewer:onNavigationChanged(event_data)
   end
 end
 
-function CallStackViewer:onGlobalCursorMoved()
+function CallStackViewer:OnGlobalCursorMoved()
   -- Only update if overlay is open
   if not self.debugOverlay:is_open() then
     return
@@ -211,13 +205,13 @@ function CallStackViewer:onGlobalCursorMoved()
 end
 
 -- Panel interaction methods
-function CallStackViewer:onPanelSelect(line)
-  self:select_frame(line)
+function CallStackViewer:OnPanelSelect(line)
+  self:SelectFrame(line)
 end
 
 function CallStackViewer:onPanelCursorMoved(line)
   -- Navigate to the frame under the cursor automatically
-  self:navigate_to_frame(line)
+  self:NavigateToFrame(line)
 end
 
 function CallStackViewer:find_target_window()
@@ -225,7 +219,7 @@ function CallStackViewer:find_target_window()
   return self.debugOverlay:get_target_window_for_navigation()
 end
 
-function CallStackViewer:navigate_to_frame(line)
+function CallStackViewer:NavigateToFrame(line)
   local frame = self.frame_map and self.frame_map[line]
   if not frame then
     return
@@ -436,7 +430,7 @@ function CallStackViewer:clear_frame_highlight()
   self.last_highlighted_frame_id = nil
 end
 
-function CallStackViewer:select_frame(line)
+function CallStackViewer:SelectFrame(line)
   local frame = self.frame_map and self.frame_map[line]
   if not frame then
     return
