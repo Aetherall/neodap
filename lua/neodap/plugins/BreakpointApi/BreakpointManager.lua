@@ -42,12 +42,12 @@ end
 ---@return api.Breakpoint
 function BreakpointManager:addBreakpoint(location, opts)
   local log = Logger.get("Plugin:BreakpointApi")
-  log:info("BreakpointManager:addBreakpoint called for location:", location.key)
+  log:trace("BreakpointManager:addBreakpoint called for location:", location.key)
   
   -- Check for existing breakpoint
   local existing = self.breakpoints:atLocation(location):first()
   if existing then
-    log:info("Breakpoint already exists at location, returning existing:", existing.id)
+    log:debug("Breakpoint already exists at location, returning existing:", existing.id)
     return existing
   end
 
@@ -55,7 +55,7 @@ function BreakpointManager:addBreakpoint(location, opts)
   local breakpoint = Breakpoint.atLocation(self, location, opts)
   self.breakpoints:add(breakpoint)
   
-  log:info("Created new breakpoint with ID:", breakpoint.id)
+  log:notice("Created new breakpoint with ID:", breakpoint.id)
   self.hookable:emit('BreakpointAdded', breakpoint)
   
   -- Queue sync for all active sessions
@@ -72,7 +72,7 @@ end
 ---@param breakpoint api.Breakpoint
 function BreakpointManager:removeBreakpoint(breakpoint)
   local log = Logger.get("Plugin:BreakpointApi")
-  log:info("BreakpointManager:removeBreakpoint called for:", breakpoint.id)
+  log:trace("BreakpointManager:removeBreakpoint called for:", breakpoint.id)
   
   -- Remove from collection
   self.breakpoints:remove(breakpoint)
@@ -157,7 +157,7 @@ end
 ---@param session api.Session
 function BreakpointManager:syncSourceToSession(source, session)
   local log = Logger.get("Plugin:BreakpointApi")
-  log:info("BreakpointManager:syncSourceToSession - source:", source.id:toString(), "session:", session.id)
+  log:debug("BreakpointManager:syncSourceToSession - source:", source.id:toString(), "session:", session.id)
   
   -- 1. Gather all breakpoints for this source (unified approach)
   local sourceBreakpoints = self.breakpoints:atSource(source.id)
@@ -193,7 +193,7 @@ function BreakpointManager:syncSourceToSession(source, session)
     end
   end
   
-  log:info("Sending", #dapBreakpoints, "breakpoints to DAP for source:", source.id:toString())
+  log:debug("Sending", #dapBreakpoints, "breakpoints to DAP for source:", source.id:toString())
   
   -- 5. Build DAP source for the request (use source ref directly)
   local dapSource = source.ref
@@ -204,9 +204,9 @@ function BreakpointManager:syncSourceToSession(source, session)
     breakpoints = dapBreakpoints
   }):wait()
   
-  log:debug("DAP returned", #result.breakpoints, "breakpoint responses")
+  log:trace("DAP returned", #result.breakpoints, "breakpoint responses")
 
-  log:debug(vim.inspect(result.breakpoints, { depth = 2 }))
+  log:trace(vim.inspect(result.breakpoints, { depth = 2 }))
 
   -- 7. Reconcile bindings with response
   self:reconcileBindings(source, session, sourceBreakpoints, result.breakpoints, bindingsByBreakpointId)
@@ -237,7 +237,7 @@ function BreakpointManager:reconcileBindings(source, session, breakpoints, dapRe
       
       if existingBinding then
         -- Update existing binding
-        log:debug("Updating existing binding for breakpoint:", breakpoint.id)
+        log:trace("Updating existing binding for breakpoint:", breakpoint.id)
         existingBinding:update(dapBreakpoint)  -- Binding emits its own 'Updated' event
         processedBindings[existingBinding] = true
       else
@@ -319,14 +319,14 @@ end
 
 function BreakpointManager:listen()
   local log = Logger.get("Plugin:BreakpointApi")
-  log:info("BreakpointManager:listen - Starting to listen for DAP events")
+  log:debug("BreakpointManager:listen - Starting to listen for DAP events")
   
   self.api:onSession(function(session)
-    log:info("BreakpointManager - New session started:", session.id)
+    log:notice("New session started:", session.id)
 
     -- When source loads, sync existing breakpoints
     session:onSourceLoaded(function(source)
-      log:info("Session", session.id, "- Source loaded:", source.id:toString())
+      log:debug("Session", session.id, "- Source loaded:", source.id:toString())
       self:queueSourceSync(source, session)
     end)
 
@@ -355,7 +355,7 @@ function BreakpointManager:listen()
           return
         end
         
-        log:info("Session", session.id, "Thread", thread.id, "- Stopped at breakpoint(s):", body.hitBreakpointIds)
+        log:notice("Session", session.id, "Thread", thread.id, "- Stopped at breakpoint(s):", body.hitBreakpointIds)
 
         local hitBindings = self.bindings:forSession(session):forIds(body.hitBreakpointIds or {})
         for binding in hitBindings:each() do
@@ -368,7 +368,7 @@ function BreakpointManager:listen()
 
     -- Handle session end
     session:onTerminated(function()
-      log:info("Session", session.id, "- Session ended, cleaning up bindings")
+      log:debug("Session", session.id, "- Session ended, cleaning up bindings")
       
       -- Cancel pending operations
       for key, operation in pairs(self.pendingOperations) do

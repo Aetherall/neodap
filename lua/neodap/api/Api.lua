@@ -121,12 +121,12 @@ function Api:destroy()
   local Logger = require("neodap.tools.logger")
   local log = Logger.get("API")
   
-  log:info("API: Destroying API instance", tostring(self), "and cleaning up plugins")
+  log:notice("API: Destroying API instance and cleaning up plugins")
   
   -- Call destroy() on all cached plugin instances
   for plugin_name, plugin_instance in pairs(self._plugin_cache) do
     if type(plugin_instance) == "table" and plugin_instance.destroy then
-      log:info("API: Calling destroy() on plugin:", plugin_name)
+      log:debug("API: Calling destroy() on plugin:", plugin_name)
       pcall(plugin_instance.destroy)
     else
       log:debug("API: Plugin", plugin_name, "has no destroy method")
@@ -138,7 +138,7 @@ function Api:destroy()
   
   -- Destroy virtual buffer registry
   if self._virtual_buffer_registry and self._virtual_buffer_registry.destroy then
-    log:info("API: Destroying virtual buffer registry")
+    log:debug("API: Destroying virtual buffer registry")
     self._virtual_buffer_registry:destroy()
   end
   
@@ -149,7 +149,7 @@ function Api:destroy()
   -- Destroy the hookable system last
   self.hookable:destroy()
   
-  log:info("API: API instance destroyed successfully")
+  log:notice("API: API instance destroyed successfully")
 end
 
 return Api

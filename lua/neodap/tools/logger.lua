@@ -6,10 +6,38 @@ local Class = require('neodap.tools.class')
 ---@field enabled boolean
 ---@field silent boolean
 ---@field namespace string
+---@field level integer -- Current log level threshold
 
 ---@class Logger: LoggerProps
 ---@field new Constructor<LoggerProps>
 local Logger = Class()
+
+-- Log level constants
+local LOG_LEVELS = {
+    TRACE = 1,
+    DEBUG = 2,
+    INFO = 3,
+    NOTICE = 4,
+    WARN = 5,
+    ERROR = 6,
+    FAIL = 7,
+    CRITICAL = 8
+}
+
+-- Level names for output
+local LEVEL_NAMES = {
+    [1] = "TRACE",
+    [2] = "DEBUG",
+    [3] = "INFO",
+    [4] = "NOTICE",
+    [5] = "WARN",
+    [6] = "ERROR",
+    [7] = "FAIL",
+    [8] = "CRITICAL"
+}
+
+-- Default log level (INFO)
+local DEFAULT_LOG_LEVEL = LOG_LEVELS.INFO
 
 -- Create namespace-specific instances
 local instances = {}
@@ -68,15 +96,20 @@ function Logger.get(namespace)
         local filepath = get_process_log_path()
 
         -- Check if we're in playground mode by looking for specific environment
-        local is_playground = vim.env.NEODAP_PLAYGROUND or
-        (vim.fn.argv()[0] and vim.fn.argv()[0]:match("playground%.lua"))
+        -- Use pcall to safely access vim.env in case we're in a fast event context
+        local is_playground = false
+        pcall(function()
+            is_playground = vim.env.NEODAP_PLAYGROUND or
+            (vim.fn.argv()[0] and vim.fn.argv()[0]:match("playground%.lua"))
+        end)
 
         instances[namespace] = Logger:new({
             filepath = filepath,
             file = nil,
             enabled = true,
             silent = is_playground and true or false,
-            namespace = namespace
+            namespace = namespace,
+            level = DEFAULT_LOG_LEVEL
         })
 
         -- Only write startup message for the first instance in this process
@@ -106,8 +139,11 @@ function Logger:_open()
     end
 end
 
-function Logger:_write(level, ...)
+function Logger:_write(level_num, ...)
     if not self.enabled then return end
+    
+    -- Check if this log level should be written
+    if level_num < self.level then return end
 
     self:_open()
     if not self.file then return end
@@ -130,49 +166,69 @@ function Logger:_write(level, ...)
         end
     end
 
+    local level_name = LEVEL_NAMES[level_num] or "UNKNOWN"
     local namespace_prefix = self.namespace and self.namespace ~= "default" and "[" .. self.namespace .. "] " or ""
-    local log_line = string.format("[%s] [%s] %s%s - %s\n", timestamp, level, namespace_prefix, location, message)
+    local log_line = string.format("[%s] [%s] %s%s - %s\n", timestamp, level_name, namespace_prefix, location, message)
     self.file:write(log_line)
     self.file:flush()
+    
+    -- For NOTICE level and above, also show visual feedback
+    if level_num >= LOG_LEVELS.NOTICE and not self.silent then
+        local vim_level = vim.log.levels.INFO
+        if level_num >= LOG_LEVELS.CRITICAL then
+            vim_level = vim.log.levels.ERROR
+        elseif level_num >= LOG_LEVELS.ERROR then
+            vim_level = vim.log.levels.ERROR
+        elseif level_num >= LOG_LEVELS.WARN then
+            vim_level = vim.log.levels.WARN
+        end
+        
+        local notify_message = namespace_prefix .. message
+        -- Schedule the notification to avoid fast event context issues
+        vim.schedule(function()
+            vim.notify(notify_message, vim_level)
+        end)
+    end
+end
+
+---Log trace message (most verbose)
+function Logger:trace(...)
+    self:_write(LOG_LEVELS.TRACE, ...)
 end
 
 ---Log debug message
 function Logger:debug(...)
-    self:_write("DEBUG", ...)
+    self:_write(LOG_LEVELS.DEBUG, ...)
 end
 
 ---Log info message
 function Logger:info(...)
-    self:_write("INFO", ...)
+    self:_write(LOG_LEVELS.INFO, ...)
 end
 
----Log warning message
+---Log notice message (will show visual feedback)
+function Logger:notice(...)
+    self:_write(LOG_LEVELS.NOTICE, ...)
+end
+
+---Log warning message (will show visual feedback)
 function Logger:warn(...)
-    self:_write("WARN", ...)
+    self:_write(LOG_LEVELS.WARN, ...)
 end
 
----Log error message
+---Log error message (will show visual feedback)
 function Logger:error(...)
-    -- Forward to vim.notify for immediate visibility
-    local args = { ... }
-    local message = ""
-    for i, arg in ipairs(args) do
-        if type(arg) == "table" then
-            message = message .. vim.inspect(arg)
-        else
-            message = message .. tostring(arg)
-        end
-        if i < #args then
-            message = message .. " "
-        end
-    end
+    self:_write(LOG_LEVELS.ERROR, ...)
+end
 
-    -- Add namespace prefix for vim.notify
-    local namespace_prefix = self.namespace and self.namespace ~= "default" and "[" .. self.namespace .. "] " or ""
-    vim.notify(namespace_prefix .. message, vim.log.levels.ERROR)
+---Log fail message (will show visual feedback)
+function Logger:fail(...)
+    self:_write(LOG_LEVELS.FAIL, ...)
+end
 
-    -- Also log to file
-    self:_write("ERROR", ...)
+---Log critical message (will show visual feedback)
+function Logger:critical(...)
+    self:_write(LOG_LEVELS.CRITICAL, ...)
 end
 
 ---Log buffer snapshot for debugging visual state
@@ -225,6 +281,39 @@ function Logger:setSilent(silent)
     self.silent = silent
 end
 
+---Set the minimum log level
+---@param level string|integer Log level name or number
+function Logger:setLevel(level)
+    if type(level) == "string" then
+        local level_upper = string.upper(level)
+        if LOG_LEVELS[level_upper] then
+            self.level = LOG_LEVELS[level_upper]
+        else
+            self:warn("Unknown log level:", level, "- keeping current level")
+        end
+    elseif type(level) == "number" then
+        if level >= 1 and level <= 8 then
+            self.level = level
+        else
+            self:warn("Invalid log level number:", level, "- must be 1-8")
+        end
+    else
+        self:warn("Invalid log level type:", type(level), "- must be string or number")
+    end
+end
+
+---Get the current log level
+---@return integer
+function Logger:getLevel()
+    return self.level
+end
+
+---Get the current log level name
+---@return string
+function Logger:getLevelName()
+    return LEVEL_NAMES[self.level] or "UNKNOWN"
+end
+
 ---Get the log file path
 ---@return string
 function Logger:getFilePath()
@@ -239,5 +328,9 @@ function Logger:close()
         self.file = nil
     end
 end
+
+-- Export log levels for external use
+Logger.LEVELS = LOG_LEVELS
+Logger.LEVEL_NAMES = LEVEL_NAMES
 
 return Logger

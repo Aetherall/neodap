@@ -96,7 +96,7 @@ function DebugMode:EnterDebugMode()
         return
     end
 
-    self.logger:info("DebugMode: Entering debug mode")
+    self.logger:notice("DebugMode: Entering debug mode")
     self.is_active = true
 
     -- Save original mappings
@@ -136,7 +136,7 @@ function DebugMode:ExitDebugMode()
         return
     end
 
-    self.logger:info("DebugMode: Exiting debug mode")
+    self.logger:notice("DebugMode: Exiting debug mode")
     self.is_active = false
 
     -- Restore original mappings
@@ -396,7 +396,7 @@ function DebugMode:destroy()
     pcall(vim.api.nvim_del_user_command, "NeodapDebugModeExit")
     pcall(vim.api.nvim_del_user_command, "NeodapDebugModeToggle")
 
-    self.logger:info("DebugMode: Plugin destroyed")
+    self.logger:debug("DebugMode: Plugin destroyed")
 end
 
 return DebugMode

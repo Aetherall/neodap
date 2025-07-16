@@ -76,7 +76,7 @@ end
 
 -- Collect frame locations and apply highlights directly
 function FrameHighlight:collectFrameLocations(thread)
-  self.logger:info("FrameHighlight: Collecting frame locations for thread", thread.id)
+  self.logger:debug("FrameHighlight: Collecting frame locations for thread", thread.id)
   
   local stack = thread:stack()
   if not stack then
@@ -102,7 +102,7 @@ function FrameHighlight:collectFrameLocations(thread)
   
   -- Store frame data for this thread
   self.highlights[thread.id] = frame_data
-  self.logger:info("FrameHighlight: Stored", #frame_data, "locations for thread", thread.id)
+  self.logger:debug("FrameHighlight: Stored", #frame_data, "locations for thread", thread.id)
   
   -- Apply highlights to all stored locations
   self:HighlightAllVisibleLocations()
@@ -180,7 +180,7 @@ function FrameHighlight:destroy()
   -- Clear state
   self.highlights = {}
   
-  self.logger:info("FrameHighlight: Plugin destroyed")
+  self.logger:debug("FrameHighlight: Plugin destroyed")
 end
 
 return FrameHighlight

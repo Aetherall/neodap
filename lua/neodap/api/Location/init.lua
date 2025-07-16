@@ -273,7 +273,7 @@ function Location:_getOrCreateVirtualBuffer(session)
   
   registry:registerBuffer(uri, metadata)
   
-  log:info("Location: Created virtual buffer", bufnr, "for cross-session use:", uri)
+  log:debug("Location: Created virtual buffer", bufnr, "for cross-session use:", uri)
   return bufnr
 end
 

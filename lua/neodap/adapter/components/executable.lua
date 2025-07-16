@@ -45,7 +45,7 @@ function Executable.spawn(opts)
     instance.stdout:close()
     instance.stderr:close()
     local log = Logger.get("Core:Executable")
-    log:error("Failed to spawn process")
+    log:fail("Failed to spawn process")
     return nil
   end
 

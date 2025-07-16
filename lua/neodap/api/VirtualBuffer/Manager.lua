@@ -58,7 +58,7 @@ function VirtualBufferManager:createBuffer(uri, content, filetype)
     end
   })
   
-  log:info("VirtualBufferManager: Created virtual buffer", bufnr, "for", uri)
+  log:debug("VirtualBufferManager: Created virtual buffer", bufnr, "for", uri)
   return bufnr
 end
 
@@ -87,7 +87,7 @@ function VirtualBufferManager:scheduleCleanup(metadata, registry)
       -- Still no references, proceed with cleanup
       if current:isValid() then
         vim.schedule(function()
-          log:info("VirtualBufferManager: Deleting unreferenced virtual buffer", current.bufnr)
+          log:debug("VirtualBufferManager: Deleting unreferenced virtual buffer", current.bufnr)
           vim.api.nvim_buf_delete(current.bufnr, { force = true })
         end)
       end
@@ -117,7 +117,7 @@ function VirtualBufferManager:cleanupUnreferenced(registry)
   local log = Logger.get("API:VirtualBuffer")
   local cleaned = 0
   
-  log:info("VirtualBufferManager: Starting manual cleanup of unreferenced buffers")
+  log:debug("VirtualBufferManager: Starting manual cleanup of unreferenced buffers")
   
   for uri, metadata in pairs(registry.buffers) do
     if not metadata:hasReferences() and metadata:isValid() then

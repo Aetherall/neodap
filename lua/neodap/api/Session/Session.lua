@@ -348,7 +348,7 @@ function Session:destroy()
   self._threads = {}
   self._sources = {}
   
-  log:info("Session", self.id, "destroyed successfully")
+  log:notice("Session", self.id, "destroyed successfully")
 end
 
 ---Get valid breakpoint locations for a source range using DAP's breakpointLocations request
