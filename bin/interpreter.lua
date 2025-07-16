@@ -128,38 +128,74 @@ if os.getenv("LAZY_DEBUG") then
   print("lazy-lua-interpreter: Ready to execute piped Lua code")
 end
 
--- Function to execute piped lua code
-local function execute_piped_code()
-  -- Read all input from stdin
+-- Function to get lua code from various sources
+local function get_lua_code()
   local input_lines = {}
   
-  -- Try to read from stdin (works better with piped input)
-  local ok, stdin_input = pcall(io.read, "*a")
-  if ok and stdin_input and stdin_input:len() > 0 then
-    -- Clean up the input - remove trailing whitespace but preserve the code structure
-    stdin_input = stdin_input:gsub("%s*$", "")
+  -- Check command line arguments first
+  local args = vim.v.argv or {}
+  
+  if os.getenv("LAZY_DEBUG") then
+    print("lazy-lua-interpreter: Processing args:", vim.inspect(args))
+  end
+  
+  -- Look for arguments that come after the script name
+  local script_found = false
+  for i = 1, #args do
+    local arg = args[i]
     
-    -- Don't split by lines, keep the input as a single block of code
-    if stdin_input:len() > 0 then
-      table.insert(input_lines, stdin_input)
+    -- Skip until we find our interpreter script
+    if arg:match("interpreter%.lua$") then
+      script_found = true
+    elseif script_found and not arg:match("^-") then
+      -- This is our argument after the script name
+      if vim.fn.filereadable(arg) == 1 then
+        -- It's a file, read it
+        local file_content = vim.fn.readfile(arg)
+        if file_content then
+          table.insert(input_lines, table.concat(file_content, "\n"))
+          if os.getenv("LAZY_DEBUG") then
+            print("lazy-lua-interpreter: Reading code from file:", arg)
+          end
+        end
+      else
+        -- Treat as lua code string
+        if arg:len() > 0 then
+          table.insert(input_lines, arg)
+          if os.getenv("LAZY_DEBUG") then
+            print("lazy-lua-interpreter: Using code from argument:", arg)
+          end
+        end
+      end
+      -- Only process the first non-flag argument after script name
+      break
     end
   end
   
-  -- Also check command line arguments for code
-  local args = vim.v.argv or {}
-  for i = 1, #args do
-    local arg = args[i]
-    if arg:match("^%-%-exec=") then
-      -- Extract code from --exec=<code> argument
-      local code = arg:match("^%-%-exec=(.+)")
-      if code then
-        table.insert(input_lines, code)
+  -- If no arguments, try to read from stdin
+  if #input_lines == 0 then
+    local ok, stdin_input = pcall(io.read, "*a")
+    if ok and stdin_input and stdin_input:len() > 0 then
+      -- Clean up the input - remove trailing whitespace but preserve the code structure
+      stdin_input = stdin_input:gsub("%s*$", "")
+      
+      -- Don't split by lines, keep the input as a single block of code
+      if stdin_input:len() > 0 then
+        table.insert(input_lines, stdin_input)
+        if os.getenv("LAZY_DEBUG") then
+          print("lazy-lua-interpreter: Reading code from stdin")
+        end
       end
     end
   end
   
   -- Join all input lines into a single string
-  local lua_code = table.concat(input_lines, "\n")
+  return table.concat(input_lines, "\n")
+end
+
+-- Function to execute lua code
+local function execute_code()
+  local lua_code = get_lua_code()
   
   if lua_code and lua_code:len() > 0 then
     if os.getenv("LAZY_DEBUG") then
@@ -172,7 +208,7 @@ local function execute_piped_code()
     -- Execute the lua code with better error handling
     local success, result = pcall(function()
       -- Use load() instead of loadstring() for better Lua 5.1+ compatibility
-      local func, err = load(lua_code, "piped_code", "t")
+      local func, err = load(lua_code, "user_code", "t")
       if not func then
         error("Syntax error: " .. tostring(err))
       end
@@ -205,7 +241,7 @@ vim.schedule(function()
     print = original_print
   end
   
-  execute_piped_code()
+  execute_code()
   -- Exit successfully
   vim.cmd("quit")
 end)

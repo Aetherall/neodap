@@ -21,7 +21,7 @@
         "**/.hg": true,
         "**/.DS_Store": true,
         "**/Thumbs.db": true,
-        "**/.cache": true,
+        // "**/.cache": true,
         "**/.direnv": true,
         "**/.claude": true,
     }

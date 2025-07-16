@@ -118,17 +118,18 @@ make play                   # Playground with lazy.nvim
 - **Development testing**: Perfect for quick testing of neodap functionality
 
 ```bash
-# Run code directly
+# Run code via pipes
 echo 'print("Hello from lazy.nvim!")' | make run
 
 # Run script files
-cat test-script.lua | make run
+make run test-script.lua
 
-# Direct execution (advanced)
-echo 'print("Test")' | ./spec/lazy-lua-interpreter.lua
+# Run code strings directly
+./bin/interpreter.lua 'print("Hello from string!")'
 
 # Debug mode (shows all lazy.nvim output)
 echo 'print("Debug")' | LAZY_DEBUG=1 make run
+LAZY_DEBUG=1 make run test-script.lua
 ```
 
 #### **Dependency Management**
@@ -154,9 +155,10 @@ make log FILTER=breakpoint  # Show lines containing "breakpoint"
 # Run playground with lazy.nvim
 make play                   # Start neodap playground
 
-# Run lazy.nvim interpreter for piped code execution
-echo 'print("Hello World")' | make run
-cat script.lua | make run
+# Run lazy.nvim interpreter (multiple input methods)
+echo 'print("Hello World")' | make run        # Piped code
+make run script.lua                            # File execution
+./bin/interpreter.lua 'print("Hello World")'  # Direct string execution
 
 # Debug mode (verbose output)
 LAZY_DEBUG=1 make test                      # Show verbose testing output

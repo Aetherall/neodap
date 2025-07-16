@@ -10,7 +10,7 @@ help:
 	@echo "  make test [TARGET] [PATTERN=pattern]  - Run tests with lazy.nvim"
 	@echo "  make log [FILTER=filter]             - Show latest log with optional filter" 
 	@echo "  make play                            - Run playground with lazy.nvim"
-	@echo "  make run                             - Run lazy.nvim interpreter (for piped code)"
+	@echo "  make run                             - Run lazy.nvim interpreter"
 	@echo ""
 	@echo "Examples:"
 	@echo "  make test                                    # Run all tests in spec/"
@@ -19,8 +19,9 @@ help:
 	@echo "  make test spec/breakpoints/ PATTERN=toggle   # Run tests in folder with pattern"
 	@echo "  make log                                     # Show latest log"
 	@echo "  make log FILTER=ERROR                        # Show only ERROR lines from latest log"
-	@echo "  echo 'print(\"Hello\")' | make run           # Run code with lazy.nvim setup"
-	@echo "  cat script.lua | make run                    # Run script with lazy.nvim setup"
+	@echo "  echo 'print(\"Hello\")' | make run           # Run piped code"
+	@echo "  make run script.lua                          # Run lua file"
+	@echo "  ./bin/interpreter.lua 'print(\"Hello\")'    # Run code string (direct)"
 	@echo ""
 	@echo "Debug mode:"
 	@echo "  LAZY_DEBUG=1 make test                      # Show verbose testing output"
@@ -30,10 +31,10 @@ help:
 test:
 ifdef PATTERN
 	@echo "Running tests: $(or $(word 2,$(MAKECMDGOALS)),spec/) with pattern: $(PATTERN)"
-	@nix run .#test $(or $(word 2,$(MAKECMDGOALS)),spec/) -- --pattern "$(PATTERN)"
+	@busted $(or $(word 2,$(MAKECMDGOALS)),spec/) -- --pattern "$(PATTERN)"
 else
 	@echo "Running tests: $(or $(word 2,$(MAKECMDGOALS)),spec/)"
-	@nix run .#test $(or $(word 2,$(MAKECMDGOALS)),spec/)
+	@busted $(or $(word 2,$(MAKECMDGOALS)),spec/)
 endif
 
 # Log command - show latest log file with optional filter
@@ -54,11 +55,17 @@ log:
 # INTERACTIVE PLAYGROUND: do not run
 play:
 	@echo "Starting Neodap playground..."
-	nix run .#play
+	@./bin/playground.lua "$(filter-out $@,$(MAKECMDGOALS))"
 
-# Run lazy.nvim interpreter with piped code
+# INTERACTIVE PLAYGROUND: do not run
+play-all:
+	@echo "Starting Neodap playground with all.lua playground"
+	@./bin/playground.lua lua/playgrounds/all.lua
+
+# Run lazy.nvim interpreter with piped code, string arguments, or files
 run:
-	@./bin/interpreter.lua
+	@./bin/interpreter.lua "$(filter-out $@,$(MAKECMDGOALS))"
+
 
 # Handle additional arguments for test target
 %:

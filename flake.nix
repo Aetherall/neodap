@@ -67,13 +67,13 @@
           export TELESCOPE_NVIM_PATH="${pkgs.vimPlugins.telescope-nvim}"
 
           echo "🧪 Neodap development environment ready!"
-          echo "📚 Library paths for .luarc.json:"
-          echo "  Neovim runtime: ${pkgs.neovim}/share/nvim/runtime/lua"
-          echo "  nvim-nio: ${pkgs.vimPlugins.nvim-nio}/lua"
-          echo "  plenary-nvim: ${pkgs.vimPlugins.plenary-nvim}/lua"
-          echo "  nui-nvim: ${pkgs.vimPlugins.nui-nvim}/lua"
-          echo "  telescope-nvim: ${pkgs.vimPlugins.telescope-nvim}/lua"
-          echo "  busted: ${pkgs.luajitPackages.busted}/share/lua/5.1"
+          # echo "📚 Library paths for .luarc.json:"
+          # echo "  Neovim runtime: ${pkgs.neovim}/share/nvim/runtime/lua"
+          # echo "  nvim-nio: ${pkgs.vimPlugins.nvim-nio}/lua"
+          # echo "  plenary-nvim: ${pkgs.vimPlugins.plenary-nvim}/lua"
+          # echo "  nui-nvim: ${pkgs.vimPlugins.nui-nvim}/lua"
+          # echo "  telescope-nvim: ${pkgs.vimPlugins.telescope-nvim}/lua"
+          # echo "  busted: ${pkgs.luajitPackages.busted}/share/lua/5.1"
 
           echo "Run 'nix run .#test-all' to run tests"
           echo "Run 'nix run .#test spec/$file' to run a specific test file"
@@ -99,17 +99,5 @@
           platforms = platforms.all;
         };
       };
-
-      # Test runner
-      packages.test = pkgs.writeShellScriptBin "neodap-test" ''
-        export LUA_PATH="./lua/?.lua;./lua/?/init.lua;$LUA_PATH"
-        export LUA_CPATH="${pkgs.luajitPackages.luafilesystem}/lib/lua/5.1/?.so;${pkgs.luajitPackages.luasystem}/lib/lua/5.1/?.so;$LUA_CPATH"
-        ${pkgs.luajitPackages.busted}/bin/busted $@
-      '';
-
-      # Run Neovim Init with lazy.nvim (enhanced playground)
-      packages.play = pkgs.writeShellScriptBin "playground" ''
-        NEODAP_PLAYGROUND=1 nvim -u NONE -U NONE -N -i NONE -V1 -S ./lua/neodap/playground-lazy.lua
-      '';
     });
 }

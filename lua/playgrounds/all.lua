@@ -1,76 +1,14 @@
--- Try to find nvim-nio in environment or fallback gracefully
-local function setup_runtime_paths()
-    -- Check if nvim-nio is available from environment (e.g., Nix)
-    local nvim_nio_path = os.getenv("NVIM_NIO_PATH")
-    if nvim_nio_path and vim.fn.isdirectory(nvim_nio_path) == 1 then
-        vim.opt.rtp:prepend(nvim_nio_path)
-    else
-        -- Try to require nio directly (it might already be in runtime path)
-        local ok = pcall(require, "nio")
-        if not ok then
-            -- If nio is not found, we can still function for basic operations
-            -- vim.notify("nvim-nio not found, some async features may not work", vim.log.levels.WARN)
-        end
-    end
-
-    local plenary_path = os.getenv("PLENARY_NVIM_PATH")
-    if plenary_path and vim.fn.isdirectory(plenary_path) == 1 then
-        vim.opt.rtp:prepend(plenary_path)
-    else
-        local ok = pcall(require, "plenary")
-        if not ok then
-            -- If plenary is not found, we can still function for basic operations
-            -- vim.notify("plenary.nvim not found, some features may not work", vim.log.levels.WARN)
-        end
-    end
-
-
-    local nvim_nui_path = os.getenv("NUI_NVIM_PATH")
-
-    if nvim_nui_path and vim.fn.isdirectory(nvim_nui_path) == 1 then
-        vim.opt.rtp:prepend(nvim_nui_path)
-    else
-        local ok = pcall(require, "nui")
-        if not ok then
-            -- If nui is not found, we can still function for basic operations
-            -- vim.notify("nui.nvim not found, some UI features may not work", vim.log.levels.WARN)
-        end
-    end
-
-    local telescope_path = os.getenv("TELESCOPE_NVIM_PATH")
-
-    if telescope_path and vim.fn.isdirectory(telescope_path) == 1 then
-        vim.opt.rtp:prepend(telescope_path)
-    else
-        local ok = pcall(require, "telescope")
-        if not ok then
-            -- If telescope is not found, we can still function for basic operations
-            -- vim.notify("telescope.nvim not found, some telescope features may not work", vim.log.levels.WARN)
-        end
-    end
-
-    -- Set up project paths relative to current working directory
-    local cwd = vim.fn.getcwd()
-    vim.opt.rtp:prepend(cwd)
-    vim.opt.rtp:prepend(cwd .. "/lua")
-    vim.opt.rtp:prepend(cwd .. "/lua/neodap")
-end
-
-setup_runtime_paths()
-
-vim.g.mapleader            = " "
-
-local Manager              = require("neodap.session.manager")
-local ExecutableTCPAdapter = require("neodap.adapter.executable_tcp")
-local Session              = require("neodap.session.session")
-local nio                  = require("nio")
-local Api                  = require("neodap.api.Api")
-
+vim.g.mapleader = " "
 
 local function go()
-    local manager = Manager.create()
+    local Manager              = require("neodap.session.manager")
+    local ExecutableTCPAdapter = require("neodap.adapter.executable_tcp")
+    local Session              = require("neodap.session.session")
+    local nio                  = require("nio")
+    local Api                  = require("neodap.api.Api")
+    local manager              = Manager.create()
 
-    local adapter = ExecutableTCPAdapter.create({
+    local adapter              = ExecutableTCPAdapter.create({
         executable = {
             cmd = "js-debug",
             cwd = vim.fn.getcwd(),
@@ -80,7 +18,7 @@ local function go()
         },
     })
 
-    local namespace = vim.api.nvim_create_namespace("neodap")
+    local namespace            = vim.api.nvim_create_namespace("neodap")
     vim.api.nvim_set_hl(namespace, "Default", { fg = "#ffffff", bg = "#000000" })
 
 
