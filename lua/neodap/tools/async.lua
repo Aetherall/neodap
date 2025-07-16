@@ -1,7 +1,7 @@
 local nio = require("nio")
 local Logger = require("neodap.tools.logger")
 
-local logger = Logger.get("async")
+local logger = Logger.get("Core:Async")
 
 -- NvimAsync integration for simplified coroutine-based handlers
 local NvimAsync = {}

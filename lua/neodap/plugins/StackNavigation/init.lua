@@ -15,7 +15,7 @@ StackNavigation.name = "StackNavigation"
 StackNavigation.description = "Navigate through call stacks with cursor awareness"
 
 function StackNavigation.plugin(api)
-    local logger = Logger.get()
+    local logger = Logger.get("Plugin:StackNavigation")
 
     local instance = StackNavigation:new({
         api = api,

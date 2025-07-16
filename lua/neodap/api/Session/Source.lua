@@ -120,7 +120,7 @@ end
 ---Get file content by reading from filesystem
 ---@return string?
 function Source:_getFileContent()
-  local log = Logger.get()
+  local log = Logger.get("API:Source")
   
   if not self.ref.path or self.ref.path == '' then
     log:warn("Source: No path available for file content")
@@ -150,7 +150,7 @@ end
 ---Get virtual content via DAP source request
 ---@return string?
 function Source:_getDapContent()
-  local log = Logger.get()
+  local log = Logger.get("API:Source")
   
   if not self.ref.sourceReference or self.ref.sourceReference <= 0 then
     log:warn("Source: No sourceReference for DAP content")

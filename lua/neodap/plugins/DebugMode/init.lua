@@ -25,7 +25,7 @@ DebugMode.name = "DebugMode"
 DebugMode.description = "Custom vim mode for stack navigation using arrow keys (preserves hjkl for normal navigation)"
 
 function DebugMode.plugin(api)
-    local logger = Logger.get("DebugMode")
+    local logger = Logger.get("Plugin:DebugMode")
 
     local instance = DebugMode:new({
         api = api,

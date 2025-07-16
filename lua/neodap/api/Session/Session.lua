@@ -278,7 +278,7 @@ function Session:onBindingNew(listener, opts)
   return self.ref.events:on('breakpoint',
     ---@param body dap.BreakpointEventBody
     function(body)
-      local log = Logger.get()
+      local log = Logger.get("API:Session")
       log:debug("Session", self.id, "- Received breakpoint event - reason:", body.reason, "breakpoint:", body.breakpoint)
       if body.reason == "new" then
         log:debug("Session", self.id, "- Forwarding 'new' breakpoint to listener")
@@ -294,7 +294,7 @@ function Session:onBindingChanged(listener, opts)
   return self.ref.events:on('breakpoint',
     ---@param body dap.BreakpointEventBody
     function(body)
-      local log = Logger.get()
+      local log = Logger.get("API:Session")
       log:debug("Session", self.id, "- Received breakpoint event - reason:", body.reason, "breakpoint:", body.breakpoint)
       if body.reason == "changed" then
         log:debug("Session", self.id, "- Forwarding 'changed' breakpoint to listener")
@@ -319,7 +319,7 @@ end
 --- Destroys this session and all its child resources
 --- This method ensures complete cleanup of threads, sources, and handlers
 function Session:destroy()
-  local log = Logger.get()
+  local log = Logger.get("API:Session")
   log:debug("Session", self.id, "destroy() called - cleaning up child resources")
   
   -- Clean up all threads first
@@ -357,7 +357,7 @@ end
 ---@param column? integer
 ---@return dap.BreakpointLocation[]|nil locations Array of valid breakpoint locations, or nil if not supported
 function Session:getBreakpointLocations(source, line, column)
-  local log = Logger.get()
+  local log = Logger.get("API:Session")
   
   -- Check if adapter supports breakpointLocations
   log:debug("Session", self.id, "- Checking adapter capabilities...")

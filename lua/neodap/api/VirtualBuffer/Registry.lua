@@ -47,7 +47,7 @@ end
 ---@param uri string
 ---@param metadata VirtualBufferMetadata
 function VirtualBufferRegistry:registerBuffer(uri, metadata)
-  local log = Logger.get()
+  local log = Logger.get("API:VirtualBuffer")
   log:debug("VirtualBufferRegistry: Registering buffer", uri, "with stability hash", metadata.stability_hash)
   
   self.buffers[uri] = metadata
@@ -73,7 +73,7 @@ end
 ---@param uri string
 ---@param session_id integer
 function VirtualBufferRegistry:addSessionReference(uri, session_id)
-  local log = Logger.get()
+  local log = Logger.get("API:VirtualBuffer")
   local metadata = self.buffers[uri]
   if metadata then
     log:debug("VirtualBufferRegistry: Adding session reference", session_id, "to buffer", uri)
@@ -88,7 +88,7 @@ end
 ---@param uri string
 ---@param session_id integer
 function VirtualBufferRegistry:removeSessionReference(uri, session_id)
-  local log = Logger.get()
+  local log = Logger.get("API:VirtualBuffer")
   local metadata = self.buffers[uri]
   if metadata then
     log:debug("VirtualBufferRegistry: Removing session reference", session_id, "from buffer", uri)
@@ -108,7 +108,7 @@ end
 ---Remove a buffer from the registry (used during cleanup)
 ---@param uri string
 function VirtualBufferRegistry:removeBuffer(uri)
-  local log = Logger.get()
+  local log = Logger.get("API:VirtualBuffer")
   local metadata = self.buffers[uri]
   if metadata then
     log:debug("VirtualBufferRegistry: Removing buffer from registry", uri)
@@ -157,7 +157,7 @@ end
 
 ---Destroy the registry and clean up all buffers
 function VirtualBufferRegistry:destroy()
-  local log = Logger.get()
+  local log = Logger.get("API:VirtualBuffer")
   log:debug("VirtualBufferRegistry: Destroying registry and cleaning up all buffers")
   
   -- Clean up manager first (cancels scheduled cleanups)
@@ -179,7 +179,7 @@ end
 
 ---Clear all buffers (for testing or reset)
 function VirtualBufferRegistry:clear()
-  local log = Logger.get()
+  local log = Logger.get("API:VirtualBuffer")
   log:debug("VirtualBufferRegistry: Clearing all buffers")
   
   for uri, metadata in pairs(self.buffers) do
@@ -194,7 +194,7 @@ end
 
 ---Debug: List all buffers
 function VirtualBufferRegistry:debugList()
-  local log = Logger.get()
+  local log = Logger.get("API:VirtualBuffer")
   log:debug("VirtualBufferRegistry: Current buffers:")
   
   for uri, metadata in pairs(self.buffers) do

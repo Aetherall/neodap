@@ -131,7 +131,7 @@ function Location:toUri()
   -- Location handles physical addressing in the material world
   if self.sourceId:isFile() then
     if not self.sourceId.path then
-      Logger.get():error("Location: File identifier missing path field")
+      Logger.get("API:Location"):error("Location: File identifier missing path field")
       return ""
     end
     return vim.uri_from_fname(self.sourceId.path)
@@ -177,7 +177,7 @@ end
 ---Get or create file buffer (active creation)
 ---@return integer?
 function Location:_getOrCreateFileBuffer()
-  local log = Logger.get()
+  local log = Logger.get("API:Location")
   
   if not self.sourceId.path then
     log:error("Location: File identifier missing path field")
@@ -213,7 +213,7 @@ end
 ---@param session api.Session Session for content retrieval
 ---@return integer?
 function Location:_getOrCreateVirtualBuffer(session)
-  local log = Logger.get()
+  local log = Logger.get("API:Location")
   
   if not self.sourceId:isVirtual() then
     log:error("Location: Cannot create virtual buffer for non-virtual identifier")
@@ -381,7 +381,7 @@ function Location:highlight(ns, hl_group, opts)
   end
 
   -- Create new highlight (no existing check needed)
-  logger:get():debug("Highlighting location at", start_line, start_col, "to", end_line, end_col)
+  logger.get("API:Location"):debug("Highlighting location at", start_line, start_col, "to", end_line, end_col)
   return vim.api.nvim_buf_set_extmark(bufnr, ns, start_line, start_col, {
     end_row = end_line,
     end_col = end_col,

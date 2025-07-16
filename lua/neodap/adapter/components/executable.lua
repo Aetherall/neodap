@@ -44,7 +44,7 @@ function Executable.spawn(opts)
   if not instance.process then
     instance.stdout:close()
     instance.stderr:close()
-    local log = Logger.get()
+    local log = Logger.get("Core:Executable")
     log:error("Failed to spawn process")
     return nil
   end
@@ -67,7 +67,7 @@ function Executable.spawn(opts)
   instance.stderr:read_start(function(err, chunk)
     assert(not err, err)
     if chunk then
-      local log = Logger.get()
+      local log = Logger.get("Core:Executable")
       log:debug("Process stderr:", chunk)
     end
   end)

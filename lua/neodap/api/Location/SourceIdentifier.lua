@@ -34,7 +34,7 @@ end
 ---@param uri string
 ---@return SourceIdentifier
 function SourceIdentifier.fromVirtualUri(uri)
-  local log = Logger.get()
+  local log = Logger.get("API:Location")
   
   -- Parse virtual URI: virtual://stability_hash/name
   local stability_hash, name = uri:match("^virtual://([^/]+)/(.+)$")

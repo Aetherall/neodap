@@ -77,7 +77,7 @@ function Session:start(opts)
         -- print("DEBUG: Received response:", vim.inspect(message))
         self.calls:receive(message)
       else
-        local log = Logger.get()
+        local log = Logger.get("Core:Session")
         log:warn("Unknown message type:", message.type)
       end
     end,

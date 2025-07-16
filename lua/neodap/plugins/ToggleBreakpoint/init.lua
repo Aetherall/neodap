@@ -18,7 +18,7 @@ ToggleBreakpoint.description = "Plugin to toggle breakpoints in Neodap"
 
 -- Smart Adjustment System
 function ToggleBreakpoint.plugin(api)
-  local logger = Logger.get()
+  local logger = Logger.get("Plugin:ToggleBreakpoint")
 
   return ToggleBreakpoint:new({
     api = api,

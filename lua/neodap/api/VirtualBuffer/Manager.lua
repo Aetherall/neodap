@@ -23,7 +23,7 @@ end
 ---@param filetype? string
 ---@return integer bufnr
 function VirtualBufferManager:createBuffer(uri, content, filetype)
-  local log = Logger.get()
+  local log = Logger.get("API:VirtualBuffer")
   log:debug("VirtualBufferManager: Creating buffer for", uri)
   
   -- Create new scratch buffer
@@ -66,7 +66,7 @@ end
 ---@param metadata VirtualBufferMetadata
 ---@param registry VirtualBufferRegistry
 function VirtualBufferManager:scheduleCleanup(metadata, registry)
-  local log = Logger.get()
+  local log = Logger.get("API:VirtualBuffer")
   
   if self.cleanup_scheduled[metadata.uri] then
     log:debug("VirtualBufferManager: Cleanup already scheduled for", metadata.uri)
@@ -104,7 +104,7 @@ end
 ---@param uri string
 function VirtualBufferManager:cancelCleanup(uri)
   if self.cleanup_scheduled[uri] then
-    local log = Logger.get()
+    local log = Logger.get("API:VirtualBuffer")
     log:debug("VirtualBufferManager: Cancelling cleanup for", uri)
     self.cleanup_scheduled[uri] = nil
   end
@@ -114,7 +114,7 @@ end
 ---@param registry VirtualBufferRegistry
 ---@return integer cleaned_count
 function VirtualBufferManager:cleanupUnreferenced(registry)
-  local log = Logger.get()
+  local log = Logger.get("API:VirtualBuffer")
   local cleaned = 0
   
   log:info("VirtualBufferManager: Starting manual cleanup of unreferenced buffers")
@@ -135,7 +135,7 @@ end
 
 ---Add destroy method for manager cleanup
 function VirtualBufferManager:destroy()
-  local log = Logger.get()
+  local log = Logger.get("API:VirtualBuffer")
   log:debug("VirtualBufferManager: Destroying manager and cancelling scheduled cleanups")
   
   -- Clear all scheduled cleanups

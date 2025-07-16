@@ -141,7 +141,7 @@ function Frame:highlight(namespace, hl_group)
     return
   end
   
-  local log = Logger.get()
+  local log = Logger.get("API:Frame")
   log:debug("Frame highlight - Buffer number:", bufnr)
   if not vim.api.nvim_buf_is_valid(bufnr) then
     return
@@ -158,7 +158,7 @@ function Frame:highlight(namespace, hl_group)
   local current_line = vim.api.nvim_buf_get_lines(bufnr, self.ref.line - 1, self.ref.line, false)[1]
   local end_col = current_line and #current_line or 0
 
-  local log = Logger.get()
+  local log = Logger.get("API:Frame")
   log:debug("Highlighting frame at line", self.ref.line, "column", self.ref.column, "end_col", end_col)
 
   vim.api.nvim_buf_set_extmark(bufnr, namespace, self.ref.line - 1, self.ref.column - 1, {

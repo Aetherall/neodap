@@ -18,7 +18,7 @@ FrameHighlight.name = "FrameHighlight"
 FrameHighlight.description = "Highlight all frames of stopped threads when buffers become visible"
 
 function FrameHighlight.plugin(api)
-  local logger = Logger.get()
+  local logger = Logger.get("Plugin:FrameHighlight")
   
   local instance = FrameHighlight:new({
     api = api,

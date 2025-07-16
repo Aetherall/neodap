@@ -119,7 +119,7 @@ end
 --- Destroy the API and clean up all plugins
 function Api:destroy()
   local Logger = require("neodap.tools.logger")
-  local log = Logger.get()
+  local log = Logger.get("API")
   
   log:info("API: Destroying API instance", tostring(self), "and cleaning up plugins")
   

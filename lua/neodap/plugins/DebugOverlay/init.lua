@@ -21,7 +21,7 @@ DebugOverlay.name = "DebugOverlay"
 DebugOverlay.description = "Layout manager for debug interface using nui.layout"
 
 function DebugOverlay.plugin(api)
-  local logger = Logger.get()
+  local logger = Logger.get("Plugin:DebugOverlay")
   
   local instance = DebugOverlay:new({
     api = api,

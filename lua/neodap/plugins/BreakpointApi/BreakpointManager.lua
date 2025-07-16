@@ -41,7 +41,7 @@ end
 ---@param opts? { condition?: string, logMessage?: string }
 ---@return api.Breakpoint
 function BreakpointManager:addBreakpoint(location, opts)
-  local log = Logger.get()
+  local log = Logger.get("Plugin:BreakpointApi")
   log:info("BreakpointManager:addBreakpoint called for location:", location.key)
   
   -- Check for existing breakpoint
@@ -71,7 +71,7 @@ end
 
 ---@param breakpoint api.Breakpoint
 function BreakpointManager:removeBreakpoint(breakpoint)
-  local log = Logger.get()
+  local log = Logger.get("Plugin:BreakpointApi")
   log:info("BreakpointManager:removeBreakpoint called for:", breakpoint.id)
   
   -- Remove from collection
@@ -156,7 +156,7 @@ end
 ---@param source api.Source
 ---@param session api.Session
 function BreakpointManager:syncSourceToSession(source, session)
-  local log = Logger.get()
+  local log = Logger.get("Plugin:BreakpointApi")
   log:info("BreakpointManager:syncSourceToSession - source:", source.id:toString(), "session:", session.id)
   
   -- 1. Gather all breakpoints for this source (unified approach)
@@ -224,7 +224,7 @@ end
 ---@param dapResponses dap.Breakpoint[]
 ---@param existingBindingsMap table<string, api.Binding?>
 function BreakpointManager:reconcileBindings(source, session, breakpoints, dapResponses, existingBindingsMap)
-  local log = Logger.get()
+  local log = Logger.get("Plugin:BreakpointApi")
   local breakpointArray = breakpoints:toArray()
   local processedBindings = {}
   
@@ -318,7 +318,7 @@ end
 -- DAP Event Handling
 
 function BreakpointManager:listen()
-  local log = Logger.get()
+  local log = Logger.get("Plugin:BreakpointApi")
   log:info("BreakpointManager:listen - Starting to listen for DAP events")
   
   self.api:onSession(function(session)

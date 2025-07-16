@@ -31,7 +31,7 @@ StackFrameTelescope.name = "StackFrameTelescope"
 StackFrameTelescope.description = "Telescope integration for browsing stack frames with location preview"
 
 function StackFrameTelescope.plugin(api)
-  local logger = Logger.get("StackFrameTelescope")
+  local logger = Logger.get("Plugin:StackFrameTelescope")
   
   local instance = StackFrameTelescope:new({
     api = api,
@@ -201,7 +201,7 @@ function StackFrameTelescope:create_frame_previewer()
         local source = location.source
         
         -- Add debug logging
-        local logger = Logger.get("StackFrameTelescope")
+        local logger = Logger.get("Plugin:StackFrameTelescope")
         logger:debug("StackFrameTelescope: Attempting to manifest location", location.key)
         
         local success, bufnr = pcall(function()
