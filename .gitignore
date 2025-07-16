@@ -1,2 +1,5 @@
 .direnv/
 log/
+.tests
+.playground
+.lazy-interpreter

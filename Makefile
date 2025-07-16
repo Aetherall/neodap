@@ -9,7 +9,10 @@ help:
 	@echo "Usage:"
 	@echo "  make test [TARGET] [PATTERN=pattern]  - Run tests"
 	@echo "  make log [FILTER=filter]             - Show latest log with optional filter" 
-	@echo "  make play                            - Run playground"
+	@echo "  make play                            - Run playground (original)"
+	@echo "  make play-lazy                       - Run playground with lazy.nvim"
+	@echo "  make lazy-interpreter                - Run lazy.nvim interpreter (for piped code)"
+	@echo "  make lazy-interpreter-silent         - Run lazy.nvim interpreter silently"
 	@echo ""
 	@echo "Examples:"
 	@echo "  make test                                    # Run all tests in spec/"
@@ -18,6 +21,12 @@ help:
 	@echo "  make test spec/breakpoints/ PATTERN=toggle   # Run tests in folder with pattern"
 	@echo "  make log                                     # Show latest log"
 	@echo "  make log FILTER=ERROR                        # Show only ERROR lines from latest log"
+	@echo "  echo 'print(\"Hello\")' | make lazy-interpreter  # Run code with lazy.nvim setup"
+	@echo "  cat script.lua | make lazy-interpreter         # Run script with lazy.nvim setup"
+	@echo "  cat script.lua | make lazy-interpreter-silent  # Run script silently (no lazy.nvim output)"
+	@echo ""
+	@echo "Testing with lazy.nvim:"
+	@echo "  NEODAP_USE_LAZY=1 make test                 # Use lazy.nvim minit for testing"
 
 # Test command - handles both file/folder and optional pattern
 test:
@@ -44,10 +53,26 @@ log:
 		cat "$$LATEST_LOG"; \
 	fi
 
-# Playground command
+# Playground command (original)
 play:
 	@echo "Starting Neodap playground..."
 	nix run .#test-nvim
+
+# Enhanced playground with lazy.nvim
+play-lazy:
+	@echo "Starting Neodap playground with lazy.nvim..."
+	nix run .#test-nvim-lazy
+
+# Run lazy.nvim interpreter with piped code
+lazy-interpreter:
+	@echo "Running lazy.nvim interpreter..."
+	@echo "Usage: echo 'print(\"Hello World\")' | make lazy-interpreter"
+	@echo "   or: cat script.lua | make lazy-interpreter"
+	@./spec/lazy-lua-interpreter.lua
+
+# Run lazy.nvim interpreter silently (suppresses lazy.nvim setup output)
+lazy-interpreter-silent:
+	@./spec/lazy-lua-interpreter.lua
 
 # Handle additional arguments for test target
 %:

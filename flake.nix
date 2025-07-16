@@ -114,9 +114,14 @@
         ${pkgs.luajitPackages.busted}/bin/busted $@
       '';
 
-      # Run Neovim Init
+      # Run Neovim Init (original playground)
       packages.test-nvim = pkgs.writeShellScriptBin "neodap-test-nvim" ''
         NEODAP_PLAYGROUND=1 nvim -u NONE -U NONE -N -i NONE -V1 -S ./lua/neodap/playground.lua
+      '';
+
+      # Run Neovim Init with lazy.nvim (enhanced playground)
+      packages.test-nvim-lazy = pkgs.writeShellScriptBin "neodap-test-nvim-lazy" ''
+        NEODAP_PLAYGROUND=1 nvim -u NONE -U NONE -N -i NONE -V1 -S ./lua/neodap/playground-lazy.lua
       '';
 
       # Linter runner
