@@ -55,7 +55,7 @@ function BreakpointManager:addBreakpoint(location, opts)
   local breakpoint = Breakpoint.atLocation(self, location, opts)
   self.breakpoints:add(breakpoint)
   
-  log:notice("Created new breakpoint with ID:", breakpoint.id)
+  log:info("Created new breakpoint with ID:", breakpoint.id)
   self.hookable:emit('BreakpointAdded', breakpoint)
   
   -- Queue sync for all active sessions
@@ -257,11 +257,14 @@ function BreakpointManager:reconcileBindings(source, session, breakpoints, dapRe
         existingBinding:destroy()  -- Binding emits its own 'Unbound' event
       end
       
-      -- Emit failure event
+      -- Log and emit failure event
+      local error_msg = dapBreakpoint and dapBreakpoint.message or "Verification failed"
+      log:warn("Breakpoint verification failed for", breakpoint.id, "- Error:", error_msg)
+      
       self.hookable:emit('BreakpointFailed', {
         breakpoint = breakpoint,
         session = session,
-        error = dapBreakpoint and dapBreakpoint.message or "Verification failed"
+        error = error_msg
       })
     end
   end

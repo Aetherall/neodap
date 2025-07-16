@@ -121,7 +121,7 @@ function Api:destroy()
   local Logger = require("neodap.tools.logger")
   local log = Logger.get("API")
   
-  log:notice("API: Destroying API instance and cleaning up plugins")
+  log:info("API: Destroying API instance and cleaning up plugins")
   
   -- Call destroy() on all cached plugin instances
   for plugin_name, plugin_instance in pairs(self._plugin_cache) do
@@ -149,7 +149,7 @@ function Api:destroy()
   -- Destroy the hookable system last
   self.hookable:destroy()
   
-  log:notice("API: API instance destroyed successfully")
+  log:info("API: API instance destroyed successfully")
 end
 
 return Api

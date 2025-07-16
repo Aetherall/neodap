@@ -1,6 +1,7 @@
 local Class = require('neodap.tools.class')
 local Connection = require("neodap.adapter.components.connection")
 local Executable = require("neodap.adapter.components.executable")
+local Logger = require("neodap.tools.logger")
 
 
 
@@ -53,6 +54,8 @@ function ExecutableTCPAdapter:start(opts)
   end
 
   if not self.executable then
+    local log = Logger.get("Core:Adapter")
+    log:error("Failed to start debug adapter executable")
     error("Failed to start executable")
   end
 
@@ -64,7 +67,10 @@ function ExecutableTCPAdapter:start(opts)
   })
 
   if not connection then
-    error("Failed to connect to " .. self.connectionOptions.host .. ":" .. self.connectionOptions.port)
+    local log = Logger.get("Core:Adapter")
+    local addr = self.connectionOptions.host .. ":" .. self.connectionOptions.port
+    log:error("Failed to connect to debug adapter at", addr)
+    error("Failed to connect to " .. addr)
   end
 
   self.executable.usage = self.executable.usage + 1
