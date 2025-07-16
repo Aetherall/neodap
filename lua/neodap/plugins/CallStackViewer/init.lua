@@ -19,7 +19,7 @@ CallStackViewer.name = "CallStackViewer"
 CallStackViewer.description = "Displays call stack in floating window with cursor synchronization"
 
 function CallStackViewer.plugin(api)
-  local logger = Logger.get()
+  local logger = Logger.get("CallStackViewer")
   
   local instance = CallStackViewer:new({
     api = api,

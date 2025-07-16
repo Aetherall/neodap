@@ -5,13 +5,14 @@ local Class = require('neodap.tools.class')
 ---@field filepath string
 ---@field enabled boolean
 ---@field silent boolean
+---@field namespace string
 
 ---@class Logger: LoggerProps
 ---@field new Constructor<LoggerProps>
 local Logger = Class()
 
--- Create a singleton instance
-local instance = nil
+-- Create namespace-specific instances
+local instances = {}
 
 ---Get the next log file number
 ---@return integer
@@ -38,9 +39,12 @@ local function get_next_log_number()
   return max_num + 1
 end
 
+---@param namespace string? Optional namespace for the logger
 ---@return Logger
-function Logger.get()
-  if not instance then
+function Logger.get(namespace)
+  namespace = namespace or "default"
+  
+  if not instances[namespace] then
     local source = debug.getinfo(1, "S").source:sub(2)
     local project_root = vim.fn.fnamemodify(source, ":p:h:h:h:h")
     local logdir = project_root .. "/log"
@@ -51,21 +55,23 @@ function Logger.get()
     -- Check if we're in playground mode by looking for specific environment
     local is_playground = vim.env.NEODAP_PLAYGROUND or (vim.fn.argv()[0] and vim.fn.argv()[0]:match("playground%.lua"))
     
-    instance = Logger:new({
+    instances[namespace] = Logger:new({
       filepath = filepath,
       file = nil,
       enabled = true,
-      silent = is_playground and true or false
+      silent = is_playground and true or false,
+      namespace = namespace
     })
     
-    instance:_open()
-    instance:info("=== Neodap Debug Log Started ===")
-    instance:info("Log file: " .. filepath)
-    instance:info("Log number: " .. log_number)
-    instance:info("Silent mode: " .. tostring(instance.silent))
+    instances[namespace]:_open()
+    instances[namespace]:info("=== Neodap Debug Log Started ===")
+    instances[namespace]:info("Log file: " .. filepath)
+    instances[namespace]:info("Log number: " .. log_number)
+    instances[namespace]:info("Namespace: " .. namespace)
+    instances[namespace]:info("Silent mode: " .. tostring(instances[namespace].silent))
   end
   
-  return instance
+  return instances[namespace]
 end
 
 function Logger:_open()
@@ -101,7 +107,8 @@ function Logger:_write(level, ...)
     end
   end
   
-  local log_line = string.format("[%s] [%s] %s - %s\n", timestamp, level, location, message)
+  local namespace_prefix = self.namespace and self.namespace ~= "default" and "[" .. self.namespace .. "] " or ""
+  local log_line = string.format("[%s] [%s] %s%s - %s\n", timestamp, level, namespace_prefix, location, message)
   self.file:write(log_line)
   self.file:flush()
 end
@@ -123,6 +130,25 @@ end
 
 ---Log error message
 function Logger:error(...)
+  -- Forward to vim.notify for immediate visibility
+  local args = { ... }
+  local message = ""
+  for i, arg in ipairs(args) do
+    if type(arg) == "table" then
+      message = message .. vim.inspect(arg)
+    else
+      message = message .. tostring(arg)
+    end
+    if i < #args then
+      message = message .. " "
+    end
+  end
+  
+  -- Add namespace prefix for vim.notify
+  local namespace_prefix = self.namespace and self.namespace ~= "default" and "[" .. self.namespace .. "] " or ""
+  vim.notify(namespace_prefix .. message, vim.log.levels.ERROR)
+  
+  -- Also log to file
   self:_write("ERROR", ...)
 end
 

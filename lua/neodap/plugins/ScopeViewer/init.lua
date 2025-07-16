@@ -24,7 +24,7 @@ ScopeViewer.name = "ScopeViewer"
 ScopeViewer.description = "Visual scope viewer for debugging sessions"
 
 function ScopeViewer.plugin(api)
-    local logger = Logger.get()
+    local logger = Logger.get("ScopeViewer")
 
     local instance = ScopeViewer:new({
         api = api,

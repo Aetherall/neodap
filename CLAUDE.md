@@ -38,17 +38,17 @@ Neodap uses a hierarchical event system where objects automatically clean up the
 - Lazy loading of expensive operations
 
 ### Logging and Debugging
-Neodap uses a singleton file-based logging system for debugging and development:
+Neodap uses a namespaced file-based logging system for debugging and development:
 
 ```lua
--- Get the logger singleton instance
-local log = require('neodap.tools.logger').get()
+-- Get the logger instance with optional namespace
+local log = require('neodap.tools.logger').get("MyPlugin")
 
 -- Available log levels
 log:debug("Development debugging information")
 log:info("General operational information") 
 log:warn("Warning conditions")
-log:error("Error conditions")
+log:error("Error conditions") -- Also forwards to vim.notify
 
 -- Multiple arguments are concatenated with spaces
 log:info("Session started", "with ID:", session.ref.id)
@@ -65,17 +65,18 @@ log:snapshot(bufnr, "After breakpoint set")
 ```
 
 **Logger Features:**
-- **Singleton Pattern**: `Logger.get()` returns the same instance across the application
+- **Namespace Support**: `Logger.get("namespace")` creates separate instances per namespace
 - **Automatic File Management**: Creates numbered log files in `log/neodap_N.log`
-- **Structured Output**: Includes timestamp, log level, source location, and message
+- **Structured Output**: Includes timestamp, log level, namespace, source location, and message
 - **Table Inspection**: Automatically formats Lua tables using `vim.inspect()`
 - **Line Buffering**: Immediate writes for real-time debugging
+- **Error Forwarding**: `error()` calls are forwarded to `vim.notify()` for immediate visibility
 - **Playground Mode**: Automatically detects playground environment for silent operation
 
 **Log File Format:**
 ```
-[2025-01-13 14:30:25.123] [INFO] session.lua:45 - Session initialized with ID: 2
-[2025-01-13 14:30:25.124] [DEBUG] breakpoint.lua:12 - Breakpoint data: { id = 1, line = 10 }
+[2025-01-13 14:30:25.123] [INFO] [MyPlugin] session.lua:45 - Session initialized with ID: 2
+[2025-01-13 14:30:25.124] [DEBUG] [MyPlugin] breakpoint.lua:12 - Breakpoint data: { id = 1, line = 10 }
 ```
 
 
