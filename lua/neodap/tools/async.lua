@@ -12,8 +12,6 @@ function NvimAsync.run(coroutine_func, event, options)
   options = options or {}
   local isPreempted = options.isPreempted
   
-  -- print("NVIM_ASYNC: Called with isPreempted func exists:", isPreempted ~= nil)
-  
   -- If we're already in a NvimAsync context, check preemption and run directly
   if nio.current_task() then
     if isPreempted and isPreempted() then

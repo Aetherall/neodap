@@ -120,50 +120,6 @@ function DebugMode:enterDebugMode()
     self:jumpToCurrentFrame()
 end
 
--- Auto-wrapped versions for vim context boundaries
-function DebugMode:EnterDebugMode()
-    return self:enterDebugMode()
-end
-
-function DebugMode:ExitDebugMode()
-    return self:exitDebugMode()
-end
-
-function DebugMode:ToggleDebugMode()
-    if self.is_active then
-        self:exitDebugMode()
-    else
-        self:enterDebugMode()
-    end
-end
-
-function DebugMode:NavigateDown()
-    self:navigateDown()
-end
-
-function DebugMode:SmartRightKey()
-    self:smartRightKey()
-end
-
-function DebugMode:StepOver()
-    self:stepOver()
-end
-
-function DebugMode:StepOut()
-    self:stepOut()
-end
-
-function DebugMode:JumpToCurrentFrame()
-    self:jumpToCurrentFrame()
-end
-
-function DebugMode:ShowStackFrameTelescope()
-    self:showStackFrameTelescope()
-end
-
-function DebugMode:ShowHelp()
-    self:showHelp()
-end
 
 -- Exit debug mode: restore original mappings and status
 function DebugMode:exitDebugMode()

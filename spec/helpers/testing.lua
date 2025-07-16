@@ -28,6 +28,7 @@ return function(describe, it)
   end
 
   function T.spy(name)
+    name = name or "anonymous"
     local future = nio.control.future()
 
     ---@param ms number?

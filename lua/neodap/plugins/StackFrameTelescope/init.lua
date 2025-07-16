@@ -51,10 +51,6 @@ function StackFrameTelescope:setup_commands()
   end, { desc = "Show stack frame telescope picker" })
 end
 
--- Auto-wrapped version for vim context boundaries
-function StackFrameTelescope:ShowFramePicker()
-  return self:show_frame_picker()
-end
 
 function StackFrameTelescope:listen()
   self.api:onSession(function(session)

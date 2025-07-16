@@ -127,10 +127,6 @@ function FrameHighlight:highlightAllVisibleLocations()
   end
 end
 
--- Auto-wrapped version for vim context boundaries
-function FrameHighlight:HighlightAllVisibleLocations()
-  return self:highlightAllVisibleLocations()
-end
 
 -- Remove frame highlights for a specific thread
 function FrameHighlight:removeThreadFrames(thread)

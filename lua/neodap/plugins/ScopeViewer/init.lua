@@ -141,22 +141,6 @@ function ScopeViewer:listen()
     })
 end
 
--- Auto-wrapped versions for vim context boundaries
-function ScopeViewer:OnNavigationChanged(event_data)
-    return self:onNavigationChanged(event_data)
-end
-
-function ScopeViewer:OnGlobalCursorMoved()
-    return self:onGlobalCursorMoved()
-end
-
-function ScopeViewer:OnPanelSelect(line)
-    return self:onPanelSelect(line)
-end
-
-function ScopeViewer:OnPanelToggle(line)
-    return self:onPanelToggle(line)
-end
 
 -- Event Handling Methods
 function ScopeViewer:onNavigationChanged(event_data)

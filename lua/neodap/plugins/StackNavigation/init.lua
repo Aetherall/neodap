@@ -94,18 +94,6 @@ function StackNavigation:top()
     end
 end
 
--- Auto-wrapped versions for vim context boundaries
-function StackNavigation:Up()
-    return self:up()
-end
-
-function StackNavigation:Down()
-    return self:down()
-end
-
-function StackNavigation:Top()
-    return self:top()
-end
 
 -- Smart Selection Methods
 
