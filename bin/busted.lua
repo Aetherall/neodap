@@ -82,12 +82,12 @@ require("lazy.minit").busted({
         backdrop = 100,
     },
 
-    -- headless = {
-    --     process = false,
-    --     log = os.getenv("LAZY_DEBUG") and true or false,
-    --     task = os.getenv("LAZY_DEBUG") and true or false,
-    --     colors = os.getenv("LAZY_DEBUG") and true or false,
-    -- },
+    headless = {
+        process = false,
+        log = os.getenv("LAZY_DEBUG") and true or false,
+        task = os.getenv("LAZY_DEBUG") and true or false,
+        colors = os.getenv("LAZY_DEBUG") and true or false,
+    },
 })
 
 -- Debug output after setup

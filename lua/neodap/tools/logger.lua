@@ -14,9 +14,12 @@ local Logger = Class()
 -- Create namespace-specific instances
 local instances = {}
 
----Get the next log file number
----@return integer
-local function get_next_log_number()
+-- Single shared log file path
+local shared_log_file = nil
+
+---Get the shared log file path
+---@return string
+local function get_shared_log_path()
   -- Get the project root directory (where this file is located)
   local source = debug.getinfo(1, "S").source:sub(2)
   local project_root = vim.fn.fnamemodify(source, ":p:h:h:h:h") -- Go up 4 levels from lua/neodap/tools/logger.lua
@@ -25,18 +28,7 @@ local function get_next_log_number()
   -- Create log directory if it doesn't exist
   vim.fn.mkdir(logdir, "p")
   
-  -- Find existing log files and get the highest number
-  local max_num = 0
-  local files = vim.fn.glob(logdir .. "/neodap_*.log", false, true)
-  
-  for _, file in ipairs(files) do
-    local num = tonumber(file:match("neodap_(%d+)%.log"))
-    if num and num > max_num then
-      max_num = num
-    end
-  end
-  
-  return max_num + 1
+  return logdir .. "/neodap.log"
 end
 
 ---@param namespace string? Optional namespace for the logger
@@ -45,12 +37,7 @@ function Logger.get(namespace)
   namespace = namespace or "default"
   
   if not instances[namespace] then
-    local source = debug.getinfo(1, "S").source:sub(2)
-    local project_root = vim.fn.fnamemodify(source, ":p:h:h:h:h")
-    local logdir = project_root .. "/log"
-    
-    local log_number = get_next_log_number()
-    local filepath = logdir .. "/neodap_" .. log_number .. ".log"
+    local filepath = get_shared_log_path()
     
     -- Check if we're in playground mode by looking for specific environment
     local is_playground = vim.env.NEODAP_PLAYGROUND or (vim.fn.argv()[0] and vim.fn.argv()[0]:match("playground%.lua"))
@@ -63,12 +50,19 @@ function Logger.get(namespace)
       namespace = namespace
     })
     
-    instances[namespace]:_open()
-    instances[namespace]:info("=== Neodap Debug Log Started ===")
-    instances[namespace]:info("Log file: " .. filepath)
-    instances[namespace]:info("Log number: " .. log_number)
-    instances[namespace]:info("Namespace: " .. namespace)
-    instances[namespace]:info("Silent mode: " .. tostring(instances[namespace].silent))
+    -- Only write startup message for the first instance
+    if not shared_log_file then
+      instances[namespace]:_open()
+      instances[namespace]:info("=== Neodap Debug Log Started ===")
+      instances[namespace]:info("Log file: " .. filepath)
+      instances[namespace]:info("Namespace: " .. namespace)
+      instances[namespace]:info("Silent mode: " .. tostring(instances[namespace].silent))
+      shared_log_file = instances[namespace].file
+    else
+      -- Share the same file handle for all instances
+      instances[namespace].file = shared_log_file
+      instances[namespace]:info("Logger initialized for namespace: " .. namespace)
+    end
   end
   
   return instances[namespace]

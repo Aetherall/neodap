@@ -1,6 +1,6 @@
 # Neodap Development Makefile
 
-.PHONY: help test log play run
+.PHONY: help test log play run clean-logs
 
 # Default target
 help:
@@ -11,14 +11,16 @@ help:
 	@echo "  make log [FILTER=filter]             - Show latest log with optional filter" 
 	@echo "  make play                            - Run playground with lazy.nvim"
 	@echo "  make run                             - Run lazy.nvim interpreter"
+	@echo "  make clean-logs                      - Clean up old numbered log files"
 	@echo ""
 	@echo "Examples:"
 	@echo "  make test                                    # Run all tests in spec/"
 	@echo "  make test spec/core/neodap_core.spec.lua     # Run specific test file"
 	@echo "  make test PATTERN=breakpoint_hit             # Run tests matching pattern"
 	@echo "  make test spec/breakpoints/ PATTERN=toggle   # Run tests in folder with pattern"
-	@echo "  make log                                     # Show latest log"
-	@echo "  make log FILTER=ERROR                        # Show only ERROR lines from latest log"
+	@echo "  make log                                     # Show the log file"
+	@echo "  make log FILTER=ERROR                        # Show only ERROR lines from log file"
+	@echo "  make clean-logs                              # Clean up old numbered log files"
 	@echo "  echo 'print(\"Hello\")' | make run           # Run piped code"
 	@echo "  make run script.lua                          # Run lua file"
 	@echo "  ./bin/interpreter.lua 'print(\"Hello\")'    # Run code string (direct)"
@@ -37,19 +39,19 @@ else
 	@busted $(or $(word 2,$(MAKECMDGOALS)),spec/)
 endif
 
-# Log command - show latest log file with optional filter
+# Log command - show the single shared log file with optional filter
 log:
-	@LATEST_LOG=$$(ls -t log/neodap_*.log 2>/dev/null | head -n1); \
-	if [ -z "$$LATEST_LOG" ]; then \
-		echo "No log files found in log/ directory"; \
+	@LOG_FILE="log/neodap.log"; \
+	if [ ! -f "$$LOG_FILE" ]; then \
+		echo "No log file found: $$LOG_FILE"; \
 		exit 1; \
 	fi; \
-	echo "Showing log: $$LATEST_LOG"; \
+	echo "Showing log: $$LOG_FILE"; \
 	if [ -n "$(FILTER)" ]; then \
 		echo "Filter: $(FILTER)"; \
-		grep -i "$(FILTER)" "$$LATEST_LOG" || echo "No matches found for filter: $(FILTER)"; \
+		grep -i "$(FILTER)" "$$LOG_FILE" || echo "No matches found for filter: $(FILTER)"; \
 	else \
-		cat "$$LATEST_LOG"; \
+		cat "$$LOG_FILE"; \
 	fi
 
 # INTERACTIVE PLAYGROUND: do not run
@@ -66,6 +68,11 @@ play-all:
 run:
 	@./bin/interpreter.lua "$(filter-out $@,$(MAKECMDGOALS))"
 
+# Clean up old numbered log files (keep the single neodap.log)
+clean-logs:
+	@echo "Cleaning up old numbered log files..."
+	@rm -f log/neodap_*.log
+	@echo "Done. Kept log/neodap.log"
 
 # Handle additional arguments for test target
 %:
