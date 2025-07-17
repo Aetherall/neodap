@@ -29,14 +29,14 @@ help:
 	@echo "  LAZY_DEBUG=1 make test                      # Show verbose testing output"
 	@echo "  echo 'print(\"Hello\")' | LAZY_DEBUG=1 make run  # Show verbose interpreter output"
 
-# Test command - uses lazy.nvim by default
+# Test command - uses nix busted
 test:
 ifdef PATTERN
 	@echo "Running tests: $(or $(word 2,$(MAKECMDGOALS)),spec/) with pattern: $(PATTERN)"
-	@busted $(or $(word 2,$(MAKECMDGOALS)),spec/) -- --pattern "$(PATTERN)"
+	@nix develop --command busted $(or $(word 2,$(MAKECMDGOALS)),spec/) -- --pattern "$(PATTERN)"
 else
 	@echo "Running tests: $(or $(word 2,$(MAKECMDGOALS)),spec/)"
-	@busted $(or $(word 2,$(MAKECMDGOALS)),spec/)
+	@nix develop --command busted $(or $(word 2,$(MAKECMDGOALS)),spec/)
 endif
 
 # Log command - show the latest numbered log file with optional filter

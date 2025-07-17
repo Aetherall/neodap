@@ -16,14 +16,26 @@
       "type": "pwa-node",
       "request": "launch",
       "program": "${workspaceFolder}/src/main.js",
-      "cwd": "${workspaceFolder}"
+      "cwd": "${workspaceFolder}",
+      "args": ["--env", "development", "${fileBasename}"],
+      "env": {
+        "NODE_ENV": "development",
+        "DEBUG": "app:*",
+        "NODE_PATH": "${workspaceFolder}/node_modules"
+      },
+      "console": "integratedTerminal",
+      "skipFiles": ["${workspaceFolder}/node_modules/**"]
     },
     {
       "name": "Debug Tests",
       "type": "pwa-node",
       "request": "launch",
       "program": "${workspaceFolder}/tests/${fileBasenameNoExtension}.test.js",
-      "cwd": "${workspaceFolder}"
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "NODE_ENV": "test",
+        "TEST_TIMEOUT": "5000"
+      }
     }
   ]
 }
