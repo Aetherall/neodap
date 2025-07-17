@@ -2,20 +2,85 @@ local nio = require("nio")
 
 local TerminalSnapshot = {}
 
--- Get current test file path
+-- Store the original working directory when the module is loaded
+local original_cwd = vim.fn.getcwd()
+
+-- Get current test file path (absolute path)
 local function get_current_test_file()
   local info = debug.getinfo(3, "S")
   if info and info.source:match("%.spec%.lua$") then
-    return info.source:gsub("^@", "")
+    local file_path = info.source:gsub("^@", "")
+    -- If the path is already absolute, return it as is
+    if file_path:match("^/") then
+      return file_path
+    end
+    -- Convert relative path to absolute using original working directory
+    local original_dir = vim.fn.getcwd()
+    vim.api.nvim_set_current_dir(original_cwd)
+    local absolute_path = vim.fn.fnamemodify(file_path, ":p")
+    vim.api.nvim_set_current_dir(original_dir)
+    return absolute_path
   end
   -- Fallback: try to find the test file in the call stack
   for i = 1, 10 do
     info = debug.getinfo(i, "S")
     if info and info.source:match("%.spec%.lua$") then
-      return info.source:gsub("^@", "")
+      local file_path = info.source:gsub("^@", "")
+      -- If the path is already absolute, return it as is
+      if file_path:match("^/") then
+        return file_path
+      end
+      -- Convert relative path to absolute using original working directory
+      local original_dir = vim.fn.getcwd()
+      vim.api.nvim_set_current_dir(original_cwd)
+      local absolute_path = vim.fn.fnamemodify(file_path, ":p")
+      vim.api.nvim_set_current_dir(original_dir)
+      return absolute_path
     end
   end
   error("TerminalSnapshot must be called from within a .spec.lua file")
+end
+
+-- Get all highlights in the current buffer
+local function get_buffer_highlights()
+  local highlights = {}
+  local bufnr = vim.api.nvim_get_current_buf()
+  
+  -- Get all namespaces
+  local namespaces = vim.api.nvim_get_namespaces()
+  
+  for name, ns_id in pairs(namespaces) do
+    -- Skip empty namespace names
+    if name and name ~= "" then
+      -- Get highlights for this namespace
+      local marks = vim.api.nvim_buf_get_extmarks(bufnr, ns_id, 0, -1, {details = true})
+      
+      for _, mark in ipairs(marks) do
+        local mark_id, row, col, details = mark[1], mark[2], mark[3], mark[4]
+        
+        if details and details.hl_group then
+          local highlight = {
+            name = details.hl_group,
+            namespace = name,
+            start_row = row + 1, -- Convert to 1-based
+            start_col = col + 1, -- Convert to 1-based
+            end_row = row + 1,
+            end_col = col + 1
+          }
+          
+          -- If it's a range highlight, get the end position
+          if details.end_row then
+            highlight.end_row = details.end_row + 1
+            highlight.end_col = details.end_col and (details.end_col + 1) or highlight.end_col
+          end
+          
+          table.insert(highlights, highlight)
+        end
+      end
+    end
+  end
+  
+  return highlights
 end
 
 -- Capture the current terminal screen state
@@ -28,7 +93,8 @@ local function capture_screen()
     lines = {},
     cursor = vim.api.nvim_win_get_cursor(0),
     mode = vim.api.nvim_get_mode().mode,
-    size = {vim.o.lines, vim.o.columns}
+    size = {vim.o.lines, vim.o.columns},
+    highlights = get_buffer_highlights()
   }
   
   -- Capture each line of the terminal
@@ -47,6 +113,38 @@ local function capture_screen()
     table.insert(screen.lines, line)
   end
   
+  -- Add cursor position indicator using block character
+  local cursor_row, cursor_col = screen.cursor[1], screen.cursor[2]
+  if cursor_row <= #screen.lines then
+    local line = screen.lines[cursor_row]
+    -- Convert 0-based column to 1-based for string manipulation
+    local col_1based = cursor_col + 1
+    
+    -- Convert string to UTF-8 character array for proper indexing
+    local chars = {}
+    for utf8char in line:gmatch("[%z\1-\127\194-\244][\128-\191]*") do
+      table.insert(chars, utf8char)
+    end
+    
+    if col_1based == 1 then
+      -- Cursor is at beginning of line, replace first character
+      if #chars > 0 then
+        chars[1] = "█"
+      else
+        chars[1] = "█"
+      end
+    elseif col_1based <= #chars then
+      -- Replace character at cursor position with block character
+      chars[col_1based] = "█"
+    else
+      -- Cursor is at end of line, append block character
+      table.insert(chars, "█")
+    end
+    
+    -- Reconstruct the line from UTF-8 characters
+    screen.lines[cursor_row] = table.concat(chars)
+  end
+  
   return screen
 end
 
@@ -58,13 +156,35 @@ local function format_screen_for_embedding(screen, name)
   table.insert(lines, "")
   table.insert(lines, "--[[ TERMINAL SNAPSHOT: " .. name)
   table.insert(lines, "Size: " .. screen.size[1] .. "x" .. screen.size[2])
-  table.insert(lines, "Cursor: [" .. screen.cursor[1] .. ", " .. screen.cursor[2] .. "]")
+  table.insert(lines, "Cursor: [" .. screen.cursor[1] .. ", " .. screen.cursor[2] .. "] (line " .. screen.cursor[1] .. ", col " .. screen.cursor[2] .. ")")
   table.insert(lines, "Mode: " .. screen.mode)
+  
+  -- Add highlights information
+  if screen.highlights and #screen.highlights > 0 then
+    table.insert(lines, "")
+    table.insert(lines, "Highlights:")
+    for _, hl in ipairs(screen.highlights) do
+      local range_str
+      if hl.start_row == hl.end_row then
+        if hl.start_col == hl.end_col then
+          range_str = string.format("[%d:%d]", hl.start_row, hl.start_col)
+        else
+          range_str = string.format("[%d:%d-%d:%d]", hl.start_row, hl.start_col, hl.end_row, hl.end_col)
+        end
+      else
+        range_str = string.format("[%d:%d-%d:%d]", hl.start_row, hl.start_col, hl.end_row, hl.end_col)
+      end
+      table.insert(lines, string.format("  %s%s", hl.name, range_str))
+    end
+  end
+  
   table.insert(lines, "")
   
-  -- Screen content with line indicators
+  -- Screen content with line indicators, making tabs more visible
   for i, line in ipairs(screen.lines) do
-    table.insert(lines, string.format("%2d| %s", i, line))
+    -- Make tabs visible in the comments for better understanding
+    local visible_line = line:gsub("\t", "→")
+    table.insert(lines, string.format("%2d| %s", i, visible_line))
   end
   
   table.insert(lines, "]]")

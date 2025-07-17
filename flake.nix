@@ -75,9 +75,10 @@
           # echo "  telescope-nvim: ${pkgs.vimPlugins.telescope-nvim}/lua"
           # echo "  busted: ${pkgs.luajitPackages.busted}/share/lua/5.1"
 
-          echo "Run 'nix run .#test-all' to run tests"
-          echo "Run 'nix run .#test spec/$file' to run a specific test file"
-          echo "Run 'nix run .#lint' to run linter"
+          echo "Run 'make test' to run tests"
+          echo "Run 'make test spec/$file' to run a specific test file"
+          echo "Run 'NEODAP_LOG_LEVEL=TRACE make test' to run tests with verbose logging"
+          # echo "Run 'make play-all' to run the playground with all plugins"
         '';
       };
 

@@ -64,17 +64,34 @@ function Session:start(opts)
   local send, close = self.adapter:start({
     onMessage = function(message)
       if message.type == "event" then
-        -- Log all events, with special attention to breakpoint events
-        if message.event == "breakpoint" then
-          -- print("DEBUG: RAW BREAKPOINT EVENT:", vim.inspect(message))
-        else
-          -- print("DEBUG: Received event:", message.event, "body:", vim.inspect(message.body or {}))
+        -- Enhanced DAP event tracing
+        local log = Logger.get("DAP:Session")
+        log:info("Session received DAP event:", message.event)
+        log:debug("DAP event body:", message.body or {})
+        
+        -- Special attention to thread events that affect stepping
+        if message.event == "stopped" then
+          log:info("STOPPED EVENT:", "threadId:", message.body.threadId, "reason:", message.body.reason, "line:", message.body.line)
+          log:info("STOPPED EVENT FULL BODY:", message.body)
+        elseif message.event == "continued" then
+          log:info("CONTINUED EVENT:", "threadId:", message.body.threadId, "allThreadsContinued:", message.body.allThreadsContinued)
+        elseif message.event == "breakpoint" then
+          log:info("BREAKPOINT EVENT:", message.body)
         end
         self.events:push(message)
       elseif message.type == "request" then
         self.handlers:receive(message)
       elseif message.type == "response" then
-        -- print("DEBUG: Received response:", vim.inspect(message))
+        -- Enhanced DAP response tracing
+        local log = Logger.get("DAP:Session")
+        log:info("Session received DAP response:", message.command, "seq:", message.seq, "success:", message.success)
+        log:debug("DAP response details:", message)
+        
+        -- Special attention to step command responses
+        if message.command == "next" or message.command == "stepIn" or message.command == "stepOut" then
+          log:info("STEP RESPONSE IN SESSION:", message.command, "success:", message.success, "body:", message.body)
+        end
+        
         self.calls:receive(message)
       else
         local log = Logger.get("Core:Session")

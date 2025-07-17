@@ -37,7 +37,7 @@ local LEVEL_NAMES = {
 }
 
 -- Default log level (INFO)
-local DEFAULT_LOG_LEVEL = LOG_LEVELS.INFO
+local DEFAULT_LOG_LEVEL = os.getenv("NEODAP_LOG_LEVEL") and LOG_LEVELS[os.getenv("NEODAP_LOG_LEVEL"):upper()] or LOG_LEVELS.INFO
 
 -- Create namespace-specific instances
 local instances = {}

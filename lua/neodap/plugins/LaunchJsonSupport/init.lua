@@ -405,9 +405,8 @@ end
 function LaunchJsonSupport:transformConfiguration(config)
   local transformed = vim.deepcopy(config)
   
-  -- Remove VS Code specific fields
-  transformed.type = nil
-  transformed.request = nil
+  -- Keep type and request fields as they are required by DAP protocol
+  -- Only remove VS Code specific fields that are not part of DAP standard
   
   return transformed
 end
