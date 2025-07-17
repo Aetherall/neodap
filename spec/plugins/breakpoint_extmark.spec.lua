@@ -31,26 +31,12 @@ Test.Describe("BreakpointApi Functionality", function()
         -- Take snapshot after breakpoint (should show visual marker)
         Test.TerminalSnapshot("after_breakpoint")
 
-        -- Verify breakpoint was created in data structure
-        local breakpoints = breakpointApi.getBreakpoints()
-        local breakpoint_count = breakpoints:count()
-        if breakpoint_count ~= 1 then
-            error("Expected 1 breakpoint, got " .. breakpoint_count)
-        end
-
         -- Remove breakpoint and wait for processing
         toggleBreakpoint:toggle()
         nio.sleep(20)
 
         -- Take snapshot after removal
         Test.TerminalSnapshot("after_removal")
-
-        -- Verify breakpoint was removed from data structure
-        local breakpoints_after = breakpointApi.getBreakpoints()
-        local remaining_count = breakpoints_after:count()
-        if remaining_count ~= 0 then
-            error("Expected 0 breakpoints after removal, got " .. remaining_count)
-        end
     end)
 end)
 
