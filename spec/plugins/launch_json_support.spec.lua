@@ -1,27 +1,24 @@
-local Test = require("spec.helpers.testing")
+local Test = require("spec.helpers.testing")(describe, it)
 local prepare = require("spec.helpers.prepare")
 local LaunchJsonSupport = require("neodap.plugins.LaunchJsonSupport")
 
 Test.Describe("LaunchJsonSupport Plugin", function()
-  local api, start
-
-  Test.BeforeEach(function()
-    api, start = prepare.prepare()
-  end)
 
   Test.It("detects_single_folder_workspace", function()
+    local api, start = prepare.prepare()
     local plugin = api:loadPlugin(LaunchJsonSupport)
     
     -- Mock single folder workspace
     local workspace_info = plugin:detectWorkspace("/home/user/project")
     
-    Test.assert.are.equal("single", workspace_info.type)
-    Test.assert.are.equal("/home/user/project", workspace_info.rootPath)
-    Test.assert.are.equal(1, #workspace_info.folders)
-    Test.assert.are.equal("project", workspace_info.folders[1].name)
+    assert(workspace_info.type == "single")
+    assert(workspace_info.rootPath == "/home/user/project")
+    assert(#workspace_info.folders == 1)
+    assert(workspace_info.folders[1].name == "project")
   end)
 
   Test.It("parses_multi_root_workspace_file", function()
+    local api, start = prepare.prepare()
     local plugin = api:loadPlugin(LaunchJsonSupport)
     
     -- Create a temporary workspace file
@@ -40,22 +37,23 @@ Test.Describe("LaunchJsonSupport Plugin", function()
     
     local workspace_info = plugin:parseMultiRootWorkspace(workspace_file)
     
-    Test.assert.are.equal("multi-root", workspace_info.type)
-    Test.assert.are.equal(2, #workspace_info.folders)
-    Test.assert.are.equal("Frontend", workspace_info.folders[1].name)
-    Test.assert.are.equal("Backend", workspace_info.folders[2].name)
+    assert(workspace_info.type == "multi-root")
+    assert(#workspace_info.folders == 2)
+    assert(workspace_info.folders[1].name == "Frontend")
+    assert(workspace_info.folders[2].name == "Backend")
     
     -- Cleanup
     vim.fn.delete(temp_dir, "rf")
   end)
 
   Test.It("substitutes_variables_in_single_folder_workspace", function()
+    local api, start = prepare.prepare()
     local plugin = api:loadPlugin(LaunchJsonSupport)
     
     local config = {
       program = "${workspaceFolder}/src/index.js",
       cwd = "${workspaceFolder}",
-      args = ["${fileBasename}"]
+      args = {"${fileBasename}"}
     }
     
     local context = {
@@ -72,17 +70,18 @@ Test.Describe("LaunchJsonSupport Plugin", function()
     
     local substituted = plugin:substituteVariables(config, context)
     
-    Test.assert.are.equal("/home/user/project/src/index.js", substituted.program)
-    Test.assert.are.equal("/home/user/project", substituted.cwd)
+    assert(substituted.program == "/home/user/project/src/index.js")
+    assert(substituted.cwd == "/home/user/project")
   end)
 
   Test.It("substitutes_scoped_variables_in_multi_root_workspace", function()
+    local api, start = prepare.prepare()
     local plugin = api:loadPlugin(LaunchJsonSupport)
     
     local config = {
       program = "${workspaceFolder:Frontend}/src/index.js",
       cwd = "${workspaceFolder:Backend}",
-      args = ["${workspaceFolder}"]
+      args = {"${workspaceFolder}"}
     }
     
     local context = {
@@ -106,12 +105,13 @@ Test.Describe("LaunchJsonSupport Plugin", function()
     
     local substituted = plugin:substituteVariables(config, context)
     
-    Test.assert.are.equal("/home/user/workspace/frontend/src/index.js", substituted.program)
-    Test.assert.are.equal("/home/user/workspace/backend", substituted.cwd)
-    Test.assert.are.equal("/home/user/workspace", substituted.args[1])
+    assert(substituted.program == "/home/user/workspace/frontend/src/index.js")
+    assert(substituted.cwd == "/home/user/workspace/backend")
+    assert(substituted.args[1] == "/home/user/workspace")
   end)
 
   Test.It("creates_namespaced_configuration_names", function()
+    local api, start = prepare.prepare()
     local plugin = api:loadPlugin(LaunchJsonSupport)
     
     local folder = {
@@ -121,16 +121,17 @@ Test.Describe("LaunchJsonSupport Plugin", function()
     }
     
     local regular_name = plugin:namespaceConfigName("Debug Server", folder)
-    Test.assert.are.equal("Debug Server [Frontend]", regular_name)
+    assert(regular_name == "Debug Server [Frontend]")
     
     local compound_name = plugin:namespaceConfigName("Full Stack", folder, true)
-    Test.assert.are.equal("Full Stack [Frontend] (compound)", compound_name)
+    assert(compound_name == "Full Stack [Frontend] (compound)")
     
     local workspace_name = plugin:namespaceConfigName("Global Config", nil, false, "workspace")
-    Test.assert.are.equal("Global Config [workspace]", workspace_name)
+    assert(workspace_name == "Global Config [workspace]")
   end)
 
   Test.It("loads_configurations_from_multiple_folders", function()
+    local api, start = prepare.prepare()
     local plugin = api:loadPlugin(LaunchJsonSupport)
     
     -- Create temporary workspace structure
@@ -174,16 +175,17 @@ Test.Describe("LaunchJsonSupport Plugin", function()
     
     local configs = plugin:loadAllConfigurations(workspace_info)
     
-    Test.assert.is_not.Nil(configs["Frontend Dev [Frontend]"])
-    Test.assert.is_not.Nil(configs["Backend API [Backend]"])
-    Test.assert.are.equal("Frontend Dev", configs["Frontend Dev [Frontend]"].originalName)
-    Test.assert.are.equal("Backend API", configs["Backend API [Backend]"].originalName)
+    assert(configs["Frontend Dev [Frontend]"] ~= nil)
+    assert(configs["Backend API [Backend]"] ~= nil)
+    assert(configs["Frontend Dev [Frontend]"].originalName == "Frontend Dev")
+    assert(configs["Backend API [Backend]"].originalName == "Backend API")
     
     -- Cleanup
     vim.fn.delete(temp_dir, "rf")
   end)
 
   Test.It("resolves_cross_folder_configuration_references", function()
+    local api, start = prepare.prepare()
     local plugin = api:loadPlugin(LaunchJsonSupport)
     
     local all_configs = {
@@ -208,18 +210,19 @@ Test.Describe("LaunchJsonSupport Plugin", function()
     
     -- Test exact match
     local resolved = plugin:resolveConfigurationReference("Frontend Dev [Frontend]", compound_config, all_configs)
-    Test.assert.are.equal("Frontend Dev [Frontend]", resolved)
+    assert(resolved == "Frontend Dev [Frontend]")
     
     -- Test original name match
     local resolved2 = plugin:resolveConfigurationReference("Backend API", compound_config, all_configs)
-    Test.assert.are.equal("Backend API [Backend]", resolved2)
+    assert(resolved2 == "Backend API [Backend]")
     
     -- Test no match
     local resolved3 = plugin:resolveConfigurationReference("NonExistent", compound_config, all_configs)
-    Test.assert.is.Nil(resolved3)
+    assert(resolved3 == nil)
   end)
 
   Test.It("handles_json5_comments_in_configuration_files", function()
+    local api, start = prepare.prepare()
     local plugin = api:loadPlugin(LaunchJsonSupport)
     
     -- Create temporary file with JSON5 comments
@@ -250,14 +253,15 @@ Test.Describe("LaunchJsonSupport Plugin", function()
     
     local configs = plugin:loadFolderConfigurations(folder)
     
-    Test.assert.is_not.Nil(configs["Test Config [Test]"])
-    Test.assert.are.equal("Test Config", configs["Test Config [Test]"].originalName)
+    assert(configs["Test Config [Test]"] ~= nil)
+    assert(configs["Test Config [Test]"].originalName == "Test Config")
     
     -- Cleanup
     vim.fn.delete(temp_dir, "rf")
   end)
 
   Test.It("provides_available_configurations_list", function()
+    local api, start = prepare.prepare()
     local plugin = api:loadPlugin(LaunchJsonSupport)
     
     -- Mock loaded configurations
@@ -278,13 +282,10 @@ Test.Describe("LaunchJsonSupport Plugin", function()
     
     local available = plugin:getAvailableConfigurations()
     
-    Test.assert.are.equal(3, #available)
-    Test.assert.is_true(vim.tbl_contains(available, "Frontend Dev [Frontend]"))
-    Test.assert.is_true(vim.tbl_contains(available, "Backend API [Backend]"))
-    Test.assert.is_true(vim.tbl_contains(available, "Full Stack [workspace] (compound)"))
+    assert(#available == 3)
+    assert(vim.tbl_contains(available, "Frontend Dev [Frontend]"))
+    assert(vim.tbl_contains(available, "Backend API [Backend]"))
+    assert(vim.tbl_contains(available, "Full Stack [workspace] (compound)"))
   end)
 
-  Test.AfterEach(function()
-    prepare.cleanup_all()
-  end)
 end)

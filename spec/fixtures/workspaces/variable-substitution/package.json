@@ -1,0 +1,10 @@
+{
+  "name": "variable-substitution",
+  "version": "1.0.0",
+  "description": "Test fixture for variable substitution in launch.json",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "node src/main.js",
+    "test": "node tests/main.test.js"
+  }
+}

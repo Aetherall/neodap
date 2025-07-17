@@ -1,0 +1,14 @@
+{
+  "name": "compound-project",
+  "version": "1.0.0",
+  "description": "Test fixture for compound debugging configurations",
+  "scripts": {
+    "server": "node server/index.js",
+    "client": "node client/app.js",
+    "dev": "npm run server & npm run client"
+  },
+  "dependencies": {
+    "express": "^4.18.0",
+    "cors": "^2.8.5"
+  }
+}

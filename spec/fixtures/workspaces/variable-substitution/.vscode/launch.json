@@ -1,0 +1,29 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug Current File",
+      "type": "pwa-node",
+      "request": "launch",
+      "program": "${file}",
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "NODE_ENV": "development"
+      }
+    },
+    {
+      "name": "Debug Main",
+      "type": "pwa-node",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/main.js",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Debug Tests",
+      "type": "pwa-node",
+      "request": "launch",
+      "program": "${workspaceFolder}/tests/${fileBasenameNoExtension}.test.js",
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}

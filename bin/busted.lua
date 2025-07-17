@@ -61,6 +61,12 @@ require("lazy.minit").busted({
             name = "neodap",
             lazy = false,
         },
+        
+        -- Add busted as a plugin for testing
+        {
+            "olivine-labs/busted",
+            lazy = false,
+        },
     },
 
     -- Additional lazy.nvim configuration for testing

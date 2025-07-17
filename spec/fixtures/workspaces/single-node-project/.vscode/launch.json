@@ -1,0 +1,22 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug Server",
+      "type": "pwa-node",
+      "request": "launch",
+      "program": "${workspaceFolder}/server.js",
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "NODE_ENV": "development"
+      }
+    },
+    {
+      "name": "Debug Client",
+      "type": "pwa-node",
+      "request": "launch",
+      "program": "${workspaceFolder}/client.js",
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}
