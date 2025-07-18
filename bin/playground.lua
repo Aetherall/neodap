@@ -91,6 +91,11 @@ require("lazy.minit").repro({
     },
 })
 
+-- Set tabstop=1 to ensure buffer positions match screen positions
+-- This is critical for terminal snapshot tests where visual markers need to align
+vim.opt.tabstop = 1
+vim.opt.shiftwidth = 1
+vim.opt.expandtab = false
 
 -- Debug output after setup
 if os.getenv("LAZY_DEBUG") then

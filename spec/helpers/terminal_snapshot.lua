@@ -113,37 +113,8 @@ local function capture_screen()
     table.insert(screen.lines, line)
   end
   
-  -- Add cursor position indicator using block character
-  local cursor_row, cursor_col = screen.cursor[1], screen.cursor[2]
-  if cursor_row <= #screen.lines then
-    local line = screen.lines[cursor_row]
-    -- Convert 0-based column to 1-based for string manipulation
-    local col_1based = cursor_col + 1
-    
-    -- Convert string to UTF-8 character array for proper indexing
-    local chars = {}
-    for utf8char in line:gmatch("[%z\1-\127\194-\244][\128-\191]*") do
-      table.insert(chars, utf8char)
-    end
-    
-    if col_1based == 1 then
-      -- Cursor is at beginning of line, replace first character
-      if #chars > 0 then
-        chars[1] = "█"
-      else
-        chars[1] = "█"
-      end
-    elseif col_1based <= #chars then
-      -- Replace character at cursor position with block character
-      chars[col_1based] = "█"
-    else
-      -- Cursor is at end of line, append block character
-      table.insert(chars, "█")
-    end
-    
-    -- Reconstruct the line from UTF-8 characters
-    screen.lines[cursor_row] = table.concat(chars)
-  end
+  -- Cursor position is already captured in screen.cursor and shown in header
+  -- No need to render cursor character as it can overlap with extmarks
   
   return screen
 end

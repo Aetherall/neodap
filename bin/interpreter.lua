@@ -22,6 +22,12 @@ vim.opt.writebackup = false
 vim.opt.shortmess:append("c")
 vim.opt.cmdheight = 1
 
+-- Set tabstop=1 to ensure buffer positions match screen positions
+-- This is critical for terminal snapshot tests where visual markers need to align
+vim.opt.tabstop = 1
+vim.opt.shiftwidth = 1
+vim.opt.expandtab = false
+
 -- Suppress lazy.nvim output unless debugging
 local original_notify = vim.notify
 local original_print = print

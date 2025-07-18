@@ -99,17 +99,18 @@ end)
 
 
 
+
 --[[ TERMINAL SNAPSHOT: step_over_breakpoint_set
 Size: 24x80
-Cursor: [3, 0]
+Cursor: [3, 0] (line 3, col 0)
 Mode: n
 
  1| let i = 0;
  2| setInterval(() => {
- 3| █       console.log("ALoop iteration: ", i++);
- 4|         console.log("BLoop iteration: ", i++);
- 5|         console.log("CLoop iteration: ", i++);
- 6|         console.log("DLoop iteration: ", i++);
+ 3| ● console.log("ALoop iteration: ", i++);
+ 4|  console.log("BLoop iteration: ", i++);
+ 5|  console.log("CLoop iteration: ", i++);
+ 6|  console.log("DLoop iteration: ", i++);
  7| }, 1000)
  8| ~
  9| ~
@@ -126,9 +127,10 @@ Mode: n
 20| ~
 21| ~
 22| ~
-23| spec/fixtures/workspaces/single-node-project/loop.js          3,1-8          All
+23| spec/fixtures/workspaces/single-node-project/loop.js          3,1-2          All
 24| 
 ]]
+
 
 
 
@@ -136,15 +138,15 @@ Mode: n
 
 --[[ TERMINAL SNAPSHOT: step_over_breakpoint_hit
 Size: 24x80
-Cursor: [3, 0]
+Cursor: [3, 0] (line 3, col 0)
 Mode: n
 
  1| let i = 0;
  2| setInterval(() => {
- 3| █       ◐console.log("ALoop iteration: ", i++);
- 4|         console.log("BLoop iteration: ", i++);
- 5|         console.log("CLoop iteration: ", i++);
- 6|         console.log("DLoop iteration: ", i++);
+ 3| ● ◐console.log("ALoop iteration: ", i++);
+ 4|  console.log("BLoop iteration: ", i++);
+ 5|  console.log("CLoop iteration: ", i++);
+ 6|  console.log("DLoop iteration: ", i++);
  7| }, 1000)
  8| ~
  9| ~
@@ -161,16 +163,17 @@ Mode: n
 20| ~
 21| ~
 22| ~
-23| loop.js                                                       3,1-8          All
+23| loop.js                                                       3,1-2          All
 24| 
 ]]
 
 
 
 
+
 --[[ TERMINAL SNAPSHOT: step_over_completed
 Size: 24x80
-Cursor: [4, 1]
+Cursor: [4, 1] (line 4, col 1)
 Mode: n
 
 Highlights:
@@ -179,10 +182,10 @@ Highlights:
 
  1| let i = 0;
  2| setInterval(() => {
- 3| ●       ◐console.log("ALoop iteration: ", i++);
- 4|  █      console.log("BLoop iteration: ", i++);
- 5|         console.log("CLoop iteration: ", i++);
- 6|         console.log("DLoop iteration: ", i++);
+ 3| ● ◐console.log("ALoop iteration: ", i++);
+ 4|  console.log("BLoop iteration: ", i++);
+ 5|  console.log("CLoop iteration: ", i++);
+ 6|  console.log("DLoop iteration: ", i++);
  7| }, 1000)
  8| ~
  9| ~
@@ -199,9 +202,10 @@ Highlights:
 20| ~
 21| ~
 22| ~
-23| loop.js                                                       4,2-9          All
+23| loop.js                                                       4,2            All
 24| 
 ]]
+
 
 
 
@@ -210,7 +214,7 @@ Highlights:
 
 --[[ TERMINAL SNAPSHOT: step_over_workflow_completed
 Size: 24x80
-Cursor: [4, 1]
+Cursor: [4, 1] (line 4, col 1)
 Mode: n
 
 Highlights:
@@ -219,10 +223,10 @@ Highlights:
 
  1| let i = 0;
  2| setInterval(() => {
- 3| ●       ◐console.log("ALoop iteration: ", i++);
- 4|  █      console.log("BLoop iteration: ", i++);
- 5|         console.log("CLoop iteration: ", i++);
- 6|         console.log("DLoop iteration: ", i++);
+ 3| ● ◐console.log("ALoop iteration: ", i++);
+ 4|  console.log("BLoop iteration: ", i++);
+ 5|  console.log("CLoop iteration: ", i++);
+ 6|  console.log("DLoop iteration: ", i++);
  7| }, 1000)
  8| ~
  9| ~
@@ -239,6 +243,6 @@ Highlights:
 20| ~
 21| ~
 22| ~
-23| loop.js                                                       4,2-9          All
+23| loop.js                                                       4,2            All
 24| ✓ Terminal snapshot 'step_over_completed' matches
 ]]

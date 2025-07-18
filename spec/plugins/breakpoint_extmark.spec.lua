@@ -40,17 +40,18 @@ Test.Describe("BreakpointApi Functionality", function()
     end)
 end)
 
+
 --[[ TERMINAL SNAPSHOT: before_breakpoint
 Size: 24x80
-Cursor: [3, 0]
+Cursor: [3, 0] (line 3, col 0)
 Mode: n
 
  1| let i = 0;
  2| setInterval(() => {
- 3|         console.log("ALoop iteration: ", i++);
- 4|         console.log("BLoop iteration: ", i++);
- 5|         console.log("CLoop iteration: ", i++);
- 6|         console.log("DLoop iteration: ", i++);
+ 3|  console.log("ALoop iteration: ", i++);
+ 4|  console.log("BLoop iteration: ", i++);
+ 5|  console.log("CLoop iteration: ", i++);
+ 6|  console.log("DLoop iteration: ", i++);
  7| }, 1000)
  8| ~
  9| ~
@@ -67,22 +68,23 @@ Mode: n
 20| ~
 21| ~
 22| ~
-23| spec/fixtures/loop.js                                         3,1-8          All
-24|
+23| spec/fixtures/loop.js                                         3,1            All
+24| 
 ]]
+
 
 
 --[[ TERMINAL SNAPSHOT: after_breakpoint
 Size: 24x80
-Cursor: [3, 0]
+Cursor: [3, 0] (line 3, col 0)
 Mode: n
 
  1| let i = 0;
  2| setInterval(() => {
- 3| ●       console.log("ALoop iteration: ", i++);
- 4|         console.log("BLoop iteration: ", i++);
- 5|         console.log("CLoop iteration: ", i++);
- 6|         console.log("DLoop iteration: ", i++);
+ 3| ● console.log("ALoop iteration: ", i++);
+ 4|  console.log("BLoop iteration: ", i++);
+ 5|  console.log("CLoop iteration: ", i++);
+ 6|  console.log("DLoop iteration: ", i++);
  7| }, 1000)
  8| ~
  9| ~
@@ -99,22 +101,23 @@ Mode: n
 20| ~
 21| ~
 22| ~
-23| spec/fixtures/loop.js                                         3,1-8          All
+23| spec/fixtures/loop.js                                         3,1-2          All
 24| ✓ Terminal snapshot 'before_breakpoint' matches
 ]]
 
 
+
 --[[ TERMINAL SNAPSHOT: after_removal
 Size: 24x80
-Cursor: [3, 0]
+Cursor: [3, 0] (line 3, col 0)
 Mode: n
 
  1| let i = 0;
  2| setInterval(() => {
- 3|         console.log("ALoop iteration: ", i++);
- 4|         console.log("BLoop iteration: ", i++);
- 5|         console.log("CLoop iteration: ", i++);
- 6|         console.log("DLoop iteration: ", i++);
+ 3|  console.log("ALoop iteration: ", i++);
+ 4|  console.log("BLoop iteration: ", i++);
+ 5|  console.log("CLoop iteration: ", i++);
+ 6|  console.log("DLoop iteration: ", i++);
  7| }, 1000)
  8| ~
  9| ~
@@ -131,6 +134,6 @@ Mode: n
 20| ~
 21| ~
 22| ~
-23| spec/fixtures/loop.js                                         3,1-8          All
+23| spec/fixtures/loop.js                                         3,1            All
 24| ✓ Terminal snapshot 'after_breakpoint' matches
 ]]

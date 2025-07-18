@@ -75,17 +75,18 @@ Test.Describe("LaunchJsonSupport Plugin", function()
 
 end)
 
+
 --[[ TERMINAL SNAPSHOT: project_file_opened
 Size: 24x80
-Cursor: [3, 0]
+Cursor: [3, 0] (line 3, col 0)
 Mode: n
 
  1| let i = 0;
  2| setInterval(() => {
- 3|         console.log("ALoop iteration: ", i++);
- 4|         console.log("BLoop iteration: ", i++);
- 5|         console.log("CLoop iteration: ", i++);
- 6|         console.log("DLoop iteration: ", i++);
+ 3|  console.log("ALoop iteration: ", i++);
+ 4|  console.log("BLoop iteration: ", i++);
+ 5|  console.log("CLoop iteration: ", i++);
+ 6|  console.log("DLoop iteration: ", i++);
  7| }, 1000)
  8| ~
  9| ~
@@ -102,22 +103,23 @@ Mode: n
 20| ~
 21| ~
 22| ~
-23| spec/fixtures/workspaces/single-node-project/loop.js          3,1-8          All
+23| spec/fixtures/workspaces/single-node-project/loop.js          3,1            All
 24| 
 ]]
 
 
+
 --[[ TERMINAL SNAPSHOT: breakpoint_set_in_launch_json_project
 Size: 24x80
-Cursor: [3, 0]
+Cursor: [3, 0] (line 3, col 0)
 Mode: n
 
  1| let i = 0;
  2| setInterval(() => {
- 3| ●       console.log("ALoop iteration: ", i++);
- 4|         console.log("BLoop iteration: ", i++);
- 5|         console.log("CLoop iteration: ", i++);
- 6|         console.log("DLoop iteration: ", i++);
+ 3| ● console.log("ALoop iteration: ", i++);
+ 4|  console.log("BLoop iteration: ", i++);
+ 5|  console.log("CLoop iteration: ", i++);
+ 6|  console.log("DLoop iteration: ", i++);
  7| }, 1000)
  8| ~
  9| ~
@@ -134,21 +136,22 @@ Mode: n
 20| ~
 21| ~
 22| ~
-23| spec/fixtures/workspaces/single-node-project/loop.js          3,1-8          All
+23| spec/fixtures/workspaces/single-node-project/loop.js          3,1-2          All
 24| ✓ Terminal snapshot 'project_file_opened' matches
 ]]
 
+
 --[[ TERMINAL SNAPSHOT: launch_json_configurations_loaded
 Size: 24x80
-Cursor: [3, 0]
+Cursor: [3, 0] (line 3, col 0)
 Mode: n
 
  1| let i = 0;
  2| setInterval(() => {
- 3| ●       console.log("ALoop iteration: ", i++);
- 4|         console.log("BLoop iteration: ", i++);
- 5|         console.log("CLoop iteration: ", i++);
- 6|         console.log("DLoop iteration: ", i++);
+ 3| ● console.log("ALoop iteration: ", i++);
+ 4|  console.log("BLoop iteration: ", i++);
+ 5|  console.log("CLoop iteration: ", i++);
+ 6|  console.log("DLoop iteration: ", i++);
  7| }, 1000)
  8| ~
  9| ~
@@ -165,6 +168,68 @@ Mode: n
 20| ~
 21| ~
 22| ~
-23| spec/fixtures/workspaces/single-node-project/loop.js          3,1-8          All
+23| spec/fixtures/workspaces/single-node-project/loop.js          3,1-2          All
+24| ✓ Terminal snapshot 'breakpoint_set_in_launch_json_project' matches
+]]
+
+--[[ TERMINAL SNAPSHOT: breakpoint_hit_from_session
+Size: 24x80
+Cursor: [3, 0] (line 3, col 0)
+Mode: n
+
+ 1| let i = 0;
+ 2| setInterval(() => {
+ 3| ● ◐console.log("ALoop iteration: ", i++);
+ 4|  console.log("BLoop iteration: ", i++);
+ 5|  console.log("CLoop iteration: ", i++);
+ 6|  console.log("DLoop iteration: ", i++);
+ 7| }, 1000)
+ 8| ~
+ 9| ~
+10| ~
+11| ~
+12| ~
+13| ~
+14| ~
+15| ~
+16| ~
+17| ~
+18| ~
+19| ~
+20| ~
+21| ~
+22| ~
+23| spec/fixtures/workspaces/single-node-project/loop.js          3,1-2          All
+24| 
+]]
+
+--[[ TERMINAL SNAPSHOT: launch_json_workflow_completed
+Size: 24x80
+Cursor: [3, 0] (line 3, col 0)
+Mode: n
+
+ 1| let i = 0;
+ 2| setInterval(() => {
+ 3| ● ◆console.log("ALoop iteration: ", i++);
+ 4|  console.log("BLoop iteration: ", i++);
+ 5|  console.log("CLoop iteration: ", i++);
+ 6|  console.log("DLoop iteration: ", i++);
+ 7| }, 1000)
+ 8| ~
+ 9| ~
+10| ~
+11| ~
+12| ~
+13| ~
+14| ~
+15| ~
+16| ~
+17| ~
+18| ~
+19| ~
+20| ~
+21| ~
+22| ~
+23| spec/fixtures/workspaces/single-node-project/loop.js          3,1-2          All
 24| 
 ]]

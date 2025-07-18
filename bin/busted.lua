@@ -22,6 +22,12 @@ vim.opt.writebackup = false
 vim.opt.shortmess:append("c") -- Don't show completion messages
 vim.opt.cmdheight = 1
 
+-- Set tabstop=1 to ensure buffer positions match screen positions in tests
+-- This is critical for terminal snapshot tests where visual markers need to align
+vim.opt.tabstop = 1
+vim.opt.shiftwidth = 1
+vim.opt.expandtab = false
+
 -- Set up project paths for neodap
 local cwd = vim.fn.getcwd()
 vim.opt.rtp:prepend(cwd)
