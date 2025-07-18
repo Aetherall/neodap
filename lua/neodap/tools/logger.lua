@@ -115,15 +115,15 @@ function Logger.get(namespace)
         -- Only write startup message for the first instance in this process
         if not process_log_file then
             instances[namespace]:_open()
-            instances[namespace]:info("=== Neodap Debug Log Started ===")
-            instances[namespace]:info("Log file: " .. filepath)
-            instances[namespace]:info("Namespace: " .. namespace)
-            instances[namespace]:info("Silent mode: " .. tostring(instances[namespace].silent))
+            instances[namespace]:debug("=== Neodap Debug Log Started ===")
+            instances[namespace]:debug("Log file: " .. filepath)
+            instances[namespace]:debug("Namespace: " .. namespace)
+            instances[namespace]:debug("Silent mode: " .. tostring(instances[namespace].silent))
             process_log_file = instances[namespace].file
         else
             -- Share the same file handle for all instances in this process
             instances[namespace].file = process_log_file
-            instances[namespace]:info("Logger initialized for namespace: " .. namespace)
+            instances[namespace]:debug("Logger initialized for namespace: " .. namespace)
         end
     end
 
@@ -323,7 +323,7 @@ end
 ---Close the log file
 function Logger:close()
     if self.file then
-        self:info("=== Neodap Debug Log Ended ===")
+        self:debug("=== Neodap Debug Log Ended ===")
         self.file:close()
         self.file = nil
     end

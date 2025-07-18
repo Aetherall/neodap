@@ -9,7 +9,6 @@ local nio = require("nio")
 Test.Describe("LaunchJsonSupport Plugin", function()
 
   Test.It("launch_json_breakpoint_hit_workflow", function()
-    local original_dir = vim.fn.getcwd()
     local api = prepare()
     
     -- Load plugins
@@ -20,10 +19,11 @@ Test.Describe("LaunchJsonSupport Plugin", function()
     
     -- Open loop.js from fixture
     local fixture_path = vim.fn.fnamemodify("spec/fixtures/workspaces/single-node-project", ":p")
-    vim.api.nvim_set_current_dir(fixture_path)
-    vim.cmd("edit loop.js")
+    vim.cmd("edit " .. fixture_path .. "/loop.js")
     vim.api.nvim_win_set_cursor(0, { 3, 0 })
-    vim.api.nvim_set_current_dir(original_dir)
+    
+    -- Small delay to ensure UI is fully rendered
+    nio.sleep(50)
     
     -- Visual confirmation: project file opened
     Test.TerminalSnapshot("project_file_opened")
@@ -36,10 +36,9 @@ Test.Describe("LaunchJsonSupport Plugin", function()
     Test.TerminalSnapshot("breakpoint_set_in_launch_json_project")
     
     -- Load launch.json configurations
-    vim.api.nvim_set_current_dir(fixture_path)
-    local configs = launchJsonSupport:loadAllConfigurations()
+    local workspace_info = launchJsonSupport:detectWorkspace(fixture_path)
+    local configs = launchJsonSupport:loadAllConfigurations(workspace_info)
     assert(next(configs) ~= nil, "Should have launch.json configurations")
-    vim.api.nvim_set_current_dir(original_dir)
     
     -- Visual confirmation: configurations loaded
     Test.TerminalSnapshot("launch_json_configurations_loaded")
@@ -62,7 +61,6 @@ Test.Describe("LaunchJsonSupport Plugin", function()
     end)
     
     -- Create session from launch.json
-    local workspace_info = launchJsonSupport:detectWorkspace(fixture_path)
     launchJsonSupport:createSessionFromConfig("Debug Loop []", api.manager, workspace_info)
     
     -- Wait for breakpoint hit
@@ -74,6 +72,12 @@ Test.Describe("LaunchJsonSupport Plugin", function()
 
 
 end)
+
+
+
+
+
+
 
 
 --[[ TERMINAL SNAPSHOT: project_file_opened
@@ -109,6 +113,7 @@ Mode: n
 
 
 
+
 --[[ TERMINAL SNAPSHOT: breakpoint_set_in_launch_json_project
 Size: 24x80
 Cursor: [3, 0] (line 3, col 0)
@@ -137,7 +142,7 @@ Mode: n
 21| ~
 22| ~
 23| spec/fixtures/workspaces/single-node-project/loop.js          3,1-2          All
-24| ✓ Terminal snapshot 'project_file_opened' matches
+24| 
 ]]
 
 
@@ -169,8 +174,9 @@ Mode: n
 21| ~
 22| ~
 23| spec/fixtures/workspaces/single-node-project/loop.js          3,1-2          All
-24| ✓ Terminal snapshot 'breakpoint_set_in_launch_json_project' matches
+24| 
 ]]
+
 
 --[[ TERMINAL SNAPSHOT: breakpoint_hit_from_session
 Size: 24x80
@@ -202,6 +208,7 @@ Mode: n
 23| spec/fixtures/workspaces/single-node-project/loop.js          3,1-2          All
 24| 
 ]]
+
 
 --[[ TERMINAL SNAPSHOT: launch_json_workflow_completed
 Size: 24x80

@@ -295,17 +295,18 @@ function TerminalSnapshot.capture(name)
       update_snapshot_in_file(test_file, name, current_screen)
       
       -- Create error message with diff
-      local error_msg = "Terminal snapshot '" .. name .. "' differs:\n\n" .. table.concat(differences, "\n")
+      local error_msg = "\n! Terminal snapshot '" .. name .. "' differs:\n\n" .. table.concat(differences, "\n")
       error_msg = error_msg .. "\n\nSnapshot updated in " .. test_file
       
+      print(error_msg)
       error(error_msg)
     else
-      print("✓ Terminal snapshot '" .. name .. "' matches")
+      print("\n✓ Terminal snapshot '" .. name .. "' matches")
     end
   else
     -- First time: create new snapshot
     update_snapshot_in_file(test_file, name, current_screen)
-    print("📸 Created terminal snapshot '" .. name .. "' in " .. vim.fn.fnamemodify(test_file, ":t"))
+    print("\n📸 Created terminal snapshot '" .. name .. "' in " .. vim.fn.fnamemodify(test_file, ":t"))
   end
 end
 
@@ -339,13 +340,14 @@ function TerminalSnapshot.capture_region(name, region)
     
     if #differences > 0 then
       update_snapshot_in_file(test_file, name, screen)
-      error("Terminal snapshot '" .. name .. "' differs. Updated in " .. test_file)
+      print("\n! Terminal snapshot '" .. name .. "' differs. Updated in " .. test_file)
+      error("\n! Terminal snapshot '" .. name .. "' differs:\n\n" .. table.concat(differences, "\n"))
     else
-      print("✓ Terminal snapshot '" .. name .. "' matches")
+      print("\n✓ Terminal snapshot '" .. name .. "' matches")
     end
   else
     update_snapshot_in_file(test_file, name, screen)
-    print("📸 Created terminal snapshot '" .. name .. "' in " .. vim.fn.fnamemodify(test_file, ":t"))
+    print("\n📸 Created terminal snapshot '" .. name .. "' in " .. vim.fn.fnamemodify(test_file, ":t"))
   end
 end
 

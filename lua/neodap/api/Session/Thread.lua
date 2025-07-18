@@ -16,6 +16,8 @@ local Logger = require("neodap.tools.logger")
 ---@field stopped boolean
 local Thread = Class();
 
+local log = Logger.get("DAP:Thread")
+
 
 function Thread.instanciate(session, id, parentHookable)
   -- TODO: listen for thread events and clear stack when continued or exited
@@ -37,6 +39,7 @@ function Thread:listen()
   local uniqueId = "Thread(" .. self.id .. ")"
 
   self:onStopped(function(body)
+    log:debug("Thread", self.id, "stopped")
     self.stopped = true
     if self._stack then
       self._stack:invalidate() -- Invalidate existing stack if paused again
@@ -55,14 +58,15 @@ function Thread:listen()
 
 
   self:onContinued(function(body)
-    local log = Logger.get("DAP:Thread")
-    log:info("Thread", self.id, "continued - clearing stack and setting stopped=false")
+    -- local log = Logger.get("DAP:Thread")
+    log:trace("Thread", self.id, "continued")
     if self._stack then
       self._stack:invalidate() -- Invalidate existing stack if paused again
     end
     self._stack = nil          -- Clear stack when continued after a stop
     if self.stopped then
       self.stopped = false
+      log:debug("Thread", self.id, "resumed")
       self.hookable:emit('resumed', body)
     end
   end, { priority = 1, name = uniqueId .. ".EmitResume" })
@@ -72,15 +76,15 @@ end
 ---@param opts? HookOptions
 ---@return fun()
 function Thread:onStopped(listener, opts)
-  local log = Logger.get("DAP:Thread")
+  -- local log = Logger.get("DAP:Thread")
   log:debug("Thread", self.id, "registering onStopped listener")
   return self.session.ref.events:on('stopped', function(body)
-    log:info("Thread", self.id, "received stopped event for threadId:", body.threadId, "reason:", body.reason, "line:", body.line)
+    -- log:info("Thread", self.id, "received stopped event for threadId:", body.threadId, "reason:", body.reason, "line:", body.line)
     if body.threadId == self.id then
-      log:info("Thread", self.id, "MATCHED - calling listener for stopped event")
+      -- log:trace("Thread", self.id, "MATCHED - calling listener for stopped event")
       listener(body)
     else
-      log:debug("Thread", self.id, "no match - ignoring stopped event")
+      -- log:trace("Thread", self.id, "no match - ignoring stopped event")
     end
   end, opts)
 end
@@ -127,7 +131,7 @@ function Thread:continue()
 end
 
 function Thread:stepIn()
-  local log = Logger.get("DAP:Thread")
+  -- local log = Logger.get("DAP:Thread")
   log:info("Thread", self.id, "initiating stepIn")
   local args = {
     threadId = self.id,
@@ -139,7 +143,7 @@ function Thread:stepIn()
 end
 
 function Thread:stepOver()
-  local log = Logger.get("DAP:Thread")
+  -- local log = Logger.get("DAP:Thread")
   log:info("Thread", self.id, "initiating stepOver (next command)")
   local args = {
     threadId = self.id,
@@ -151,7 +155,7 @@ function Thread:stepOver()
 end
 
 function Thread:stepOut()
-  local log = Logger.get("DAP:Thread")
+  -- local log = Logger.get("DAP:Thread")
   log:info("Thread", self.id, "initiating stepOut")
   local args = {
     threadId = self.id,
@@ -172,14 +176,14 @@ function Thread:stack()
     return self._stack
   end
 
-  local log = Logger.get("DAP:Thread")
-  log:info("Thread", self.id, "fetching stack trace")
+  -- local log = Logger.get("DAP:Thread")
+  log:trace("Thread", self.id, "fetching stack trace")
   local stack = self.session.ref.calls:stackTrace({
     threadId = self.id,
     -- levels = 1,
   }):wait()
 
-  log:info("Thread", self.id, "stack trace received:", stack)
+  log:debug("Thread", self.id, "stack trace received:", stack)
   self._stack = Stack.instanciate(self, stack, self.hookable)
 
   return self._stack

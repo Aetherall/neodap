@@ -69,6 +69,7 @@ function StackNavigation:Up()
         parent:jump()
         self:updateNavigationState(parent)
         self:emitNavigationEvent(parent, "up")
+        self.logger:info("StackNavigation: Navigated up to frame", parent.ref.id)
     end
 end
 
@@ -80,6 +81,7 @@ function StackNavigation:Down()
         child:jump()
         self:updateNavigationState(child)
         self:emitNavigationEvent(child, "down")
+        self.logger:info("StackNavigation: Navigated down to frame", child.ref.id)
     end
 end
 
@@ -91,6 +93,7 @@ function StackNavigation:Top()
         top:jump()
         self:updateNavigationState(top)
         self:emitNavigationEvent(top, "top")
+        self.logger:info("StackNavigation: Navigated to top frame", top.ref.id)
     end
 end
 

@@ -11,7 +11,6 @@ local nio = require("nio")
 Test.Describe("LaunchJsonSupport Step Over", function()
 
   Test.It("launch_json_step_over_workflow", function()
-    local original_dir = vim.fn.getcwd()
     local api = prepare()
     
     -- Load plugins
@@ -24,10 +23,8 @@ Test.Describe("LaunchJsonSupport Step Over", function()
     
     -- Open loop.js from fixture
     local fixture_path = vim.fn.fnamemodify("spec/fixtures/workspaces/single-node-project", ":p")
-    vim.api.nvim_set_current_dir(fixture_path)
-    vim.cmd("edit loop.js")
+    vim.cmd("edit " .. fixture_path .. "/loop.js")
     vim.api.nvim_win_set_cursor(0, { 3, 0 })
-    vim.api.nvim_set_current_dir(original_dir)
     
     -- Set breakpoint on first repeating line
     toggleBreakpoint:toggle()
@@ -78,7 +75,6 @@ Test.Describe("LaunchJsonSupport Step Over", function()
     end)
     
     -- Create session from launch.json
-    vim.api.nvim_set_current_dir(fixture_path)
     local workspace_info = launchJsonSupport:detectWorkspace(fixture_path)
     launchJsonSupport:createSessionFromConfig("Debug Loop []", api.manager, workspace_info)
     
@@ -93,12 +89,6 @@ Test.Describe("LaunchJsonSupport Step Over", function()
   end)
 
 end)
-
-
-
-
-
-
 
 --[[ TERMINAL SNAPSHOT: step_over_breakpoint_set
 Size: 24x80
@@ -131,11 +121,6 @@ Mode: n
 24| 
 ]]
 
-
-
-
-
-
 --[[ TERMINAL SNAPSHOT: step_over_breakpoint_hit
 Size: 24x80
 Cursor: [3, 0] (line 3, col 0)
@@ -163,13 +148,9 @@ Mode: n
 20| ~
 21| ~
 22| ~
-23| loop.js                                                       3,1-2          All
+23| spec/fixtures/workspaces/single-node-project/loop.js          3,1-2          All
 24| 
 ]]
-
-
-
-
 
 --[[ TERMINAL SNAPSHOT: step_over_completed
 Size: 24x80
@@ -202,15 +183,9 @@ Highlights:
 20| ~
 21| ~
 22| ~
-23| loop.js                                                       4,2            All
+23| spec/fixtures/workspaces/single-node-project/loop.js          4,2            All
 24| 
 ]]
-
-
-
-
-
-
 
 --[[ TERMINAL SNAPSHOT: step_over_workflow_completed
 Size: 24x80
@@ -243,6 +218,6 @@ Highlights:
 20| ~
 21| ~
 22| ~
-23| loop.js                                                       4,2            All
-24| ✓ Terminal snapshot 'step_over_completed' matches
+23| spec/fixtures/workspaces/single-node-project/loop.js          4,2            All
+24| 
 ]]

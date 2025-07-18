@@ -60,10 +60,12 @@ function ToggleBreakpoint:toggle(location)
   local existingBreakpoint = self.breakpointApi.getBreakpoints():atLocation(adjusted):first()
   if existingBreakpoint then
     self.breakpointApi.removeBreakpoint(existingBreakpoint)
+    self.logger:info("Removed existing breakpoint at", adjusted)
     return
   end
   
   self.breakpointApi.setBreakpoint(adjusted)
+  self.logger:info("Set breakpoint at", adjusted)
 end
 
 -- Auto-wrapped version for vim context boundaries

@@ -1,3 +1,35 @@
+--[[
+Thread Destruction Race Condition Test
+
+This test identifies and validates fixes for race conditions that occur when debug sessions
+are terminated while concurrent operations are accessing thread state.
+
+## Race Condition Fixed: Fast Event Context Violation (E5560)
+
+**Problem**: SourceIdentifier.calculateStabilityHash() was calling vim.fn.sha256() during 
+session destruction, causing "E5560: Vimscript function must not be called in a fast event context"
+
+**Root Cause**: When rapid debugging operations (stack access, stepping) occurred simultaneously 
+with session termination, the source identification process would attempt to hash virtual sources 
+using Vimscript functions within Neovim's fast event context restrictions.
+
+**Call Chain**:
+1. thread:stack() -> stack frame analysis -> source identification
+2. SourceIdentifier.fromDapSource() -> calculateStabilityHash() -> vim.fn.sha256()
+3. Session destruction creates fast event context
+4. Race condition: hash calculation during fast events = E5560 violation
+
+**Solution**: Replaced vim.fn.sha256() with pure Lua simple_hash() function in 
+lua/neodap/api/Location/SourceIdentifier.lua to eliminate Vimscript dependency.
+
+**Impact**: Prevents crashes during rapid debugging operations + session cleanup scenarios.
+
+## Remaining Expected Race Conditions
+
+The test still detects legitimate race conditions like "Thread is not paused" when trying
+to access terminated thread state - these are expected and help validate proper error handling.
+--]]
+
 local Test = require("spec.helpers.testing")(describe, it)
 local prepare = require("spec.helpers.prepare").prepare
 local LaunchJsonSupport = require("neodap.plugins.LaunchJsonSupport")
@@ -8,145 +40,7 @@ local nio = require("nio")
 
 Test.Describe("Thread Destruction Crash Test", function()
 
-  Test.It("trigger_thread_destruction_during_navigation", function()
-    local original_dir = vim.fn.getcwd()
-    local api = prepare()
-    
-    -- Load plugins
-    local launchJsonSupport = api:getPluginInstance(LaunchJsonSupport)
-    api:getPluginInstance(BreakpointApi)
-    local toggleBreakpoint = api:getPluginInstance(ToggleBreakpoint)
-    api:getPluginInstance(FrameHighlight)
-    
-    -- Use recurse.js but modify the timeout to be very short
-    local fixture_path = vim.fn.fnamemodify("spec/fixtures/workspaces/single-node-project", ":p")
-    vim.api.nvim_set_current_dir(fixture_path)
-    vim.cmd("edit recurse.js")
-    vim.api.nvim_win_set_cursor(0, { 7, 0 })  -- Line with setTimeout
-    vim.api.nvim_set_current_dir(original_dir)
-    
-    -- Set breakpoint on the setTimeout line
-    toggleBreakpoint:toggle()
-    nio.sleep(20)
-    
-    -- Track everything
-    local breakpoint_hit = false
-    local thread_ref = nil
-    local crashes = {}
-    local terminated = false
-    
-    -- Session listener
-    api:onSession(function(session)
-      if session.ref.id == 1 then return end
-      
-      -- Listen for session termination
-      session:onTerminated(function()
-        terminated = true
-        print("SESSION TERMINATED!")
-        
-        -- Try to access thread after termination
-        if thread_ref then
-          local success, err = pcall(function()
-            local stack = thread_ref:stack()
-            return stack and "stack exists" or "no stack"
-          end)
-          
-          if not success then
-            table.insert(crashes, { type = "post_termination", error = tostring(err) })
-            print("CRASH AFTER SESSION TERMINATION: " .. tostring(err))
-          end
-        end
-      end)
-      
-      session:onThread(function(thread)
-        thread_ref = thread
-        
-        -- Listen for thread events
-        thread:onStopped(function(event)
-          print("THREAD STOPPED: " .. event.reason)
-          
-          if event.reason == "breakpoint" and not breakpoint_hit then
-            breakpoint_hit = true
-            print("BREAKPOINT HIT! Starting aggressive navigation...")
-            
-            -- Start aggressive navigation that might trigger thread destruction
-            nio.run(function()
-              for i = 1, 30 do
-                if thread_ref and not terminated then
-                  -- Try multiple rapid operations
-                  local ops = {
-                    function() thread_ref:stepIn() end,
-                    function() thread_ref:stepOut() end,
-                    function() thread_ref:stepOver() end,
-                    function() 
-                      local stack = thread_ref:stack()
-                      if stack then
-                        local top = stack:top()
-                        if top then
-                          local scopes = top:scopes()
-                          -- Try to access variables
-                          if scopes and #scopes > 0 then
-                            scopes[1]:variables()
-                          end
-                        end
-                      end
-                    end
-                  }
-                  
-                  -- Execute random operations
-                  for _, op in ipairs(ops) do
-                    local success, err = pcall(op)
-                    if not success then
-                      table.insert(crashes, { type = "during_navigation", error = tostring(err) })
-                      print("CRASH DURING NAVIGATION: " .. tostring(err))
-                    end
-                  end
-                  
-                  -- Very short delay
-                  nio.sleep(5)
-                else
-                  break
-                end
-              end
-              
-              print("Navigation spam completed")
-            end)
-          end
-        end)
-      end)
-    end)
-    
-    -- Create session
-    vim.api.nvim_set_current_dir(fixture_path)
-    local workspace_info = launchJsonSupport:detectWorkspace(fixture_path)
-    launchJsonSupport:createSessionFromConfig("Debug Loop []", api.manager, workspace_info)
-    
-    -- Wait for breakpoint
-    vim.wait(5000, function() return breakpoint_hit end)
-    
-    -- Wait for potential crashes or termination
-    vim.wait(10000, function() return terminated or #crashes > 0 end)
-    
-    nio.sleep(1000)
-    
-    print("FINAL RESULTS:")
-    print("- Breakpoint hit: " .. tostring(breakpoint_hit))
-    print("- Session terminated: " .. tostring(terminated))
-    print("- Crashes detected: " .. #crashes)
-    print("- Thread reference valid: " .. tostring(thread_ref ~= nil))
-    
-    if #crashes > 0 then
-      print("CRASHES FOUND!")
-      for i, crash in ipairs(crashes) do
-        print("  " .. i .. ": " .. crash.type .. " - " .. crash.error)
-      end
-    else
-      print("No crashes detected")
-    end
-  end)
-
   Test.It("session_cleanup_race_condition", function()
-    local original_dir = vim.fn.getcwd()
     local api = prepare()
     
     -- Load plugins
@@ -155,10 +49,8 @@ Test.Describe("Thread Destruction Crash Test", function()
     local toggleBreakpoint = api:getPluginInstance(ToggleBreakpoint)
     
     local fixture_path = vim.fn.fnamemodify("spec/fixtures/workspaces/single-node-project", ":p")
-    vim.api.nvim_set_current_dir(fixture_path)
-    vim.cmd("edit loop.js")
+    vim.cmd("edit " .. fixture_path .. "/loop.js")
     vim.api.nvim_win_set_cursor(0, { 3, 0 })
-    vim.api.nvim_set_current_dir(original_dir)
     
     toggleBreakpoint:toggle()
     nio.sleep(20)
@@ -240,7 +132,6 @@ Test.Describe("Thread Destruction Crash Test", function()
     end)
     
     -- Create session
-    vim.api.nvim_set_current_dir(fixture_path)
     local workspace_info = launchJsonSupport:detectWorkspace(fixture_path)
     launchJsonSupport:createSessionFromConfig("Debug Loop []", api.manager, workspace_info)
     

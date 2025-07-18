@@ -88,6 +88,17 @@ function SourceIdentifier.fromDapSource(dap_source, session)
   return SourceIdentifier.fromPath(dap_source.path or "")
 end
 
+-- Simple hash function for use in fast event contexts (avoids vim.fn.sha256)
+---@param str string
+---@return string
+local function simple_hash(str)
+  local hash = 0
+  for i = 1, #str do
+    hash = (hash * 31 + str:byte(i)) % 4294967296
+  end
+  return string.format("%08x", hash):sub(1, 8)
+end
+
 -- Calculate stability hash for virtual sources (session-independent)
 ---@param dap_source dap.Source
 ---@return string
@@ -103,7 +114,7 @@ function SourceIdentifier.calculateStabilityHash(dap_source)
   }
   
   local input = table.concat(components, "|")
-  return vim.fn.sha256(input):sub(1, 8)
+  return simple_hash(input)
 end
 
 -- Instance methods

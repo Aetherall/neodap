@@ -14,13 +14,13 @@ local function prepare()
   
   -- Automatically call any existing cleanup from previous prepare() call
   if _global_cleanup then
-    log:info("PREPARE: Auto-cleaning up from previous prepare() call")
+    log:debug("PREPARE: Auto-cleaning up from previous prepare() call")
     _global_cleanup()
     _global_cleanup = nil
   end
   
   -- Create fresh instances for each test to ensure complete isolation
-  log:info("PREPARE: Creating fresh instances for this test")
+  log:debug("PREPARE: Creating fresh instances for this test")
   local manager = Manager.create()
   local adapter = ExecutableTCPAdapter.create({
     executable = {
@@ -32,7 +32,7 @@ local function prepare()
     },
   })
   local api = Api.register(manager)
-  log:info("PREPARE: Fresh instances created - manager, adapter, and API ready")
+  log:debug("PREPARE: Fresh instances created - manager, adapter, and API ready")
 
   local function start(fixture)
     local session = Session.create({
@@ -61,7 +61,7 @@ local function prepare()
     log:info("PREPARE: Cleaning up API and all plugins at timestamp", os.clock())
     
     -- Primary cleanup: API destroy will call plugin destroy methods
-    log:info("PREPARE: Calling api:destroy() to trigger plugin cleanup")
+    log:debug("PREPARE: Calling api:destroy() to trigger plugin cleanup")
     api:destroy()
     
     -- Fallback cleanup: Only clear remaining extmarks if plugin cleanup failed
@@ -84,7 +84,7 @@ local function prepare()
     if total_remaining > 0 then
       log:warn("PREPARE: Fallback cleanup removed", total_remaining, "remaining extmarks")
     else
-      log:info("PREPARE: No remaining extmarks found - plugin cleanup was successful")
+      log:debug("PREPARE: No remaining extmarks found - plugin cleanup was successful")
     end
     
     -- Clear from global registry since we're cleaning up manually
@@ -103,7 +103,7 @@ end
 local function cleanup_all()
   if _global_cleanup then
     local log = Logger.get()
-    log:info("PREPARE: Manual global cleanup called")
+    log:debug("PREPARE: Manual global cleanup called")
     _global_cleanup()
     _global_cleanup = nil
   end

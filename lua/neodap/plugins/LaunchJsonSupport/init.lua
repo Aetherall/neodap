@@ -305,7 +305,7 @@ function LaunchJsonSupport:substituteVariables(config, context)
     fileBasenameNoExtension = vim.fn.expand("%:t:r"),
     fileDirname = vim.fn.expand("%:p:h"),
     fileExtname = vim.fn.expand("%:e"),
-    cwd = vim.fn.getcwd(),
+    cwd = workspaceInfo.rootPath or vim.fn.getcwd(),
   }
   
   -- Add workspace-specific variables

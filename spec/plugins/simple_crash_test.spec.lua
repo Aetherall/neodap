@@ -9,7 +9,6 @@ local nio = require("nio")
 Test.Describe("Simple Crash Test", function()
 
   Test.It("extreme_rapid_fire_navigation", function()
-    local original_dir = vim.fn.getcwd()
     local api = prepare()
     
     -- Load plugins
@@ -20,10 +19,8 @@ Test.Describe("Simple Crash Test", function()
     
     -- Use loop.js 
     local fixture_path = vim.fn.fnamemodify("spec/fixtures/workspaces/single-node-project", ":p")
-    vim.api.nvim_set_current_dir(fixture_path)
-    vim.cmd("edit loop.js")
+    vim.cmd("edit " .. fixture_path .. "/loop.js")
     vim.api.nvim_win_set_cursor(0, { 3, 0 })
-    vim.api.nvim_set_current_dir(original_dir)
     
     -- Set breakpoint
     toggleBreakpoint:toggle()
@@ -124,7 +121,6 @@ Test.Describe("Simple Crash Test", function()
     end)
     
     -- Create session
-    vim.api.nvim_set_current_dir(fixture_path)
     local workspace_info = launchJsonSupport:detectWorkspace(fixture_path)
     launchJsonSupport:createSessionFromConfig("Debug Loop []", api.manager, workspace_info)
     

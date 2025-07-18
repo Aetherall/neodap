@@ -51,10 +51,23 @@ function NvimAsync.run(coroutine_func, event, options)
             local success = yielded[1]
 
             if not success then
-                logger:error("NvimAsync coroutine error: " .. tostring(yielded[2]))
-                vim.notify(
-                "CRITICAL FAILURE, INTERRUPTING, check the last log file in the log folder to understand why.")
-                vim.cmd("qa!") -- Quit all
+                local error_msg = tostring(yielded[2])
+                logger:error("NvimAsync coroutine error: " .. error_msg)
+                
+                -- Error recovery: By default, we continue gracefully instead of crashing
+                -- This prevents erratic plugin behavior from taking down the entire system
+                -- Set NEODAP_PANIC=true environment variable to restore original crash behavior for debugging
+                local panic_mode = os.getenv("NEODAP_PANIC") == "true"
+                
+                if panic_mode then
+                    -- Original catastrophic behavior for debugging
+                    vim.notify("CRITICAL FAILURE, INTERRUPTING, check the last log file in the log folder to understand why.")
+                    vim.cmd("qa!") -- Quit all
+                else
+                    -- Graceful recovery - log and continue execution
+                    logger:warn("Continuing execution despite error (set NEODAP_PANIC=true to debug)")
+                end
+                
                 return
             end
 

@@ -66,17 +66,17 @@ function Session:start(opts)
       if message.type == "event" then
         -- Enhanced DAP event tracing
         local log = Logger.get("DAP:Session")
-        log:info("Session received DAP event:", message.event)
-        log:debug("DAP event body:", message.body or {})
+        log:debug("Session received DAP event:", message.event)
+        log:trace("DAP event body:", message.body or {})
         
         -- Special attention to thread events that affect stepping
         if message.event == "stopped" then
-          log:info("STOPPED EVENT:", "threadId:", message.body.threadId, "reason:", message.body.reason, "line:", message.body.line)
-          log:info("STOPPED EVENT FULL BODY:", message.body)
+          log:debug("STOPPED EVENT:", "threadId:", message.body.threadId, "reason:", message.body.reason, "line:", message.body.line)
+          log:trace("STOPPED EVENT FULL BODY:", message.body)
         elseif message.event == "continued" then
-          log:info("CONTINUED EVENT:", "threadId:", message.body.threadId, "allThreadsContinued:", message.body.allThreadsContinued)
+          log:debug("CONTINUED EVENT:", "threadId:", message.body.threadId, "allThreadsContinued:", message.body.allThreadsContinued)
         elseif message.event == "breakpoint" then
-          log:info("BREAKPOINT EVENT:", message.body)
+          log:debug("BREAKPOINT EVENT:", message.body)
         end
         self.events:push(message)
       elseif message.type == "request" then
@@ -84,12 +84,12 @@ function Session:start(opts)
       elseif message.type == "response" then
         -- Enhanced DAP response tracing
         local log = Logger.get("DAP:Session")
-        log:info("Session received DAP response:", message.command, "seq:", message.seq, "success:", message.success)
-        log:debug("DAP response details:", message)
+        log:debug("Session received DAP response:", message.command, "seq:", message.seq, "success:", message.success)
+        log:trace("DAP response details:", message)
         
         -- Special attention to step command responses
         if message.command == "next" or message.command == "stepIn" or message.command == "stepOut" then
-          log:info("STEP RESPONSE IN SESSION:", message.command, "success:", message.success, "body:", message.body)
+          log:debug("STEP RESPONSE IN SESSION:", message.command, "success:", message.success, "body:", message.body)
         end
         
         self.calls:receive(message)
