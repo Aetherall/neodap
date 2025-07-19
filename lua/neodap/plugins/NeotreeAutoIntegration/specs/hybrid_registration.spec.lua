@@ -1,26 +1,37 @@
--- Test: NeodapNeotreeVariableSource basic source registration
+-- Test: NeotreeAutoIntegration hybrid registration functionality
 local Test = require("spec.helpers.testing")(describe, it)
 local prepare = require("spec.helpers.prepare").prepare
 local BreakpointApi = require("neodap.plugins.BreakpointApi")
 local ToggleBreakpoint = require("neodap.plugins.ToggleBreakpoint")
 local NeodapNeotreeVariableSource = require("neodap.plugins.NeodapNeotreeVariableSource")
+local NeotreeAutoIntegration = require("neodap.plugins.NeotreeAutoIntegration")
 local DebugOverlay = require("neodap.plugins.DebugOverlay")
 local LaunchJsonSupport = require("neodap.plugins.LaunchJsonSupport")
 local nio = require("nio")
 
-Test.Describe("NeodapNeotreeVariableSource Self-Registration", function()
-    Test.It("zero_config_self_registration", function()
+Test.Describe("NeotreeAutoIntegration Hybrid Registration", function()
+    Test.It("hybrid_auto_registration_service", function()
         local api, start = prepare()
 
-        -- Get plugin instances first (this registers the source)
+        -- Get plugin instances
         local breakpointApi = api:getPluginInstance(BreakpointApi)
         local toggleBreakpoint = api:getPluginInstance(ToggleBreakpoint)
+        local integrationService = api:getPluginInstance(NeotreeAutoIntegration)
         local neotreeSource = api:getPluginInstance(NeodapNeotreeVariableSource)
         api:getPluginInstance(DebugOverlay)
         local launchJsonSupport = api:getPluginInstance(LaunchJsonSupport)
 
-        -- Plugin will auto-register itself with Neo-tree, no manual setup needed!
-        -- This tests the zero-configuration experience
+        -- Setup basic Neo-tree first (this makes the sources manager available)
+        require("neo-tree").setup({
+            sources = { "filesystem" },
+            filesystem = {
+                window = { position = "left", width = 40 }
+            }
+        })
+
+        -- Verify the integration service exists
+        assert(integrationService ~= nil)
+        assert(integrationService.name == "NeotreeAutoIntegration")
 
         -- Open the loop.js file
         vim.cmd("edit spec/fixtures/workspaces/single-node-project/loop.js")
@@ -58,7 +69,7 @@ Test.Describe("NeodapNeotreeVariableSource Self-Registration", function()
         session_promise.wait()
         stopped_promise.wait()
 
-        -- Verify plugin state
+        -- Verify variable source is working
         assert(neotreeSource.current_frame ~= nil)
         assert(neotreeSource.name == "neodap.plugins.NeodapNeotreeVariableSource")
 
@@ -67,25 +78,41 @@ Test.Describe("NeodapNeotreeVariableSource Self-Registration", function()
         assert(scopes ~= nil)
         assert(#scopes == 3)
 
-        -- Wait for self-registration to complete
-        nio.sleep(300)
+        -- Wait for auto-registration to complete
+        nio.sleep(500)
+
+        -- Check registration status via integration service
+        local status = integrationService:getSourceStatus(neotreeSource.name)
+        assert(status ~= nil)
+        assert(status.module.name == neotreeSource.name)
+
+        -- List all registered sources
+        local sources = integrationService:listRegisteredSources()
+        assert(#sources >= 1)
         
-        -- Open real Neo-tree with our variable source
+        -- Find our source in the list
+        local found_our_source = false
+        for _, source_info in ipairs(sources) do
+            if source_info.name == neotreeSource.name then
+                found_our_source = true
+                assert(source_info.display_name == "🐛 Variables")
+                break
+            end
+        end
+        assert(found_our_source)
+
+        -- Test that Neo-tree command works (the ultimate test!)
         vim.cmd("Neotree float neodap.plugins.NeodapNeotreeVariableSource")
 
-        -- Take snapshot showing the zero-config Neo-tree interface
-        Test.TerminalSnapshot("zero_config_self_registration")
+        -- Take snapshot showing the hybrid registration working
+        Test.TerminalSnapshot("hybrid_auto_registration_service")
 
         -- Clean up
         api:destroy()
     end)
 end)
 
-
-
-
-
---[[ TERMINAL SNAPSHOT: neotree_source_registration
+--[[ TERMINAL SNAPSHOT: hybrid_auto_registration_service
 Size: 24x80
 Cursor: [1, 0] (line 1, col 0)
 Mode: n

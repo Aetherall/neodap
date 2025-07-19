@@ -1,4 +1,4 @@
--- Neo-tree commands for neodap-variable-tree source
+-- Neo-tree commands for NeodapNeotreeVariableSource
 -- This file defines custom commands for our variable tree
 
 local M = {}

@@ -1,4 +1,4 @@
--- Neo-tree components for neodap-variable-tree source
+-- Neo-tree components for NeodapNeotreeVariableSource
 -- This file defines custom rendering components for our variable tree
 
 local M = {}
