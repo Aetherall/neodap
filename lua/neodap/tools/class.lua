@@ -23,6 +23,11 @@ function Class(parent)
       if first_char == first_char:upper() and first_char ~= first_char:lower() then
         -- This is an uppercase method - auto-wrap with NvimAsync.defer
         local NvimAsync = require("neodap.tools.async")
+        
+        -- -- Log a warning about async wrapping for awareness
+        -- local logger = require("neodap.tools.logger").get("Class:AsyncWrap")
+        -- logger:debug("Auto-wrapping PascalCase method '" .. key .. "' with NvimAsync.defer - returns are fire-and-forget!")
+        
         local wrapped_func = NvimAsync.defer(function(...)
           return value(...)
         end)
@@ -42,6 +47,11 @@ function Class(parent)
       if first_char == first_char:upper() and first_char ~= first_char:lower() then
         -- This is an uppercase method - auto-wrap with NvimAsync.defer
         local NvimAsync = require("neodap.tools.async")
+        
+        -- Log a warning about async wrapping for awareness
+        local logger = require("neodap.tools.logger").get("Class:AsyncWrap")
+        logger:debug("Auto-wrapping PascalCase method '" .. key .. "' with NvimAsync.defer - returns are fire-and-forget!")
+        
         local wrapped_func = NvimAsync.defer(function(...)
           return value(...)
         end)

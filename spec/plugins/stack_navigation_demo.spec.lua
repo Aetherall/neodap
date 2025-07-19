@@ -167,6 +167,16 @@ Highlights:
 
 
 
+
+
+
+
+
+
+
+
+
+
 --[[ TERMINAL SNAPSHOT: navigated_up_one_frame
 Size: 24x80
 Cursor: [519, 6] (line 519, col 6)
@@ -196,13 +206,14 @@ Highlights:
 16|   function listOnTimeout(list, now) {
 17|     const msecs = list.msecs;
 18| 
-19|     debug('timeout callback d', msecs);
+19|     debug('timeout callback %d', msecs);
 20| 
 21|     let ranAtLeastOneTimer = false;
 22|     let timer;
-23| virtual://eaeead21/<node_internals>/internal/timers           519,7          75
+23| virtual://eaeead21/<node_internals>/internal/timers           519,7          75%
 24| 
 ]]
+
 
 --[[ TERMINAL SNAPSHOT: navigated_up_two_frames
 Size: 24x80
@@ -237,7 +248,7 @@ Highlights:
 20| 
 21|           if (timer[kHasPrimitive])
 22|             delete knownTimersById[asyncId];
-23| virtual://02f68bfe/<node_internals>/internal/timers           581,17         84%
+23| virtual://eaeead21/<node_internals>/internal/timers           581,17         84%
 24| 
 ]]
 

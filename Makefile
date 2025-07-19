@@ -7,15 +7,16 @@ help:
 	@echo "Neodap Development Commands"
 	@echo ""
 	@echo "Usage:"
-	@echo "  make test [TARGET] [PATTERN=pattern]  - Run tests with lazy.nvim"
+	@echo "  make test [TARGET] [PATTERN=pattern]  - Run tests with lazy.nvim (dirs run each file separately)"
 	@echo "  make log [FILTER=filter]             - Show latest numbered log with optional filter" 
 	@echo "  make play                            - Run playground with lazy.nvim"
 	@echo "  make run                             - Run lazy.nvim interpreter"
 	@echo "  make clean-logs                      - Clean up all numbered log files"
 	@echo ""
 	@echo "Examples:"
-	@echo "  make test                                    # Run all tests in spec/"
-	@echo "  make test spec/core/neodap_core.spec.lua     # Run specific test file"
+	@echo "  make test                                    # Run all tests in spec/ (each file separately)"
+	@echo "  make test spec/core/neodap_core.spec.lua     # Run specific test file"  
+	@echo "  make test spec/plugins/                      # Run each plugin spec in separate process"
 	@echo "  make test PATTERN=breakpoint_hit             # Run tests matching pattern"
 	@echo "  make test spec/breakpoints/ PATTERN=toggle   # Run tests in folder with pattern"
 	@echo "  make log                                     # Show the latest numbered log file"
@@ -31,13 +32,51 @@ help:
 
 # Test command - uses nix busted
 test:
-ifdef PATTERN
-	@echo "Running tests: $(or $(word 2,$(MAKECMDGOALS)),spec/) with pattern: $(PATTERN)"
-	@nix develop --command busted $(or $(word 2,$(MAKECMDGOALS)),spec/) -- --pattern "$(PATTERN)"
-else
-	@echo "Running tests: $(or $(word 2,$(MAKECMDGOALS)),spec/)"
-	@nix develop --command busted $(or $(word 2,$(MAKECMDGOALS)),spec/)
-endif
+	@TARGET="$(or $(word 2,$(MAKECMDGOALS)),spec/)"; \
+	if [ -d "$$TARGET" ]; then \
+		SPEC_FILES=$$(find "$$TARGET" -name "*.spec.lua" | sort); \
+		SPEC_COUNT=$$(echo "$$SPEC_FILES" | wc -l); \
+		if [ $$SPEC_COUNT -gt 1 ]; then \
+			echo "Found $$SPEC_COUNT spec files in $$TARGET - running each in separate process:"; \
+			TOTAL_SUCCESS=0; TOTAL_FAILURE=0; TOTAL_ERROR=0; TOTAL_PENDING=0; \
+			for SPEC_FILE in $$SPEC_FILES; do \
+				echo ""; \
+				echo "========================================"; \
+				echo "Running: $$SPEC_FILE"; \
+				echo "========================================"; \
+				if [ -n "$(PATTERN)" ]; then \
+					nix develop --command busted "$$SPEC_FILE" -- --pattern "$(PATTERN)"; \
+				else \
+					nix develop --command busted "$$SPEC_FILE"; \
+				fi; \
+				if [ $$? -eq 0 ]; then \
+					echo "✓ $$SPEC_FILE - PASSED"; \
+				else \
+					echo "✗ $$SPEC_FILE - FAILED"; \
+				fi; \
+			done; \
+			echo ""; \
+			echo "========================================"; \
+			echo "Sequential test execution complete"; \
+			echo "========================================"; \
+		else \
+			if [ -n "$(PATTERN)" ]; then \
+				echo "Running tests: $$TARGET with pattern: $(PATTERN)"; \
+				nix develop --command busted "$$TARGET" -- --pattern "$(PATTERN)"; \
+			else \
+				echo "Running tests: $$TARGET"; \
+				nix develop --command busted "$$TARGET"; \
+			fi; \
+		fi; \
+	else \
+		if [ -n "$(PATTERN)" ]; then \
+			echo "Running tests: $$TARGET with pattern: $(PATTERN)"; \
+			nix develop --command busted "$$TARGET" -- --pattern "$(PATTERN)"; \
+		else \
+			echo "Running tests: $$TARGET"; \
+			nix develop --command busted "$$TARGET"; \
+		fi; \
+	fi
 
 # Log command - show the latest numbered log file with optional filter
 log:

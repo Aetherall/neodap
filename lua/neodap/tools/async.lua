@@ -142,6 +142,48 @@ function NvimAsync.defer(func)
             return func(unpack(args))
         end)
         -- Returns immediately (fire-and-forget)
+        -- Return a special value that warns when used
+        local warned = false
+        local function warn_once()
+            if not warned then
+                warned = true
+                local method_name = debug.getinfo(func, "n").name or "unknown"
+                local caller_info = debug.getinfo(3, "Sl")
+                local location = caller_info and (caller_info.short_src .. ":" .. caller_info.currentline) or "unknown"
+                
+                vim.notify(
+                    "⚠️  ASYNC/SYNC MISMATCH: PascalCase method '" .. method_name .. "' called from sync context at " .. location .. ". " ..
+                    "Return value is fire-and-forget (nil). Use camelCase for sync methods or nio.wrap() for proper async.",
+                    vim.log.levels.WARN
+                )
+            end
+        end
+        
+        -- Create a special truthy value that warns when used
+        -- This way `if not result` will be false, but any other usage triggers warning
+        local poison = setmetatable({ __async_poison = true }, {
+            __index = function() warn_once(); return nil end,
+            __newindex = function() warn_once() end,
+            __call = function() warn_once(); error("Cannot call async method return value") end,
+            __tostring = function() warn_once(); return "ASYNC_FIRE_AND_FORGET" end,
+            __concat = function() warn_once(); return "ASYNC_FIRE_AND_FORGET" end,
+            __eq = function(a, b) 
+                if b ~= poison then warn_once() end
+                return false 
+            end,
+            __lt = function() warn_once(); return false end,
+            __le = function() warn_once(); return false end,
+            __add = function() warn_once(); return 0 end,
+            __sub = function() warn_once(); return 0 end,
+            __mul = function() warn_once(); return 0 end,
+            __div = function() warn_once(); return 0 end,
+            __mod = function() warn_once(); return 0 end,
+            __pow = function() warn_once(); return 0 end,
+            __unm = function() warn_once(); return 0 end,
+            __len = function() warn_once(); return 0 end,
+        })
+        
+        return poison
     end
 end
 

@@ -261,8 +261,9 @@ local function update_snapshot_in_file(filepath, name, screen)
   local pattern = "%-%-%[%[ TERMINAL SNAPSHOT: " .. name:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1") .. "\n.-\n%]%]"
   
   if content:match(pattern) then
-    -- Replace existing snapshot
-    content = content:gsub(pattern, formatted_snapshot)
+    -- Replace existing snapshot (escape % and newlines for gsub replacement)
+    local escaped_snapshot = formatted_snapshot:gsub("%%", "%%%%"):gsub("\n", "%%n")
+    content = content:gsub(pattern, function() return formatted_snapshot end)
   else
     -- Append new snapshot at the end
     content = content .. "\n" .. formatted_snapshot

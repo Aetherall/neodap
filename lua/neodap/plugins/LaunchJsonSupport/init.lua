@@ -24,6 +24,7 @@ local ExecutableTCPAdapter = require("neodap.adapter.executable_tcp")
 
 ---@class LaunchJsonSupportPlugin
 ---@field detectWorkspace fun(path?: string): WorkspaceInfo
+---@field findClosestLaunchJson fun(path: string): string?
 ---@field loadAllConfigurations fun(workspaceInfo?: WorkspaceInfo): table<string, NamespacedConfiguration>
 ---@field createSessionFromConfig fun(config_name: string, manager: Manager, workspaceInfo?: WorkspaceInfo): Session
 ---@field createCompoundSessions fun(compound_name: string, manager: Manager, workspaceInfo?: WorkspaceInfo): Session[]
@@ -63,13 +64,29 @@ end
 function LaunchJsonSupport:detectWorkspace(path)
   path = path or vim.fn.getcwd()
   
+  -- First, try to find the closest launch.json file for better workspace detection
+  local closest_launch_json = self:findClosestLaunchJson(path)
+  
   -- Check for .code-workspace file in current directory or parent directories
   local workspace_file = self:findWorkspaceFile(path)
   
   if workspace_file then
     return self:parseMultiRootWorkspace(workspace_file)
+  elseif closest_launch_json then
+    -- Create workspace based on closest launch.json location
+    local workspace_root = vim.fn.fnamemodify(closest_launch_json, ":h:h") -- Remove /.vscode/launch.json
+    return {
+      type = "single",
+      rootPath = workspace_root,
+      folders = {{
+        name = vim.fn.fnamemodify(workspace_root, ":t"),
+        path = ".",
+        absolutePath = workspace_root
+      }},
+      workspaceFile = nil
+    }
   else
-    -- Single-folder workspace
+    -- Fallback: Single-folder workspace from given path
     return {
       type = "single",
       rootPath = path,
@@ -81,6 +98,35 @@ function LaunchJsonSupport:detectWorkspace(path)
       workspaceFile = nil
     }
   end
+end
+
+---Find the closest launch.json file by traversing up the directory tree
+---@param start_path string
+---@return string?
+function LaunchJsonSupport:findClosestLaunchJson(start_path)
+  -- If start_path is a file, get its directory
+  local current = start_path
+  if vim.fn.isdirectory(start_path) == 0 then
+    current = vim.fn.fnamemodify(start_path, ":h")
+  end
+  
+  -- Traverse up the directory tree looking for .vscode/launch.json
+  while current ~= "/" and current ~= "" and current ~= "." do
+    local launch_json_path = current .. "/.vscode/launch.json"
+    if vim.fn.filereadable(launch_json_path) == 1 then
+      self.logger:debug("Found closest launch.json at:", launch_json_path)
+      return launch_json_path
+    end
+    local parent = vim.fn.fnamemodify(current, ":h")
+    -- Prevent infinite loop if we can't go up anymore
+    if parent == current then
+      break
+    end
+    current = parent
+  end
+  
+  self.logger:debug("No launch.json found for path:", start_path)
+  return nil
 end
 
 ---Find .code-workspace file in current or parent directories
@@ -615,6 +661,56 @@ function LaunchJsonSupport:registerCommands()
     vim.api.nvim_echo({{table.concat(info, "\n"), "Normal"}}, true, {})
   end, { desc = "Show workspace and configuration information" })
   
+  -- Closest launch.json command - uses current buffer's path
+  vim.api.nvim_create_user_command("NeodapLaunchClosest", function(opts)
+    local config_name = opts.args
+    local current_file = vim.api.nvim_buf_get_name(0)
+    
+    if current_file == "" then
+      vim.notify("No file in current buffer", vim.log.levels.WARN)
+      return
+    end
+    
+    -- Detect workspace from current buffer's path
+    local workspaceInfo = self:detectWorkspace(current_file)
+    
+    if config_name == "" then
+      -- Show picker for configurations in closest workspace
+      local configs = self:getAvailableConfigurations(workspaceInfo)
+      if #configs == 0 then
+        vim.notify("No launch configurations found for current buffer's workspace", vim.log.levels.WARN)
+        return
+      end
+      
+      vim.ui.select(configs, {
+        prompt = "Select configuration from closest workspace:",
+        format_item = function(item)
+          return item
+        end,
+      }, function(choice)
+        if choice then
+          local session = self:createSessionFromConfig(choice, self.api.manager, workspaceInfo)
+          self.logger:info("Created session from closest configuration:", choice)
+        end
+      end)
+    else
+      -- Run specified configuration
+      local session = self:createSessionFromConfig(config_name, self.api.manager, workspaceInfo)
+      self.logger:info("Created session from closest configuration:", config_name)
+    end
+  end, {
+    nargs = "?",
+    complete = function()
+      local current_file = vim.api.nvim_buf_get_name(0)
+      if current_file == "" then
+        return {}
+      end
+      local workspaceInfo = self:detectWorkspace(current_file)
+      return self:getAvailableConfigurations(workspaceInfo)
+    end,
+    desc = "Start debugging session from closest launch.json to current buffer"
+  })
+
   -- Reload configurations command
   vim.api.nvim_create_user_command("NeodapReloadConfigs", function()
     self.cached_workspace_info = nil

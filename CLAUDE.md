@@ -382,6 +382,41 @@ Test.assert.spy(stopped_spy).was_called()
 - Maintain hierarchical event patterns
 - Prefer lazy over eager resource creation
 
+#### Method Naming Conventions
+Neodap uses strict method naming conventions to leverage automatic async wrapping:
+
+```lua
+-- ✅ CORRECT: camelCase for synchronous methods
+function MyPlugin:getCurrentFrame()
+  return self.current_frame
+end
+
+function MyPlugin:initializeState()
+  self.state = {}
+end
+
+-- ✅ CORRECT: PascalCase for asynchronous methods (auto-wrapped with NvimAsync)
+function MyPlugin:Render(frame)
+  local scopes = frame:scopes()  -- Expensive DAP operation, auto-wrapped
+  -- Complex rendering logic
+end
+
+function MyPlugin:UpdateDisplay(data)
+  -- Expensive UI updates, auto-wrapped
+end
+
+-- ❌ BANNED: snake_case methods (kebab-case also banned)
+function MyPlugin:get_current_frame() end  -- Use getCurrentFrame() instead
+function MyPlugin:init_state() end          -- Use initializeState() instead
+function MyPlugin:setup_events() end       -- Use setupEvents() instead
+```
+
+**Key Rules:**
+- **camelCase**: Synchronous methods that execute immediately
+- **PascalCase**: Methods that need async wrapping (expensive DAP operations, UI updates)
+- **BANNED**: `snake_case`, `kebab-case`, or any underscore/dash separated methods
+- **Rationale**: PascalCase methods get automatic NvimAsync wrapping, ensuring responsive UI
+
 ### Pull Request Process
 1. Ensure all tests pass: `nix run .#test spec`
 2. **Use snake_case test names for precise pattern matching**
