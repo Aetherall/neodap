@@ -363,6 +363,7 @@ function ScopeViewer:setupHighlights()
     highlight default NeodapScopeVariable guifg=#e0af68
     highlight default NeodapScopeValue guifg=#f7768e
     highlight default NeodapScopeType guifg=#bb9af7
+    highlight default NeodapScopeCurrent guibg=#3c3836 guifg=#fbf1c7 gui=bold
   ]])
 end
 
@@ -403,6 +404,35 @@ function ScopeViewer:Render(frame, session_id)
     local lines = {}
     local highlights = {}
     self.scope_map = {}
+
+    -- Find which scope contains the cursor position
+    local cursor_line, cursor_col = unpack(vim.api.nvim_win_get_cursor(0))
+    local current_scope = nil
+    
+    -- Try position-based highlighting first
+    for _, scope in ipairs(scopes) do
+        if scope.hasRange and scope:hasRange() then
+            local start, finish = scope:region()
+            if cursor_line >= start[1] and cursor_line <= finish[1] then
+                -- Check if cursor is within the scope's range
+                if (cursor_line > start[1] or cursor_col + 1 >= start[2]) and 
+                   (cursor_line < finish[1] or cursor_col + 1 <= finish[2]) then
+                    current_scope = scope
+                    break
+                end
+            end
+        end
+    end
+    
+    -- Fallback: highlight Local scope if no position-based match
+    if not current_scope then
+        for _, scope in ipairs(scopes) do
+            if scope.ref.name == "Local" or scope.ref.presentationHint == "locals" then
+                current_scope = scope
+                break
+            end
+        end
+    end
 
     for i, scope in ipairs(scopes) do
         local mt = getmetatable(scope)
@@ -445,7 +475,13 @@ function ScopeViewer:Render(frame, session_id)
         local name = scope.ref.name or "Unknown"
         table.insert(line_parts, name)
         local name_start = #table.concat(line_parts, "") - #name
-        table.insert(hl_parts, { name_start, name_start + #name, "NeodapScopeExpanded" })
+        
+        -- Use current scope highlight if this scope contains the cursor
+        local name_highlight = "NeodapScopeExpanded"
+        if current_scope and scope == current_scope then
+            name_highlight = "NeodapScopeCurrent"
+        end
+        table.insert(hl_parts, { name_start, name_start + #name, name_highlight })
 
         -- Add scope type if available
         if scope.ref.expensive then
