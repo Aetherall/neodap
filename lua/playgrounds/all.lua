@@ -26,30 +26,25 @@ local function go()
 
     local api = Api.register(manager)
 
-    local JumpToStoppedFrame = require("neodap.plugins.JumpToStoppedFrame")
-    -- local HighlightCurrentFrame = require("neodap.plugins.HighlightCurrentFrame")
-    local BreakpointVirtualText = require("neodap.plugins.BreakpointVirtualText")
-    local BreakpointApi = require("neodap.plugins.BreakpointApi")
-    local FrameVariables = require("neodap.plugins.FrameVariables")
-    local ToggleBreakpoint = require("neodap.plugins.ToggleBreakpoint")
-    local StackNavigation = require("neodap.plugins.StackNavigation")
-    local FrameHighlight = require("neodap.plugins.FrameHighlight")
-    local CallStackViewer = require("neodap.plugins.CallStackViewer")
+    -- -- local HighlightCurrentFrame = require("neodap.plugins.HighlightCurrentFrame")
+    -- local BreakpointVirtualText = require("neodap.plugins.BreakpointVirtualText")
+    -- local BreakpointApi = require("neodap.plugins.BreakpointApi")
+    -- -- local FrameVariables = require("neodap.plugins.FrameVariables")
+    -- local ToggleBreakpoint = require("neodap.plugins.ToggleBreakpoint")
+    -- local StackNavigation = require("neodap.plugins.StackNavigation")
+    -- local FrameHighlight = require("neodap.plugins.FrameHighlight")
+    -- -- local CallStackViewer = require("neodap.plugins.CallStackViewer")
 
-    api:getPluginInstance(JumpToStoppedFrame)
-    -- api:getPluginInstance(HighlightCurrentFrame)
-    api:getPluginInstance(BreakpointVirtualText)
-    api:getPluginInstance(BreakpointApi)
-    api:getPluginInstance(FrameVariables)
-    local stack = api:getPluginInstance(StackNavigation)
-    local toggleBreakpoint = api:getPluginInstance(ToggleBreakpoint)
-    api:getPluginInstance(FrameHighlight)
+    api:getPluginInstance(require("neodap.plugins.JumpToStoppedFrame"))
+    api:getPluginInstance(require("neodap.plugins.BreakpointVirtualText"))
+    api:getPluginInstance(require("neodap.plugins.BreakpointApi"))
+    -- api:getPluginInstance(require("neodap.plugins.FrameVariables"))
+    local stack = api:getPluginInstance(require("neodap.plugins.StackNavigation"))
+    local brkpt = api:getPluginInstance(require("neodap.plugins.ToggleBreakpoint"))
+    api:getPluginInstance(require("neodap.plugins.FrameHighlight"))
     api:getPluginInstance(require("neodap.plugins.DebugMode"))
-    api:getPluginInstance(CallStackViewer)
-    api:getPluginInstance(require("neodap.plugins.ScopeViewer"))
-
-
-    -- DebugMode.plugin(api)
+    api:getPluginInstance(require("neodap.plugins.VariableTree"))
+    -- api:getPluginInstance(require("neodap.plugins.ScopeViewer"))
 
     local currentStopped = nil
 
@@ -124,7 +119,7 @@ local function go()
                     -- Use ToggleBreakpoint plugin to add breakpoint
                     local Location = require('neodap.api.Location')
                     local location = Location.fromSource(source, { line = 3, column = 1 })
-                    toggleBreakpoint:toggle(location)
+                    brkpt:toggle(location)
                 end
             end
         end)

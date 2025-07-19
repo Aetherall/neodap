@@ -1,20 +1,49 @@
 local nio = require("nio")
+local VariableCore = require("neodap.plugins.VariableCore")
+local Class = require("neodap.tools.class")
+local Logger = require("neodap.tools.logger")
 
-local name = "FrameVariables"
-return {
-  name = name,
-  description = "Plugin to display frame variables in Neo-tree",
-  ---@param api Api
-  plugin = function(api)
-    local current_frame = nil
-    local neotree_available = false
-    local source_registered = false
-    local cleanup_functions = {}  -- Store cleanup functions for event handlers
-    local plugin_destroyed = false  -- Flag to prevent handlers from running after destruction
-    local current_variables_buffer = nil  -- Store the current variables buffer for API access
+---@class FrameVariablesPlugin
+---@field refresh fun(): nil
+---@field destroy fun(): nil
+---@field try_register_neotree fun(): nil
+
+---@class FrameVariablesProps
+---@field api Api
+---@field logger Logger
+---@field variableCore VariableCore
+
+---@class FrameVariables: FrameVariablesProps
+---@field new Constructor<FrameVariablesProps>
+local FrameVariables = Class()
+
+FrameVariables.name = "FrameVariables"
+FrameVariables.description = "Plugin to display frame variables in floating windows with tree navigation"
+
+function FrameVariables.plugin(api)
+  local logger = Logger.get("Plugin:FrameVariables")
+  
+  local instance = FrameVariables:new({
+    api = api,
+    logger = logger,
+    variableCore = api:getPluginInstance(VariableCore)
+  })
+  
+  return instance
+end
+
+function FrameVariables:init()
+    -- Initialize instance variables
+    self.current_frame = nil
+    self.neotree_available = false
+    self.source_registered = false
+    self.cleanup_functions = {}  -- Store cleanup functions for event handlers
+    self.plugin_destroyed = false  -- Flag to prevent handlers from running after destruction
+    self.current_variables_buffer = nil  -- Store the current variables buffer for API access
+    self.user_collapsed = {} -- Track user-initiated collapses globally to persist across refreshes
     
     -- Debug: Track plugin initialization (can be removed in production)
-    local instance_id = tostring(api):sub(-8)  -- Last 8 chars of API instance for tracking
+    local instance_id = tostring(self.api):sub(-8)  -- Last 8 chars of API instance for tracking
 
     -- Neo-tree source definition
     local source = {
@@ -98,11 +127,12 @@ return {
         end
 
         if variablesReference then
-          local variables = current_frame:variables(variablesReference)
-          if variables then
+          local raw_variables = current_frame:variables(variablesReference)
+          if raw_variables then
             local nodes = {}
-            for _, var in ipairs(variables) do
-              table.insert(nodes, variable_to_node(var, parent_id))
+            for _, raw_var in ipairs(raw_variables) do
+              local wrapped_var = { ref = raw_var }
+              table.insert(nodes, variable_to_node(wrapped_var, parent_id))
             end
             callback(nodes)
           else
@@ -251,12 +281,20 @@ return {
         local line_to_data = {}
         local variables_cache = {}
         
-        -- Function to check if a variable should be lazy evaluated
+        -- Use VariableCore's lazy variable detection
         local function is_lazy_variable(var_ref)
-          return var_ref.presentationHint and 
-                 (var_ref.presentationHint.lazy or 
-                  var_ref.presentationHint.attributes and 
-                  vim.tbl_contains(var_ref.presentationHint.attributes, "lazy"))
+          return variableCore:isLazyVariable(var_ref)
+        end
+        
+        -- Helper function to get basic formatted value using VariableCore
+        local function get_basic_formatted_value(var_ref)
+          return variableCore:formatVariableValue(var_ref)
+        end
+        
+        -- Helper function to format simple variables using VariableCore
+        local function format_simple_variable(var_ref, indent)
+          local formatted = variableCore:formatVariable(var_ref, indent)
+          return formatted.text, formatted.highlights
         end
         
         -- Function to evaluate a lazy variable using variables() call like VSCode
@@ -271,7 +309,7 @@ return {
           
           if success and resolved_vars and #resolved_vars == 1 then
             -- Return the resolved variable reference (like VSCode does)
-            return resolved_vars[1].ref
+            return resolved_vars[1]
           end
           return nil
         end
@@ -286,7 +324,15 @@ return {
               for _, scope in ipairs(scopes) do
                 local scope_id = "scope_" .. scope.ref.variablesReference
                 if expanded[scope_id] then
-                  variables_cache[scope_id] = scope:variables()
+                  local raw_variables = current_frame:variables(scope.ref.variablesReference)
+                  -- Wrap variables in expected structure
+                  local wrapped_variables = {}
+                  if raw_variables then
+                    for _, raw_var in ipairs(raw_variables) do
+                      table.insert(wrapped_variables, { ref = raw_var })
+                    end
+                  end
+                  variables_cache[scope_id] = wrapped_variables
                   
                   -- Fetch nested variables and resolve lazy variables
                   if variables_cache[scope_id] then
@@ -303,7 +349,14 @@ return {
                       end
                       
                       if expanded[var_id] and var.ref.variablesReference and var.ref.variablesReference > 0 then
-                        variables_cache[var_id] = current_frame:variables(var.ref.variablesReference)
+                        local raw_nested = current_frame:variables(var.ref.variablesReference)
+                        local wrapped_nested = {}
+                        if raw_nested then
+                          for _, raw_nested_var in ipairs(raw_nested) do
+                            table.insert(wrapped_nested, { ref = raw_nested_var })
+                          end
+                        end
+                        variables_cache[var_id] = wrapped_nested
                       end
                     end
                   end
@@ -341,8 +394,10 @@ return {
           local lines = {}
           local highlights = {} -- Store highlight information
           
-          -- Function to get highlight group based on variable type
+          -- Use VariableCore's highlight logic (simplified for FrameVariables custom display)
           local function get_highlight_group(var_type, var_value)
+            -- FrameVariables uses its own complex display format
+            -- Keep the existing highlighting for now since it's custom formatted
             if not var_type then return nil end
             
             local type_lower = var_type:lower()
@@ -634,11 +689,11 @@ return {
         -- Initial fetch
         local scopes = current_frame:scopes()
         
-        -- Auto-expand all non-expensive scopes by default
+        -- Auto-expand all non-expensive scopes using VariableCore logic, unless user explicitly collapsed them
         if scopes then
           for _, scope in ipairs(scopes) do
             local scope_id = "scope_" .. scope.ref.variablesReference
-            if not scope.ref.expensive then
+            if variableCore:shouldAutoExpand(scope.ref) and not user_collapsed[scope_id] then
               expanded[scope_id] = true
             end
           end
@@ -659,7 +714,8 @@ return {
           local function refresh_display()
             nio.run(function()
               fetch_variables():wait()
-              lines, highlights = build_tree(scopes)
+              local current_scopes = current_frame:scopes()
+              lines, highlights = build_tree(current_scopes)
               vim.schedule(function()
                 vim.bo[buf].modifiable = true
                 vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
@@ -709,6 +765,7 @@ return {
           local preview_buf = vim.api.nvim_create_buf(false, true)
           vim.bo[preview_buf].modifiable = false
           vim.bo[preview_buf].buftype = "nofile"
+          vim.bo[preview_buf].filetype = "neodap-variables-preview"
           
           local preview_win = vim.api.nvim_open_win(preview_buf, false, {
             relative = "editor",
@@ -833,8 +890,8 @@ return {
             vim.api.nvim_buf_set_lines(preview_buf, 0, -1, false, preview_lines)
             vim.bo[preview_buf].modifiable = false
             
-            -- Always use JavaScript syntax highlighting for consistency
-            vim.bo[preview_buf].filetype = "javascript"
+            -- Keep the neodap-variables-preview filetype for window detection
+            -- vim.bo[preview_buf].filetype = "javascript" -- Commented out to preserve filetype
           end
           
           -- Initial preview
@@ -865,6 +922,18 @@ return {
               
               if can_expand then
                 expanded[data.id] = not expanded[data.id]
+                
+                -- Track user-initiated collapses for scopes to override auto-expansion
+                if data.type == "scope" then
+                  if not expanded[data.id] then
+                    -- User collapsed this scope - remember it to prevent auto-expansion
+                    user_collapsed[data.id] = true
+                  else
+                    -- User expanded this scope - remove collapse override
+                    user_collapsed[data.id] = nil
+                  end
+                end
+                
                 local current_line = vim.api.nvim_win_get_cursor(win)[1]
                 refresh_display()
                 -- Restore cursor position
@@ -890,6 +959,18 @@ return {
               
               if can_expand then
                 expanded[data.id] = not expanded[data.id]
+                
+                -- Track user-initiated collapses for scopes to override auto-expansion
+                if data.type == "scope" then
+                  if not expanded[data.id] then
+                    -- User collapsed this scope - remember it to prevent auto-expansion
+                    user_collapsed[data.id] = true
+                  else
+                    -- User expanded this scope - remove collapse override
+                    user_collapsed[data.id] = nil
+                  end
+                end
+                
                 local current_line = vim.api.nvim_win_get_cursor(win)[1]
                 refresh_display()
                 vim.api.nvim_win_set_cursor(win, {current_line, 0})
@@ -944,7 +1025,7 @@ return {
             -- Set up edit buffer
             vim.bo[preview_buf].modifiable = true
             vim.api.nvim_buf_set_lines(preview_buf, 0, -1, false, edit_lines)
-            vim.bo[preview_buf].filetype = "javascript"
+            -- vim.bo[preview_buf].filetype = "javascript" -- Commented out to preserve filetype
             
             -- Move cursor to start of value (after comments)
             vim.api.nvim_win_set_cursor(preview_win, {5, 0})
@@ -1080,12 +1161,16 @@ return {
                       -- If this variable is expanded, we need to fetch its children
                       if expanded[data.id] then
                         -- Re-fetch the children with the new variablesReference
-                        local success, children = pcall(function()
+                        local success, raw_children = pcall(function()
                           return current_frame:variables(data.ref.variablesReference)
                         end)
                         
-                        if success and children then
-                          variables_cache[data.id] = children
+                        if success and raw_children then
+                          local wrapped_children = {}
+                          for _, raw_child in ipairs(raw_children) do
+                            table.insert(wrapped_children, { ref = raw_child })
+                          end
+                          variables_cache[data.id] = wrapped_children
                         end
                       end
                     end
@@ -1193,6 +1278,115 @@ Edit Mode (in preview):
     end
     vim.api.nvim_create_user_command("NeodapVariablesFloat", create_variables_tree, {})
 
+    -- Additional commands for easy testing and interaction
+    -- Check and delete existing commands to avoid conflicts
+    local commands_to_create = {
+      "NeodapVariablesShow",
+      "NeodapVariablesHide", 
+      "NeodapVariablesToggle",
+      "NeodapVariablesStatus"
+    }
+    
+    for _, cmd_name in ipairs(commands_to_create) do
+      if vim.api.nvim_get_commands({})[cmd_name] then
+        vim.api.nvim_del_user_command(cmd_name)
+      end
+    end
+    
+    -- Show variables in floating window (alias for NeodapVariablesFloat)
+    vim.api.nvim_create_user_command("NeodapVariablesShow", create_variables_tree, {})
+    
+    -- Hide variables window
+    vim.api.nvim_create_user_command("NeodapVariablesHide", function()
+      -- Close any open variables windows (both main and preview)
+      local closed_count = 0
+      
+      for _, win in ipairs(vim.api.nvim_list_wins()) do
+        if vim.api.nvim_win_is_valid(win) then
+          local buf = vim.api.nvim_win_get_buf(win)
+          local ft = vim.bo[buf].filetype
+          local config = vim.api.nvim_win_get_config(win)
+          
+          -- Close windows that match our criteria
+          local should_close = false
+          
+          -- Check for FrameVariables buffer types
+          if ft == "neodap-variables" or 
+             ft == "neodap-variables-preview" or 
+             vim.api.nvim_buf_get_name(buf):match("FrameVariables") then
+            should_close = true
+          end
+          
+          if should_close then
+            vim.api.nvim_win_close(win, true)
+            closed_count = closed_count + 1
+          end
+        end
+      end
+      
+      if closed_count > 0 then
+        vim.notify("FrameVariables windows closed (" .. closed_count .. ")", vim.log.levels.INFO)
+      else
+        vim.notify("No FrameVariables windows found", vim.log.levels.INFO)
+      end
+    end, {})
+    
+    -- Toggle variables window
+    vim.api.nvim_create_user_command("NeodapVariablesToggle", function()
+      -- Check if any FrameVariables windows are currently open
+      local has_open_windows = false
+      for _, win in ipairs(vim.api.nvim_list_wins()) do
+        if vim.api.nvim_win_is_valid(win) then
+          local buf = vim.api.nvim_win_get_buf(win)
+          local ft = vim.bo[buf].filetype
+          local title = ""
+          
+          -- Get window title for floating windows
+          local config = vim.api.nvim_win_get_config(win)
+          if config.relative ~= "" and config.title then
+            -- Handle title properly - it might be a table or string
+            if type(config.title) == "string" then
+              title = config.title
+            elseif type(config.title) == "table" and config.title[1] then
+              title = config.title[1]
+            else
+              title = tostring(config.title)
+            end
+          end
+          
+          -- Check if this is a FrameVariables window
+          local is_frame_vars_window = false
+          if ft == "neodap-variables" or 
+             ft == "neodap-variables-preview" or 
+             vim.api.nvim_buf_get_name(buf):match("FrameVariables") then
+            is_frame_vars_window = true
+          end
+          
+          if is_frame_vars_window then
+            has_open_windows = true
+            break
+          end
+        end
+      end
+      
+      if has_open_windows then
+        vim.cmd("NeodapVariablesHide")
+      else
+        create_variables_tree()
+      end
+    end, {})
+    
+    -- Show current frame status
+    vim.api.nvim_create_user_command("NeodapVariablesStatus", function()
+      if current_frame then
+        local scopes = current_frame:scopes()
+        local scope_count = scopes and #scopes or 0
+        vim.notify(string.format("FrameVariables: Active frame with %d scopes", scope_count), vim.log.levels.INFO)
+      else
+        vim.notify("FrameVariables: No active debugging frame", vim.log.levels.WARN)
+      end
+    end, {})
+
     -- Cleanup function
     local function destroy()
       -- Set destroyed flag to prevent handlers from running
@@ -1207,6 +1401,10 @@ Edit Mode (in preview):
       -- Delete user commands
       pcall(vim.api.nvim_del_user_command, "NeodapVariables")
       pcall(vim.api.nvim_del_user_command, "NeodapVariablesFloat")
+      pcall(vim.api.nvim_del_user_command, "NeodapVariablesShow")
+      pcall(vim.api.nvim_del_user_command, "NeodapVariablesHide")
+      pcall(vim.api.nvim_del_user_command, "NeodapVariablesToggle")
+      pcall(vim.api.nvim_del_user_command, "NeodapVariablesStatus")
       
       -- Clear frame and buffer references
       current_frame = nil

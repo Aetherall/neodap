@@ -1,19 +1,13 @@
 {
-    "Lua.runtime.version": "Lua 5.1",
-    "Lua.workspace.library": [
-        "${3rd}/luv/library",
-        "${3rd}/busted/library",
-        "${3rd}/luassert/library"
-    ],
-    "Lua.diagnostics.globals": [
-        "vim"
-    ],
-    "Lua.diagnostics.disable": [
-        "discard-returns"
-    ],
-    "Lua.workspace.checkThirdParty": false,
-    "Lua.type.inferParamType": true,
-    "Lua.type.weakUnionCheck": false,
+    "Lua.diagnostics.enable": false,
+    "Lua.addonManager.enable": false,
+    "Lua.completion.enable": false,
+    "Lua.hint.enable": false,
+    "Lua.format.enable": true,
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "sumneko.lua",
+    "editor.tabSize": 2,
+    "editor.indentSize": "tabSize",
     "nix.formatterPath": "alejandra",
     "files.exclude": {
         "**/.git": true,

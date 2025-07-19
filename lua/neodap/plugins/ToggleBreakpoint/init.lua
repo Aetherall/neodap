@@ -31,10 +31,9 @@ end
 ---@param location api.Location
 ---@return api.Location
 function ToggleBreakpoint:adjust(location)
-  
   -- Default to column 0 if not specified
   local loc = location:adjusted({ column = 0 })
-  
+
   -- Check all sessions for the best breakpoint location
   for session in self.api:eachSession() do
     local source = session:getSource(location)
@@ -54,18 +53,18 @@ end
 ---@param location api.Location?
 function ToggleBreakpoint:toggle(location)
   local target = location or Location.fromCursor()
-  
+
   local adjusted = self:adjust(target)
-  
+
   local existingBreakpoint = self.breakpointApi.getBreakpoints():atLocation(adjusted):first()
   if existingBreakpoint then
     self.breakpointApi.removeBreakpoint(existingBreakpoint)
-    self.logger:info("Removed existing breakpoint at", adjusted)
+    self.logger:info("Removed existing breakpoint at", adjusted.key)
     return
   end
-  
+
   self.breakpointApi.setBreakpoint(adjusted)
-  self.logger:info("Set breakpoint at", adjusted)
+  self.logger:info("Set breakpoint at", adjusted.key)
 end
 
 -- Auto-wrapped version for vim context boundaries

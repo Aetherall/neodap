@@ -98,6 +98,7 @@ Test.Describe("Stack Navigation Visual Demo", function()
 end)
 
 
+
 --[[ TERMINAL SNAPSHOT: recurse_with_breakpoint
 Size: 24x80
 Cursor: [2, 1] (line 2, col 1)
@@ -109,7 +110,7 @@ Mode: n
  4| }
  5| 
  6| // Test with smaller number for debugging
- 7| setTimeout(() => fibo(5), 1000);
+ 7| setTimeout(() => fibo(10), 1000);
  8| ~
  9| ~
 10| ~

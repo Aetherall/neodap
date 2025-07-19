@@ -127,6 +127,24 @@ end)
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 --[[ TERMINAL SNAPSHOT: closest_launch_file_opened
 Size: 24x80
 Cursor: [1, 0] (line 1, col 0)
@@ -197,10 +215,10 @@ Mode: n
  1| let i = 0;
  2| setInterval(() => {
  3|  console.log("ALoop iteration: ", i++);      ╭──────────── Scopes ─────────────╮
- 4|  console.log("BLoop iteration: ", i++);      │▶ Local                          │
- 5|  console.log("CLoop iteration: ", i++);      │▶ Closure                        │
- 6|  console.log("DLoop iteration: ", i++);      │▶ Global (expensive)             │
- 7| }, 1000)                                     │                                 │
+ 4|  console.log("BLoop iteration: ", i++);      │▼ Local                          │
+ 5|  console.log("CLoop iteration: ", i++);      │  this = undefined : undefined   │
+ 6|  console.log("DLoop iteration: ", i++);      │▼ Closure                        │
+ 7| }, 1000)                                     │  i = 0 : number                 │
  8| ~                                            ╰─────────────────────────────────╯
  9| ~                                            ╭────────── Call Stack ───────────╮
 10| ~                                            │                                 │
@@ -217,7 +235,7 @@ Mode: n
 21| ~
 22| ~
 23| spec/fixtures/workspaces/single-node-project/loop.js          3,2            All
-24| [Plugin:BreakpointApi] Session 2 Thread 0 - Stopped at breakpoint(s): { 0 }
+24| [Plugin:BreakpointApi] Session 2 Thread 0 - Stopped at breakpo1,1           All
 ]]
 
 --[[ TERMINAL SNAPSHOT: closest_launch_with_scope_viewer
@@ -228,10 +246,10 @@ Mode: n
  1| let i = 0;
  2| setInterval(() => {
  3|  console.log("ALoop iteration: ", i++);      ╭──────────── Scopes ─────────────╮
- 4|  console.log("BLoop iteration: ", i++);      │▶ Local                          │
- 5|  console.log("CLoop iteration: ", i++);      │▶ Closure                        │
- 6|  console.log("DLoop iteration: ", i++);      │▶ Global (expensive)             │
- 7| }, 1000)                                     │                                 │
+ 4|  console.log("BLoop iteration: ", i++);      │▼ Local                          │
+ 5|  console.log("CLoop iteration: ", i++);      │  this = undefined : undefined   │
+ 6|  console.log("DLoop iteration: ", i++);      │▼ Closure                        │
+ 7| }, 1000)                                     │  i = 0 : number                 │
  8| ~                                            ╰─────────────────────────────────╯
  9| ~                                            ╭────────── Call Stack ───────────╮
 10| ~                                            │                                 │
@@ -259,10 +277,10 @@ Mode: n
  1| let i = 0;
  2| setInterval(() => {
  3|  console.log("ALoop iteration: ", i++);      ╭──────────── Scopes ─────────────╮
- 4|  console.log("BLoop iteration: ", i++);      │▶ Local                          │
- 5|  console.log("CLoop iteration: ", i++);      │▶ Closure                        │
- 6|  console.log("DLoop iteration: ", i++);      │▶ Global (expensive)             │
- 7| }, 1000)                                     │                                 │
+ 4|  console.log("BLoop iteration: ", i++);      │▼ Local                          │
+ 5|  console.log("CLoop iteration: ", i++);      │  this = undefined : undefined   │
+ 6|  console.log("DLoop iteration: ", i++);      │▼ Closure                        │
+ 7| }, 1000)                                     │  i = 0 : number                 │
  8| ~                                            ╰─────────────────────────────────╯
  9| ~                                            ╭────────── Call Stack ───────────╮
 10| ~                                            │                                 │

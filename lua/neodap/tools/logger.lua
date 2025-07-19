@@ -37,7 +37,8 @@ local LEVEL_NAMES = {
 }
 
 -- Default log level (INFO)
-local DEFAULT_LOG_LEVEL = os.getenv("NEODAP_LOG_LEVEL") and LOG_LEVELS[os.getenv("NEODAP_LOG_LEVEL"):upper()] or LOG_LEVELS.INFO
+local DEFAULT_LOG_LEVEL = os.getenv("NEODAP_LOG_LEVEL") and LOG_LEVELS[os.getenv("NEODAP_LOG_LEVEL"):upper()] or
+LOG_LEVELS.INFO
 
 -- Create namespace-specific instances
 local instances = {}
@@ -100,7 +101,7 @@ function Logger.get(namespace)
         local is_playground = false
         pcall(function()
             is_playground = vim.env.NEODAP_PLAYGROUND or
-            (vim.fn.argv()[0] and vim.fn.argv()[0]:match("playground%.lua"))
+                (vim.fn.argv()[0] and vim.fn.argv()[0]:match("playground%.lua"))
         end)
 
         instances[namespace] = Logger:new({
@@ -141,7 +142,7 @@ end
 
 function Logger:_write(level_num, ...)
     if not self.enabled then return end
-    
+
     -- Check if this log level should be written
     if level_num < self.level then return end
 
@@ -171,7 +172,7 @@ function Logger:_write(level_num, ...)
     local log_line = string.format("[%s] [%s] %s%s - %s\n", timestamp, level_name, namespace_prefix, location, message)
     self.file:write(log_line)
     self.file:flush()
-    
+
     -- For NOTICE level and above, also show visual feedback
     if level_num >= LOG_LEVELS.NOTICE and not self.silent then
         local vim_level = vim.log.levels.INFO
@@ -182,7 +183,7 @@ function Logger:_write(level_num, ...)
         elseif level_num >= LOG_LEVELS.WARN then
             vim_level = vim.log.levels.WARN
         end
-        
+
         local notify_message = namespace_prefix .. message
         -- Schedule the notification to avoid fast event context issues
         vim.schedule(function()

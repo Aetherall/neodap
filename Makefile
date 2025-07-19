@@ -8,7 +8,7 @@ help:
 	@echo ""
 	@echo "Usage:"
 	@echo "  make test [TARGET] [PATTERN=pattern]  - Run tests with lazy.nvim (dirs run each file separately)"
-	@echo "  make log [FILTER=filter]             - Show latest numbered log with optional filter" 
+	@echo "  make log [FILTER=filter]             - Show latest numbered log with optional filter (always shows WARN/ERROR/FAIL/CRITICAL)" 
 	@echo "  make play                            - Run playground with lazy.nvim"
 	@echo "  make run                             - Run lazy.nvim interpreter"
 	@echo "  make clean-logs                      - Clean up all numbered log files"
@@ -20,7 +20,7 @@ help:
 	@echo "  make test PATTERN=breakpoint_hit             # Run tests matching pattern"
 	@echo "  make test spec/breakpoints/ PATTERN=toggle   # Run tests in folder with pattern"
 	@echo "  make log                                     # Show the latest numbered log file"
-	@echo "  make log FILTER=ERROR                        # Show only ERROR lines from latest log"
+	@echo "  make log FILTER=ERROR                        # Show only ERROR lines + all WARN/ERROR/FAIL/CRITICAL from latest log"
 	@echo "  make clean-logs                              # Clean up all numbered log files"
 	@echo "  echo 'print(\"Hello\")' | make run           # Run piped code"
 	@echo "  make run script.lua                          # Run lua file"
@@ -79,6 +79,7 @@ test:
 	fi
 
 # Log command - show the latest numbered log file with optional filter
+# When filtering, always include WARN, ERROR, FAIL, and CRITICAL logs
 log:
 	@LOG_FILE=$$(ls -t log/neodap.*.log 2>/dev/null | head -1); \
 	if [ -z "$$LOG_FILE" ]; then \
@@ -87,8 +88,8 @@ log:
 	fi; \
 	echo "Showing latest log: $$LOG_FILE"; \
 	if [ -n "$(FILTER)" ]; then \
-		echo "Filter: $(FILTER)"; \
-		grep -i "$(FILTER)" "$$LOG_FILE" || echo "No matches found for filter: $(FILTER)"; \
+		echo "Filter: $(FILTER) (always includes WARN/ERROR/FAIL/CRITICAL)"; \
+		(grep -i "$(FILTER)" "$$LOG_FILE"; grep -E '\[(WARN|ERROR|FAIL|CRITICAL)\]' "$$LOG_FILE") | sort -u || echo "No matches found for filter: $(FILTER)"; \
 	else \
 		cat "$$LOG_FILE"; \
 	fi

@@ -41,7 +41,7 @@ if silent_mode then
       original_notify(msg, level, opts)
     end
   end
-  
+
   -- Suppress print statements from lazy.nvim
   print = function(...)
     -- Suppress all print output during lazy.nvim setup
@@ -69,30 +69,50 @@ require("lazy.minit").repro({
       "nvim-neotest/nvim-nio",
       lazy = false,
     },
+
+    {
+      "nvim-neo-tree/neo-tree.nvim",
+      branch = "v3.x",
+      dependencies = {
+        "nvim-lua/plenary.nvim",
+        "nvim-tree/nvim-web-devicons",         -- not strictly required, but recommended
+        "MunifTanjim/nui.nvim",
+        -- Optional image support for file preview: See `# Preview Mode` for more information.
+        -- {"3rd/image.nvim", opts = {}},
+        -- OR use snacks.nvim's image module:
+        -- "folke/snacks.nvim",
+      },
+      lazy = false,       -- neo-tree will lazily load itself
+      ---@module "neo-tree"
+      ---@type neotree.Config?
+      opts = {
+        -- add options here
+      },
+    },
     {
       "nvim-lua/plenary.nvim",
       lazy = false,
     },
     {
-      "MunifTanjim/nui.nvim", 
+      "MunifTanjim/nui.nvim",
       lazy = false,
     },
     {
       "nvim-telescope/telescope.nvim",
       lazy = false,
     },
-    
+
     -- Optional development plugins
     {
       "folke/trouble.nvim",
       lazy = true,
     },
-    
+
     {
       "nvim-treesitter/nvim-treesitter",
       lazy = true,
     },
-    
+
     -- Add neodap itself as a plugin from current directory
     {
       dir = ".",
@@ -100,25 +120,25 @@ require("lazy.minit").repro({
       lazy = false,
     },
   },
-  
+
   -- Configuration for non-interactive use
   install = {
     missing = true,
   },
-  
+
   performance = {
     cache = {
       enabled = true,
     },
     reset_packpath = false,
   },
-  
+
   -- Minimal UI for headless operation
   ui = {
     border = "none",
     backdrop = 100,
   },
-  
+
   -- Control headless output
   headless = {
     process = false,
@@ -137,19 +157,19 @@ end
 -- Function to get lua code from various sources
 local function get_lua_code()
   local input_lines = {}
-  
+
   -- Check command line arguments first
   local args = vim.v.argv or {}
-  
+
   if os.getenv("LAZY_DEBUG") then
     print("lazy-lua-interpreter: Processing args:", vim.inspect(args))
   end
-  
+
   -- Look for arguments that come after the script name
   local script_found = false
   for i = 1, #args do
     local arg = args[i]
-    
+
     -- Skip until we find our interpreter script
     if arg:match("interpreter%.lua$") then
       script_found = true
@@ -177,14 +197,14 @@ local function get_lua_code()
       break
     end
   end
-  
+
   -- If no arguments, try to read from stdin
   if #input_lines == 0 then
     local ok, stdin_input = pcall(io.read, "*a")
     if ok and stdin_input and stdin_input:len() > 0 then
       -- Clean up the input - remove trailing whitespace but preserve the code structure
       stdin_input = stdin_input:gsub("%s*$", "")
-      
+
       -- Don't split by lines, keep the input as a single block of code
       if stdin_input:len() > 0 then
         table.insert(input_lines, stdin_input)
@@ -194,7 +214,7 @@ local function get_lua_code()
       end
     end
   end
-  
+
   -- Join all input lines into a single string
   return table.concat(input_lines, "\n")
 end
@@ -202,7 +222,7 @@ end
 -- Function to execute lua code
 local function execute_code()
   local lua_code = get_lua_code()
-  
+
   if lua_code and lua_code:len() > 0 then
     if os.getenv("LAZY_DEBUG") then
       print("lazy-lua-interpreter: Executing Lua code:")
@@ -210,7 +230,7 @@ local function execute_code()
       print(lua_code)
       print("--- END CODE ---")
     end
-    
+
     -- Execute the lua code with better error handling
     local success, result = pcall(function()
       -- Use load() instead of loadstring() for better Lua 5.1+ compatibility
@@ -220,7 +240,7 @@ local function execute_code()
       end
       return func()
     end)
-    
+
     if success then
       if os.getenv("LAZY_DEBUG") then
         print("lazy-lua-interpreter: Code executed successfully")
@@ -246,7 +266,7 @@ vim.schedule(function()
     vim.notify = original_notify
     print = original_print
   end
-  
+
   execute_code()
   -- Exit successfully
   vim.cmd("quit")

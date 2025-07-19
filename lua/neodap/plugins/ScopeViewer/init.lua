@@ -3,6 +3,7 @@ local Class = require("neodap.tools.class")
 local Location = require("neodap.api.Location")
 local StackNavigation = require("neodap.plugins.StackNavigation")
 local DebugOverlay = require("neodap.plugins.DebugOverlay")
+local VariableCore = require("neodap.plugins.VariableCore")
 local NvimAsync = require("neodap.tools.async")
 
 ---@class neodap.plugin.ScopeViewerProps
@@ -10,6 +11,7 @@ local NvimAsync = require("neodap.tools.async")
 ---@field logger Logger
 ---@field stackNavigation neodap.plugin.StackNavigation
 ---@field debugOverlay neodap.plugin.DebugOverlay
+---@field variableCore neodap.plugin.VariableCore
 ---@field scopes table[]
 ---@field scope_map table<integer, api.Scope>
 ---@field current_frame api.Frame | nil
@@ -32,6 +34,7 @@ function ScopeViewer.plugin(api)
         logger = logger,
         stackNavigation = api:getPluginInstance(StackNavigation),
         debugOverlay = api:getPluginInstance(DebugOverlay),
+        variableCore = api:getPluginInstance(VariableCore),
         scopes = {},
         scope_map = {},
         current_frame = nil,
@@ -159,7 +162,6 @@ end
 -- Session State Management
 function ScopeViewer:InitSessionState(session_id)
     self.sessions[session_id] = {
-        expanded_scopes = {},
         current_frame = nil,
         autocmd_group = nil -- Will be created later in setupSessionEvents
     }
@@ -344,15 +346,12 @@ function ScopeViewer:OnPanelToggle(line, session_id)
 end
 
 function ScopeViewer:toggleScopeExpansion(scope, session_id)
-    local session_state = self:getSessionState(session_id)
-    if not session_state then return end
+    local scope_key = self.variableCore:getScopeKey(scope.ref, 0)
+    local new_state = self.variableCore:toggleScopeExpansion(session_id, scope_key)
     
-    local ref = scope.ref.variablesReference
-    if ref and ref > 0 then
-        session_state.expanded_scopes[ref] = not session_state.expanded_scopes[ref]
-        if session_state.current_frame then
-            self:Render(session_state.current_frame, session_id)
-        end
+    local session_state = self:getSessionState(session_id)
+    if session_state and session_state.current_frame then
+        self:Render(session_state.current_frame, session_id)
     end
 end
 
@@ -392,134 +391,20 @@ function ScopeViewer:Render(frame, session_id)
     end
 
     session_state.current_frame = frame
-    local scopes = frame:scopes() -- This can be expensive, but auto-wrapped in async
-    self.logger:debug("Retrieved scopes:", scopes and #scopes or "nil", "scopes")
-
-    if not scopes or #scopes == 0 then
-        self.logger:debug("No scopes available for frame", frame.ref.id)
-        self.debugOverlay:set_left_panel_content({ "No scopes available" }, {}, { scope_map = {} })
-        return
-    end
-
-    local lines = {}
-    local highlights = {}
-    self.scope_map = {}
-
-    -- Find which scope contains the cursor position
+    
+    -- Get cursor position for highlighting
     local cursor_line, cursor_col = unpack(vim.api.nvim_win_get_cursor(0))
-    local current_scope = nil
     
-    -- Try position-based highlighting first
-    for _, scope in ipairs(scopes) do
-        if scope.hasRange and scope:hasRange() then
-            local start, finish = scope:region()
-            if cursor_line >= start[1] and cursor_line <= finish[1] then
-                -- Check if cursor is within the scope's range
-                if (cursor_line > start[1] or cursor_col + 1 >= start[2]) and 
-                   (cursor_line < finish[1] or cursor_col + 1 <= finish[2]) then
-                    current_scope = scope
-                    break
-                end
-            end
-        end
-    end
+    -- Use VariableCore to build the scope tree with cursor-based highlighting
+    local lines, highlights, scope_map, expanded_state = self.variableCore:buildScopeTree(
+        frame, session_id, cursor_line, cursor_col
+    )
     
-    -- Fallback: highlight Local scope if no position-based match
-    if not current_scope then
-        for _, scope in ipairs(scopes) do
-            if scope.ref.name == "Local" or scope.ref.presentationHint == "locals" then
-                current_scope = scope
-                break
-            end
-        end
-    end
-
-    for i, scope in ipairs(scopes) do
-        local mt = getmetatable(scope)
-        local class_name = mt and mt.__index and mt.__index.name or "unknown"
-        self.logger:debug("Processing scope", i, "name:", scope.ref.name, "type:", type(scope), "class:", class_name, "has variables method:", scope.variables and "yes" or "no")
-        
-        if scope.variables then
-            self.logger:debug("Scope", scope.ref.name, "variables method type:", type(scope.variables))
-        else
-            self.logger:debug("Scope", scope.ref.name, "missing variables method, available methods:", vim.tbl_keys(scope))
-        end
-        
-        local line_parts = {}
-        local hl_parts = {}
-
-        -- Add expand/collapse indicator
-        local ref = scope.ref.variablesReference
-        local is_expandable = ref and ref > 0
-        
-        -- Auto-expand non-expensive scopes by default
-        local is_expensive = scope.ref.expensive
-        local is_expanded = session_state.expanded_scopes[ref]
-        
-        -- If this is the first time seeing this scope and it's not expensive, expand it by default
-        if is_expandable and is_expanded == nil and not is_expensive then
-            session_state.expanded_scopes[ref] = true
-            is_expanded = true
-            self.logger:debug("Auto-expanding non-expensive scope:", scope.ref.name)
-        end
-
-        if is_expandable then
-            local indicator = is_expanded and "▼ " or "▶ "
-            table.insert(line_parts, indicator)
-            table.insert(hl_parts, { 0, #indicator, is_expanded and "NeodapScopeExpanded" or "NeodapScopeCollapsed" })
-        else
-            table.insert(line_parts, "  ")
-        end
-
-        -- Add scope name
-        local name = scope.ref.name or "Unknown"
-        table.insert(line_parts, name)
-        local name_start = #table.concat(line_parts, "") - #name
-        
-        -- Use current scope highlight if this scope contains the cursor
-        local name_highlight = "NeodapScopeExpanded"
-        if current_scope and scope == current_scope then
-            name_highlight = "NeodapScopeCurrent"
-        end
-        table.insert(hl_parts, { name_start, name_start + #name, name_highlight })
-
-        -- Add scope type if available
-        if scope.ref.expensive then
-            table.insert(line_parts, " (expensive)")
-            local type_start = #table.concat(line_parts, "") - 11
-            table.insert(hl_parts, { type_start, type_start + 11, "NeodapScopeType" })
-        end
-
-        local line = table.concat(line_parts, "")
-        table.insert(lines, line)
-        table.insert(highlights, hl_parts)
-        self.scope_map[#lines] = scope
-
-        -- Add variables if scope is expanded (potentially expensive DAP operation)
-        if is_expanded then
-            self.logger:debug("Calling frame:variables() for scope:", scope.ref.name, "with variablesReference:", scope.ref.variablesReference)
-            -- Since Render is PascalCase (async), we can call frame:variables() directly with :wait()
-            local variables_response = frame:variables(scope.ref.variablesReference)
-            local variables = variables_response and variables_response or {}
-            
-            if variables and #variables > 0 then
-                self.logger:debug("Successfully got", #variables, "variables for scope:", scope.ref.name)
-                for _, variable in ipairs(variables) do
-                    local var_line = self:formatVariable(variable, 1)
-                    table.insert(lines, var_line.text)
-                    table.insert(highlights, var_line.highlights)
-                    self.scope_map[#lines] = scope -- Map to parent scope
-                end
-            else
-                self.logger:debug("No variables found for scope:", scope.ref.name)
-                -- Add a placeholder line indicating no variables
-                table.insert(lines, "    (no variables)")
-                table.insert(highlights, {})
-                self.scope_map[#lines] = scope
-            end
-        end
-    end
-
+    self.logger:debug("VariableCore built scope tree with", #lines, "lines")
+    
+    -- Convert VariableCore scope_map (line -> scope) to ScopeViewer format
+    self.scope_map = scope_map
+    
     -- Send content to debug overlay
     self.debugOverlay:set_left_panel_content(lines, highlights, { scope_map = self.scope_map })
 
@@ -527,47 +412,6 @@ function ScopeViewer:Render(frame, session_id)
     self:setupHighlights()
 end
 
-function ScopeViewer:formatVariable(variable, indent)
-    local line_parts = {}
-    local hl_parts = {}
-
-    -- Add indentation
-    local indent_str = string.rep("  ", indent)
-    table.insert(line_parts, indent_str)
-
-    -- Add variable name (raw DAP variable object)
-    local name = variable.name or "unknown"
-    table.insert(line_parts, name)
-    local name_start = #table.concat(line_parts, "") - #name
-    table.insert(hl_parts, { name_start, name_start + #name, "NeodapScopeVariable" })
-
-    -- Add value if available (raw DAP variable object)
-    if variable.value then
-        table.insert(line_parts, " = ")
-        local value = tostring(variable.value)
-        -- Replace newlines with visual representation to avoid buffer line issues
-        value = value:gsub("\n", "\\n"):gsub("\r", "\\r"):gsub("\t", "\\t")
-        if #value > 40 then
-            value = value:sub(1, 40) .. "..."
-        end
-        table.insert(line_parts, value)
-        local value_start = #table.concat(line_parts, "") - #value
-        table.insert(hl_parts, { value_start, value_start + #value, "NeodapScopeValue" })
-    end
-
-    -- Add type if available (raw DAP variable object)
-    if variable.type then
-        table.insert(line_parts, " : ")
-        table.insert(line_parts, variable.type)
-        local type_start = #table.concat(line_parts, "") - #variable.type
-        table.insert(hl_parts, { type_start, type_start + #variable.type, "NeodapScopeType" })
-    end
-
-    return {
-        text = table.concat(line_parts, ""),
-        highlights = hl_parts
-    }
-end
 
 function ScopeViewer:setupCommands()
     -- Clean up any existing commands
