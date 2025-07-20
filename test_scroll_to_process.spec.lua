@@ -91,6 +91,7 @@ Test.Describe("Scroll to process variable and expand", function()
   end)
 end)
 
+
 --[[ TERMINAL SNAPSHOT: process_variable_expanded
 Size: 24x80
 Cursor: [38, 0] (line 38, col 0)
@@ -108,17 +109,17 @@ Mode: n
 10| variable:   ▶ PerformanceObserverEntryLi│~
 11| variable:   ▶ PerformanceResourceTiming:│~
 12| variable:   ▼ process: ƒ get() { return │~
-13| variable:     ▶ env: {...}              │~
-14| variable:     ▶ argv: [...]             │~
-15| variable:       pid: 12345              │~
-16| variable:       platform: 'linux'       │~
-17| variable:       version: 'v18.17.0'     │~
-18| variable:   ▶ queueMicrotask: ƒ queueMic│~
-19| variable:   ▶ ReadableByteStreamControll│~
-20| variable:   ▶ ReadableStream: ƒ () { mod│~
-21| variable:   ▶ ReadableStreamBYOBReader: │~
-22| variable:   ▶ ReadableStreamBYOBRequest:│~
-23| <p_variables [1] [RO] 38,1           22% [No Name]            0,0-1          All
+13| variable:   ▶ queueMicrotask: ƒ queueMic│~
+14| variable:   ▶ ReadableByteStreamControll│~
+15| variable:   ▶ ReadableStream: ƒ () { mod│~
+16| variable:   ▶ ReadableStreamBYOBReader: │~
+17| variable:   ▶ ReadableStreamBYOBRequest:│~
+18| variable:   ▶ ReadableStreamDefaultContr│~
+19| variable:   ▶ ReadableStreamDefaultReade│~
+20| variable:   ▶ Request: ƒ () { mod ??= re│~
+21| variable:   ▶ Response: ƒ () { mod ??= r│~
+22| variable:   ▶ setImmediate: ƒ setImmedia│~
+23| <p_variables [1] [RO] 38,1           23% [No Name]            0,0-1          All
 24| 
 ]]
 

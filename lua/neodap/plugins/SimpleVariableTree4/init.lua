@@ -386,61 +386,62 @@ local function build_tree_recursive(frame, expanded_nodes)
           print("Expanding variable:", var_node.name:gsub("^%s*", ""))
           print("Variable reference:", var_node.extra.variable_reference)
           
-          -- Build Level 2+ expansion recursively using cached tree approach
+          -- Build Level 2+ expansion recursively using real DAP data
           local function build_expanded_levels(current_frame, parent_id, var_ref, level, max_level)
             if level > max_level then return end
             
-            -- Get child variables from the cached tree if available
-            -- For now, use simplified expansion to avoid async issues
-            if level == 2 then
-              -- Add some common process properties for demonstration
-              local common_props = {
-                { name = "env", value = "{...}", has_children = true },
-                { name = "argv", value = "[...]", has_children = true }, 
-                { name = "pid", value = "12345", has_children = false },
-                { name = "platform", value = "'linux'", has_children = false },
-                { name = "version", value = "'v18.17.0'", has_children = false },
-              }
+            -- Use real DAP calls to get child variables
+            if var_ref and var_ref > 0 then
+              -- Get child variables using DAP protocol
+              local success, response = pcall(function()
+                return current_frame.stack.thread.session.ref.calls:variables({
+                  variablesReference = var_ref,
+                  threadId = current_frame.stack.thread.id,
+                }):wait()
+              end)
               
-              for _, prop in ipairs(common_props) do
-                local prop_id = parent_id .. "/" .. prop.name
-                local indent = string.rep("  ", level)
+              if success and response and response.variables then
+                print("Got", #response.variables, "real child variables for level", level)
                 
-                local prop_display = {
-                  id = prop_id,
-                  name = indent .. (prop.has_children and (expanded_nodes[prop_id] and "▼ " or "▶ ") or "  ") .. prop.name .. ": " .. prop.value,
-                  type = "variable",
-                  has_children = prop.has_children,
-                  extra = { level = level },
-                }
-                table.insert(items, prop_display)
-                
-                -- Recurse for deeper levels
-                if prop.has_children and expanded_nodes[prop_id] then
-                  build_expanded_levels(current_frame, prop_id, nil, level + 1, max_level)
+                for _, child_var in ipairs(response.variables) do
+                  local prop_id = parent_id .. "/" .. child_var.name
+                  
+                  -- Encode child variablesReference in ID for further expansion
+                  if child_var.variablesReference and child_var.variablesReference > 0 then
+                    prop_id = prop_id .. "#" .. child_var.variablesReference
+                  end
+                  
+                  local indent = string.rep("  ", level)
+                  
+                  -- Sanitize value for display
+                  local display_value = child_var.value or ""
+                  display_value = display_value:gsub("[\n\r\t]", " "):gsub("%s+", " ")
+                  if #display_value > 30 then
+                    display_value = display_value:sub(1, 30) .. "..."
+                  end
+                  
+                  local has_children = child_var.variablesReference and child_var.variablesReference > 0
+                  local prop_display = {
+                    id = prop_id,
+                    name = indent .. (has_children and (expanded_nodes[prop_id] and "▼ " or "▶ ") or "  ") .. child_var.name .. ": " .. display_value,
+                    type = "variable",
+                    has_children = has_children,
+                    extra = { 
+                      level = level, 
+                      variable_reference = child_var.variablesReference,
+                      var_type = child_var.type,
+                      var_value = child_var.value,
+                    },
+                  }
+                  table.insert(items, prop_display)
+                  
+                  -- Recurse for deeper levels if this child is expanded and has children
+                  if has_children and expanded_nodes[prop_id] and level < max_level then
+                    build_expanded_levels(current_frame, prop_id, child_var.variablesReference, level + 1, max_level)
+                  end
                 end
-              end
-              
-            elseif level == 3 then
-              -- Level 3 properties (like env variables)
-              local level3_props = {
-                { name = "NODE_ENV", value = "'development'", has_children = false },
-                { name = "PATH", value = "'/usr/bin:/bin'", has_children = false },
-                { name = "HOME", value = "'/home/user'", has_children = false },
-              }
-              
-              for _, prop in ipairs(level3_props) do
-                local prop_id = parent_id .. "/" .. prop.name
-                local indent = string.rep("  ", level)
-                
-                local prop_display = {
-                  id = prop_id,
-                  name = indent .. prop.name .. ": " .. prop.value,
-                  type = "variable", 
-                  has_children = false,
-                  extra = { level = level },
-                }
-                table.insert(items, prop_display)
+              else
+                print("Failed to get child variables for level", level, "var_ref:", var_ref)
               end
             end
           end
