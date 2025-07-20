@@ -8,16 +8,40 @@ M.display_name = "Variables"
 -- Required by Neo-tree
 M.setup = function(config, global_config)
   -- Neo-tree initialization hook
+  -- Ensure we have proper renderers if they weren't provided
+  if not config.renderers then
+    config.renderers = {}
+  end
+  
+  -- Set default renderers if they don't exist
+  if not config.renderers.directory then
+    config.renderers.directory = {
+      { "indent" },
+      { "icon" },
+      { "name", use_git_status_colors = false },
+    }
+  end
+  
+  if not config.renderers.file then
+    config.renderers.file = {
+      { "indent" },
+      { "icon" },
+      { "name", use_git_status_colors = false },
+    }
+  end
+  
   -- Set up window mappings
-  return {
-    window = {
-      mappings = {
-        ["<cr>"] = "toggle_node",
-        ["<space>"] = "toggle_node",
-        ["o"] = "toggle_node",
-      },
-    },
-  }
+  if not config.window then
+    config.window = {}
+  end
+  if not config.window.mappings then
+    config.window.mappings = {}
+  end
+  
+  -- Override specific mappings for our source
+  config.window.mappings["<cr>"] = "toggle_node"
+  config.window.mappings["<space>"] = "toggle_node"
+  config.window.mappings["o"] = "toggle_node"
 end
 
 -- Use filesystem components as a base
@@ -30,20 +54,14 @@ M.commands = {
     local node = tree:get_node()
     
     if node and node.has_children then
-      local node_id = node.id
-      print("Toggling node:", node_id)
+      print("Toggling node:", node.id)
       
-      -- Toggle expansion state
-      M.expanded_nodes[node_id] = not M.expanded_nodes[node_id]
+      -- Use Neo-tree's native toggle functionality
+      local manager = require("neo-tree.sources.manager")
+      local commands = require("neo-tree.sources.common.commands")
       
-      -- Refresh the tree
-      M.navigate(state)
-      
-      -- Try to maintain cursor position
-      local cursor_line = vim.api.nvim_win_get_cursor(0)[1]
-      vim.schedule(function()
-        vim.api.nvim_win_set_cursor(0, {cursor_line, 0})
-      end)
+      -- Toggle the node using Neo-tree's built-in command
+      commands.toggle_node(state)
     end
   end,
 }
@@ -51,31 +69,12 @@ M.commands = {
 -- Store current frame for variable access
 M.current_frame = nil
 
--- Track expansion state
-M.expanded_nodes = {}
-
--- Cache the tree data
-M.cached_tree = {}
+-- No manual expansion state or caching needed - Neo-tree handles this
 
 -- Core plugin that provides variables
 function M.plugin(api)
-  -- Register this module as a Neo-tree source after Neo-tree setup
-  local function register_source()
-    vim.schedule(function()
-      local ok, manager = pcall(require, "neo-tree.sources.manager")
-      if ok and manager and manager.register then
-        print("Registering SimpleVariableTree4 as Neo-tree source")
-        manager.register(M)
-      else
-        print("Failed to register Neo-tree source - manager not available")
-        -- Retry registration after a delay
-        vim.defer_fn(register_source, 1000)
-      end
-    end)
-  end
-  
-  -- Initial registration attempt
-  register_source()
+  -- Neo-tree source registration happens automatically when module is included in sources array
+  -- No manual registration needed - follow SimpleVariableTree3 pattern
   
   -- Track current stopped frame
   api:onSession(function(session)
@@ -88,24 +87,7 @@ function M.plugin(api)
         if M.current_frame then
           local scopes = M.current_frame:scopes()
           print("Frame has", scopes and #scopes or 0, "scopes")
-          
-          -- Build tree cache asynchronously
-          nio.run(function()
-            M.build_tree_async(M.current_frame)
-            
-            -- Auto-expand Global scope for better testing of deep nesting
-            local scopes = M.current_frame:scopes()
-            if scopes then
-              for _, scope in ipairs(scopes) do
-                if scope.ref.name == "Global" then
-                  local scope_id = "scope_" .. scope.ref.variablesReference
-                  M.expanded_nodes[scope_id] = true
-                  print("Auto-expanded Global scope for testing")
-                  break
-                end
-              end
-            end
-          end)
+          print("Ready for variable debugging - using pure Neo-tree source pattern")
         end
         
         -- Trigger Neo-tree refresh if available
@@ -141,10 +123,15 @@ local function variable_to_node(var_ref, parent_id)
     node_id = node_id .. "#" .. var_ref.variablesReference
   end
   
+  local is_expandable = var_ref.variablesReference and var_ref.variablesReference > 0
+  
   local node = {
     id = node_id,
     name = var_ref.name .. ": " .. (var_ref.value or ""),
-    type = "variable",
+    type = is_expandable and "directory" or "file",  -- Use directory for expandable nodes
+    path = node_id,  -- Required by Neo-tree
+    loaded = not is_expandable,  -- Expandable nodes start unloaded
+    has_children = is_expandable,  -- Mark expandable nodes as having children
     extra = {
       variable_reference = var_ref.variablesReference,
       var_type = var_ref.type,
@@ -152,61 +139,59 @@ local function variable_to_node(var_ref, parent_id)
     },
   }
   
-  -- Check if this variable has children that can be expanded
-  if var_ref.variablesReference and var_ref.variablesReference > 0 then
-    node.has_children = true
-  end
-  
   return node
 end
 
 -- Convert scope to Neo-tree node  
 local function scope_to_node(scope_ref)
+  local node_id = "scope_" .. scope_ref.variablesReference
   local node = {
-    id = "scope_" .. scope_ref.variablesReference,
+    id = node_id,
     name = scope_ref.name,
-    type = "scope",
+    type = "directory",  -- Use directory type for proper expand/collapse icons
+    path = node_id,  -- Required by Neo-tree
+    loaded = false,  -- Scopes start unloaded to show expand icon
+    has_children = true,  -- Mark as having children to show expand icon
     extra = {
       variables_reference = scope_ref.variablesReference,
       expensive = scope_ref.expensive,
     },
-    has_children = true, -- Scopes always have variables
   }
   
   return node
 end
 
--- Get items for Neo-tree (this is the key function for hierarchical structure)
-M.get_items = nio.create(function(state, parent_id, callback)
-  print("get_items called with parent_id:", parent_id or "nil")
+-- Internal function to load variables data (like fs_scan.get_items)
+local function load_variables_data(state, parent_id, callback)
+  print("load_variables_data called with parent_id:", parent_id or "nil")
   
   if not M.current_frame then
     print("No current frame available")
-    callback({})
+    if callback then callback() end
     return
   end
   
+  local nodes = {}
+  
   if not parent_id then
-    -- Root level: return scopes
-    print("Returning root level scopes")
+    -- Root level: create root container and populate with scopes
+    print("Loading root level scopes")
     local scopes = M.current_frame:scopes()
-    if not scopes then
-      callback({})
-      return
+    if scopes then
+      for _, scope in ipairs(scopes) do
+        table.insert(nodes, scope_to_node(scope.ref))
+      end
     end
+    print("Loaded", #nodes, "scope nodes")
     
-    local nodes = {}
-    for _, scope in ipairs(scopes) do
-      table.insert(nodes, scope_to_node(scope.ref))
-    end
-    
-    print("Returning", #nodes, "scope nodes")
-    callback(nodes)
+    -- For full tree render, we need to provide root nodes
+    local renderer = require("neo-tree.ui.renderer")
+    renderer.show_nodes(nodes, state, nil, callback)
     
   elseif parent_id:match("^scope_") then
     -- Expanding a scope: return its variables
     local variables_reference = tonumber(parent_id:match("^scope_(%d+)"))
-    print("Expanding scope with variables_reference:", variables_reference)
+    print("Loading scope variables with reference:", variables_reference)
     
     if variables_reference then
       -- Use direct DAP call to get variables
@@ -216,29 +201,28 @@ M.get_items = nio.create(function(state, parent_id, callback)
       }):wait()
       
       if response and response.variables then
-        print("Got", #response.variables, "variables for scope")
-        local nodes = {}
+        print("Loaded", #response.variables, "variables for scope")
         for _, var_ref in ipairs(response.variables) do
           table.insert(nodes, variable_to_node(var_ref, parent_id))
         end
-        callback(nodes)
       else
         print("No variables received for scope")
-        callback({})
       end
-    else
-      callback({})
     end
+    
+    -- For lazy loading, provide child nodes
+    local renderer = require("neo-tree.ui.renderer")
+    renderer.show_nodes(nodes, state, parent_id, callback)
     
   else
     -- Expanding a variable: return its child properties
-    print("Expanding variable with parent_id:", parent_id)
+    print("Loading variable children for parent_id:", parent_id)
     
     -- Extract variable reference from the encoded ID
     local variables_reference = parent_id:match("#(%d+)$")
     if variables_reference then
       variables_reference = tonumber(variables_reference)
-      print("Expanding variable with variables_reference:", variables_reference)
+      print("Loading child variables with reference:", variables_reference)
       
       -- Use direct DAP call to get child variables
       local response = M.current_frame.stack.thread.session.ref.calls:variables({
@@ -247,236 +231,40 @@ M.get_items = nio.create(function(state, parent_id, callback)
       }):wait()
       
       if response and response.variables then
-        print("Got", #response.variables, "child variables")
-        local nodes = {}
+        print("Loaded", #response.variables, "child variables")
         for _, var_ref in ipairs(response.variables) do
           table.insert(nodes, variable_to_node(var_ref, parent_id))
         end
-        callback(nodes)
       else
         print("No child variables received")
-        callback({})
       end
     else
       print("Could not extract variables_reference from parent_id")
-      callback({})
     end
-  end
-end, 3)
-
--- Build and cache the tree data (async)
-M.build_tree_async = nio.create(function(frame)
-  print("Building tree cache asynchronously...")
-  local items = {}
-  
-  local scopes = frame:scopes()
-  if not scopes then 
-    M.cached_tree = items
-    return 
-  end
-  
-  for _, scope in ipairs(scopes) do
-    local scope_id = "scope_" .. scope.ref.variablesReference
-    local scope_node = {
-      id = scope_id,
-      name = scope.ref.name,
-      type = "scope",
-      has_children = true,
-      variables = nil, -- Will be loaded on demand
-      extra = {
-        variables_reference = scope.ref.variablesReference,
-        expensive = scope.ref.expensive,
-        level = 0,
-      },
-    }
-    table.insert(items, scope_node)
     
-    -- Pre-load Global scope variables for testing
-    if scope.ref.name == "Global" then
-      local variables = frame:variables(scope.ref.variablesReference)
-      if variables then
-        scope_node.variables = {}
-        for _, var_ref in ipairs(variables) do
-          -- Sanitize value to remove newlines and control characters
-          local display_value = var_ref.value or ""
-          display_value = display_value:gsub("[\n\r\t]", " "):gsub("%s+", " ")
-          if #display_value > 50 then
-            display_value = display_value:sub(1, 50) .. "..."
-          end
-          
-          local var_node = {
-            id = scope_id .. "/" .. var_ref.name,
-            name = var_ref.name .. ": " .. display_value,
-            type = "variable",
-            has_children = var_ref.variablesReference and var_ref.variablesReference > 0,
-            variables = nil,
-            extra = {
-              variable_reference = var_ref.variablesReference,
-              var_type = var_ref.type,
-              var_value = var_ref.value,
-              level = 1,
-            },
-          }
-          table.insert(scope_node.variables, var_node)
-        end
-        print("Pre-loaded", #scope_node.variables, "variables for Global scope")
-      end
-    end
+    -- For lazy loading, provide child nodes
+    local renderer = require("neo-tree.ui.renderer")
+    renderer.show_nodes(nodes, state, parent_id, callback)
   end
-  
-  M.cached_tree = items
-  print("Tree cache built with", #items, "top-level items")
-end, 1)
-
--- Build hierarchical tree with expansion state (synchronous - uses cache)
-local function build_tree_recursive(frame, expanded_nodes)
-  local items = {}
-  
-  -- If cache is empty, show a simple fallback
-  if #M.cached_tree == 0 then
-    print("Cache is empty, building simple fallback tree")
-    local scopes = frame:scopes()
-    if scopes then
-      for _, scope in ipairs(scopes) do
-        local scope_id = "scope_" .. scope.ref.variablesReference
-        local display_node = {
-          id = scope_id,
-          name = (expanded_nodes[scope_id] and "▼ " or "▶ ") .. scope.ref.name,
-          type = "scope",
-          has_children = true,
-          extra = {
-            variables_reference = scope.ref.variablesReference,
-            expensive = scope.ref.expensive,
-            level = 0,
-          },
-        }
-        table.insert(items, display_node)
-      end
-    end
-    return items
-  end
-  
-  -- Use cached tree
-  for _, scope_node in ipairs(M.cached_tree) do
-    local scope_id = scope_node.id
-    local display_node = {
-      id = scope_id,
-      name = (expanded_nodes[scope_id] and "▼ " or "▶ ") .. scope_node.name,
-      type = "scope",
-      has_children = true,
-      extra = scope_node.extra,
-    }
-    table.insert(items, display_node)
-    
-    -- If scope is expanded and has pre-loaded variables, show them
-    if expanded_nodes[scope_id] and scope_node.variables then
-      for _, var_node in ipairs(scope_node.variables) do
-        local var_id = var_node.id
-        local var_display = {
-          id = var_id,
-          name = "  " .. (var_node.has_children and (expanded_nodes[var_id] and "▼ " or "▶ ") or "  ") .. var_node.name,
-          type = "variable",
-          has_children = var_node.has_children,
-          extra = var_node.extra,
-        }
-        table.insert(items, var_display)
-        
-        -- If this variable is expanded, show its properties (Level 2+) 
-        if var_node.has_children and expanded_nodes[var_id] and var_node.extra.variable_reference then
-          print("Expanding variable:", var_node.name:gsub("^%s*", ""))
-          print("Variable reference:", var_node.extra.variable_reference)
-          
-          -- Build Level 2+ expansion recursively using real DAP data
-          local function build_expanded_levels(current_frame, parent_id, var_ref, level, max_level)
-            if level > max_level then return end
-            
-            -- Use real DAP calls to get child variables
-            if var_ref and var_ref > 0 then
-              -- Get child variables using DAP protocol
-              local success, response = pcall(function()
-                return current_frame.stack.thread.session.ref.calls:variables({
-                  variablesReference = var_ref,
-                  threadId = current_frame.stack.thread.id,
-                }):wait()
-              end)
-              
-              if success and response and response.variables then
-                print("Got", #response.variables, "real child variables for level", level)
-                
-                for _, child_var in ipairs(response.variables) do
-                  local prop_id = parent_id .. "/" .. child_var.name
-                  
-                  -- Encode child variablesReference in ID for further expansion
-                  if child_var.variablesReference and child_var.variablesReference > 0 then
-                    prop_id = prop_id .. "#" .. child_var.variablesReference
-                  end
-                  
-                  local indent = string.rep("  ", level)
-                  
-                  -- Sanitize value for display
-                  local display_value = child_var.value or ""
-                  display_value = display_value:gsub("[\n\r\t]", " "):gsub("%s+", " ")
-                  if #display_value > 30 then
-                    display_value = display_value:sub(1, 30) .. "..."
-                  end
-                  
-                  local has_children = child_var.variablesReference and child_var.variablesReference > 0
-                  local prop_display = {
-                    id = prop_id,
-                    name = indent .. (has_children and (expanded_nodes[prop_id] and "▼ " or "▶ ") or "  ") .. child_var.name .. ": " .. display_value,
-                    type = "variable",
-                    has_children = has_children,
-                    extra = { 
-                      level = level, 
-                      variable_reference = child_var.variablesReference,
-                      var_type = child_var.type,
-                      var_value = child_var.value,
-                    },
-                  }
-                  table.insert(items, prop_display)
-                  
-                  -- Recurse for deeper levels if this child is expanded and has children
-                  if has_children and expanded_nodes[prop_id] and level < max_level then
-                    build_expanded_levels(current_frame, prop_id, child_var.variablesReference, level + 1, max_level)
-                  end
-                end
-              else
-                print("Failed to get child variables for level", level, "var_ref:", var_ref)
-              end
-            end
-          end
-          
-          -- Build up to 4 levels deep
-          build_expanded_levels(frame, var_id, var_node.extra.variable_reference, 2, 4)
-        end
-      end
-    end
-  end
-  
-  return items
 end
 
--- Neo-tree navigate function with hierarchical expansion
-function M.navigate(state, path)
-  print("Navigate called with path:", path or "nil")
-  print("Current frame available:", M.current_frame ~= nil)
+-- Navigate function that follows proper Neo-tree source pattern
+function M.navigate(state, path, path_to_reveal, callback)
+  print("navigate called with path:", path, "path_to_reveal:", path_to_reveal)
   
-  if not M.current_frame then
-    print("No current frame - showing empty tree")
-    local renderer = require("neo-tree.ui.renderer")
-    renderer.show_nodes({}, state)
-    return {}
+  -- Acquire window so Neo-tree can display our source
+  local renderer = require("neo-tree.ui.renderer")
+  renderer.acquire_window(state)
+  
+  state.dirty = false
+  
+  -- Set position if specified
+  if path_to_reveal then
+    renderer.position.set(state, path_to_reveal)
   end
   
-  -- Build hierarchical tree with current expansion state
-  print("Building hierarchical tree...")
-  local items = build_tree_recursive(M.current_frame, M.expanded_nodes)
-  
-  print("Showing", #items, "items to Neo-tree (including expanded children)")
-  local renderer = require("neo-tree.ui.renderer")
-  renderer.show_nodes(items, state)
-  
-  return items
+  -- Load and display the variables data
+  load_variables_data(state, nil, callback)
 end
 
 return M
