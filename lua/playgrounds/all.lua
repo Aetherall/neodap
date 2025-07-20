@@ -43,8 +43,16 @@ local function go()
     local brkpt = api:getPluginInstance(require("neodap.plugins.ToggleBreakpoint"))
     api:getPluginInstance(require("neodap.plugins.FrameHighlight"))
     api:getPluginInstance(require("neodap.plugins.DebugMode"))
-    api:getPluginInstance(require("neodap.plugins.VariableTree"))
+    api:getPluginInstance(require("neodap.plugins.SimpleVariableTree3"))
     -- api:getPluginInstance(require("neodap.plugins.ScopeViewer"))
+
+    local neotree = require('neo-tree')
+
+    neotree.setup({
+        sources = {
+            "neodap.plugins.SimpleVariableTree3",
+        },
+    })
 
     local currentStopped = nil
 

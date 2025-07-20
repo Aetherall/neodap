@@ -73,7 +73,6 @@ function Frame:variables(variablesReference)
   return response.variables
 end
 
-
 function Frame:location()
   if not self._source then
     return nil -- No source information available
@@ -94,33 +93,32 @@ function Frame:down()
   return self.stack:downOf(self.ref.id)
 end
 
-function Frame:jump()
-
+function Frame:Jump()
   local location = self:location()
 
   if not location then
     return
   end
-  
+
   local bufnr = location:manifests(self.stack.thread.session)
-  
+
   if not bufnr then
     return
   end
-  
+
   -- Ensure the buffer is valid before switching to it
   if not vim.api.nvim_buf_is_valid(bufnr) then
     return
   end
-  
+
   -- Switch to the buffer and set cursor position
   vim.api.nvim_set_current_buf(bufnr)
-  
+
   -- Ensure line and column are valid for the buffer
   local line_count = vim.api.nvim_buf_line_count(bufnr)
   local safe_line = math.min(math.max(1, self.ref.line), line_count)
   local safe_column = math.max(0, (self.ref.column or 1) - 1) -- Convert to 0-based
-  
+
   vim.api.nvim_win_set_cursor(0, { safe_line, safe_column })
 end
 
@@ -140,7 +138,7 @@ function Frame:highlight(namespace, hl_group)
     -- If buffer creation/lookup failed, return without highlighting
     return
   end
-  
+
   local log = Logger.get("API:Frame")
   log:debug("Frame highlight - Buffer number:", bufnr)
   if not vim.api.nvim_buf_is_valid(bufnr) then

@@ -18,7 +18,7 @@ return {
             return
           end
 
-          frame:jump()
+          frame:Jump()
         end, { name = name .. ".onStopped" })
       end, { name = name .. ".onThread" })
     end, { name = name .. ".onSession" })

@@ -32,16 +32,16 @@ StackFrameTelescope.description = "Telescope integration for browsing stack fram
 
 function StackFrameTelescope.plugin(api)
   local logger = Logger.get("Plugin:StackFrameTelescope")
-  
+
   local instance = StackFrameTelescope:new({
     api = api,
     logger = logger,
     stackNavigation = api:getPluginInstance(StackNavigation),
   })
-  
+
   instance:setup_commands()
   instance:listen()
-  
+
   return instance
 end
 
@@ -50,7 +50,6 @@ function StackFrameTelescope:setup_commands()
     self:ShowFramePicker()
   end, { desc = "Show stack frame telescope picker" })
 end
-
 
 function StackFrameTelescope:listen()
   self.api:onSession(function(session)
@@ -66,7 +65,7 @@ function StackFrameTelescope:get_current_stack()
   if closest_frame then
     return closest_frame.stack, closest_frame.stack.thread
   end
-  
+
   -- Fallback: find any stopped thread
   for session in self.api:eachSession() do
     for thread in session:eachThread({ filter = 'stopped' }) do
@@ -78,18 +77,18 @@ end
 
 function StackFrameTelescope:ShowFramePicker()
   local stack, thread = self:get_current_stack()
-  
+
   if not stack then
     vim.notify("No active debug session with call stack", vim.log.levels.WARN)
     return
   end
-  
+
   local frames = stack:frames()
   if #frames == 0 then
     vim.notify("Empty call stack", vim.log.levels.WARN)
     return
   end
-  
+
   -- Create telescope picker
   pickers.new({}, {
     prompt_title = "Stack Frames",
@@ -100,18 +99,18 @@ function StackFrameTelescope:ShowFramePicker()
       actions.select_default:replace(function()
         local selection = action_state.get_selected_entry()
         actions.close(prompt_bufnr)
-        
+
         if selection and selection.frame then
           self:JumpToFrame(selection.frame)
         end
       end)
-      
+
       -- Add custom mappings
       map("i", "<C-j>", actions.move_selection_next)
       map("i", "<C-k>", actions.move_selection_previous)
       map("n", "j", actions.move_selection_next)
       map("n", "k", actions.move_selection_previous)
-      
+
       return true
     end,
   }):find()
@@ -119,10 +118,10 @@ end
 
 function StackFrameTelescope:create_frame_finder(frames)
   local entries = {}
-  
+
   for i, frame in ipairs(frames) do
     local display_text = self:format_frame_for_display(frame, i)
-    
+
     table.insert(entries, {
       value = frame,
       display = display_text,
@@ -131,7 +130,7 @@ function StackFrameTelescope:create_frame_finder(frames)
       frame_index = i,
     })
   end
-  
+
   return finders.new_table({
     results = entries,
     entry_maker = function(entry)
@@ -142,14 +141,14 @@ end
 
 function StackFrameTelescope:format_frame_for_display(frame, index)
   local parts = {}
-  
+
   -- Frame number
   table.insert(parts, string.format("#%-2d", index - 1))
-  
+
   -- Function name
   local name = frame.ref.name or "<unknown>"
   table.insert(parts, name)
-  
+
   -- Source information
   if frame.ref.source then
     local source_info = ""
@@ -158,19 +157,19 @@ function StackFrameTelescope:format_frame_for_display(frame, index)
     elseif frame.ref.source.name then
       source_info = frame.ref.source.name
     end
-    
+
     if frame.ref.line then
       source_info = source_info .. ":" .. frame.ref.line
       if frame.ref.column then
         source_info = source_info .. ":" .. frame.ref.column
       end
     end
-    
+
     if source_info ~= "" then
       table.insert(parts, " at " .. source_info)
     end
   end
-  
+
   return table.concat(parts, "")
 end
 
@@ -181,10 +180,10 @@ function StackFrameTelescope:create_frame_previewer()
       if not entry.frame then
         return
       end
-      
+
       local frame = entry.frame
       local location = frame:location()
-      
+
       if not location then
         vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, {
           "No source location available",
@@ -194,22 +193,22 @@ function StackFrameTelescope:create_frame_previewer()
         })
         return
       end
-      
+
       -- Use NvimAsync to handle async content fetching properly
       NvimAsync.run(function()
         local session = frame.stack.thread.session
         local source = location.source
-        
+
         -- Add debug logging
         local logger = Logger.get("Plugin:StackFrameTelescope")
         logger:debug("StackFrameTelescope: Attempting to manifest location", location.key)
-        
+
         local success, bufnr = pcall(function()
           return location:manifests(session)
         end)
-        
+
         logger:debug("StackFrameTelescope: Manifest result", success, bufnr)
-        
+
         if not success then
           vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, {
             "Error manifesting source:",
@@ -220,7 +219,7 @@ function StackFrameTelescope:create_frame_previewer()
           })
           return
         end
-        
+
         if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
           -- Provide more detailed information about what went wrong
           local debug_info = {
@@ -229,7 +228,7 @@ function StackFrameTelescope:create_frame_previewer()
             "Location: " .. location.key,
             "Session ID: " .. session.ref.id,
           }
-          
+
           if source then
             table.insert(debug_info, "Source name: " .. (source.ref.name or "nil"))
             table.insert(debug_info, "Source path: " .. (source.ref.path or "nil"))
@@ -239,11 +238,11 @@ function StackFrameTelescope:create_frame_previewer()
           else
             table.insert(debug_info, "No source object available")
           end
-          
+
           vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, debug_info)
           return
         end
-        
+
         -- Get content from the manifested buffer
         local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
         if not lines or #lines == 0 then
@@ -254,10 +253,10 @@ function StackFrameTelescope:create_frame_previewer()
           })
           return
         end
-        
+
         -- Set the content
         vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, lines)
-        
+
         -- Try to set the filetype for syntax highlighting
         if source and source.ref.path then
           local filetype = vim.filetype.match({ filename = source.ref.path })
@@ -271,13 +270,13 @@ function StackFrameTelescope:create_frame_previewer()
             vim.api.nvim_buf_set_option(self.state.bufnr, "filetype", filetype)
           end
         end
-        
+
         -- Highlight the current line
         local line_num = frame.ref.line
         if line_num and line_num > 0 and line_num <= #lines then
           -- Clear any existing highlights
           vim.api.nvim_buf_clear_namespace(self.state.bufnr, -1, 0, -1)
-          
+
           -- Add line highlight
           vim.api.nvim_buf_add_highlight(
             self.state.bufnr,
@@ -287,22 +286,22 @@ function StackFrameTelescope:create_frame_previewer()
             0,
             -1
           )
-          
+
           -- Center the preview window on the frame line
           local win_height = vim.api.nvim_win_get_height(status.preview_win)
           local half_height = math.floor(win_height / 2)
-          
+
           -- Calculate the top line to center the frame line in the window
           local top_line = math.max(1, line_num - half_height)
-          
+
           -- Ensure we don't scroll past the end of the buffer
           local max_top_line = math.max(1, #lines - win_height + 1)
           top_line = math.min(top_line, max_top_line)
-          
+
           -- Set cursor to the frame line (with proper column positioning)
           local column = math.max(0, (frame.ref.column or 1) - 1) -- Convert to 0-based
-          vim.api.nvim_win_set_cursor(status.preview_win, {line_num, column})
-          
+          vim.api.nvim_win_set_cursor(status.preview_win, { line_num, column })
+
           -- Set the window view to center the frame line
           vim.api.nvim_win_call(status.preview_win, function()
             vim.fn.winrestview({
@@ -313,7 +312,7 @@ function StackFrameTelescope:create_frame_previewer()
               curswant = column,
             })
           end)
-          
+
           -- Set a mark for the frame line
           vim.api.nvim_buf_set_mark(self.state.bufnr, "f", line_num, (frame.ref.column or 1) - 1, {})
         end
@@ -326,18 +325,17 @@ function StackFrameTelescope:JumpToFrame(frame)
   if not frame then
     return
   end
-  
+
   local success, error_msg = pcall(function()
-    frame:jump()
+    frame:Jump()
     self.logger:info("StackFrameTelescope: Jumped to frame", frame.ref.id)
   end)
-  
+
   if not success then
     self.logger:error("StackFrameTelescope: Failed to jump to frame", error_msg)
     vim.notify("Failed to jump to frame: " .. tostring(error_msg), vim.log.levels.ERROR)
   end
 end
-
 
 function StackFrameTelescope:is_available()
   return telescope_available
@@ -345,10 +343,10 @@ end
 
 function StackFrameTelescope:destroy()
   self.logger:debug("StackFrameTelescope: Destroying plugin")
-  
+
   -- Clean up user commands
   pcall(vim.api.nvim_del_user_command, "NeodapStackFrameTelescope")
-  
+
   self.logger:info("StackFrameTelescope: Plugin destroyed")
 end
 
