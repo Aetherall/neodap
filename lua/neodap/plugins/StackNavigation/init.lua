@@ -25,6 +25,7 @@ function StackNavigation.plugin(api)
     })
 
     instance:setupListeners()
+    instance:setupCommands()
     return instance
 end
 
@@ -66,7 +67,7 @@ function StackNavigation:Up()
     local current = self:getSmartClosestFrame()
     local parent = current and current:up()
     if parent then
-        parent:jump()
+        parent:Jump()
         self:updateNavigationState(parent)
         self:emitNavigationEvent(parent, "up")
         self.logger:info("StackNavigation: Navigated up to frame", parent.ref.id)
@@ -78,7 +79,7 @@ function StackNavigation:Down()
     local current = self:getSmartClosestFrame()
     local child = current and current:down()
     if child then
-        child:jump()
+        child:Jump()
         self:updateNavigationState(child)
         self:emitNavigationEvent(child, "down")
         self.logger:info("StackNavigation: Navigated down to frame", child.ref.id)
@@ -90,13 +91,12 @@ function StackNavigation:Top()
     local current = self:getSmartClosestFrame()
     local top = current and current.stack:top()
     if top then
-        top:jump()
+        top:Jump()
         self:updateNavigationState(top)
         self:emitNavigationEvent(top, "top")
         self.logger:info("StackNavigation: Navigated to top frame", top.ref.id)
     end
 end
-
 
 -- Smart Selection Methods
 
@@ -350,6 +350,21 @@ function StackNavigation:emitNavigationEvent(frame, direction)
     end)
 
     self.logger:debug("StackNavigation: Emitted navigation event", direction, "for frame", frame.ref.id)
+end
+
+---Setup user commands for stack navigation
+function StackNavigation:setupCommands()
+    vim.api.nvim_create_user_command("NeodapStackNavigationUp", function()
+        self:Up()
+    end, { desc = "Navigate up the call stack (towards caller)" })
+
+    vim.api.nvim_create_user_command("NeodapStackNavigationDown", function()
+        self:Down()
+    end, { desc = "Navigate down the call stack (towards callee)" })
+
+    vim.api.nvim_create_user_command("NeodapStackNavigationTop", function()
+        self:Top()
+    end, { desc = "Navigate to top frame (most recent call)" })
 end
 
 ---Setup reactive listeners for state management

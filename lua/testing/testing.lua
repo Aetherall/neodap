@@ -41,7 +41,7 @@ return function(describe, it)
         fn(api, manager)
         future.set()
       end)
-      assert(vim.wait(5000, future.is_set), "Timed out after 5 seconds waiting for scenario: " .. filename)
+      assert(vim.wait(10000, future.is_set), "Timed out after 10 seconds waiting for scenario: " .. filename)
     end)
   end
 

@@ -1,4 +1,5 @@
 local nio = require("nio")
+local logger = require("neodap.tools.logger")
 
 local TerminalSnapshot = {}
 
@@ -91,11 +92,13 @@ local function capture_screen()
 
   local screen = {
     lines = {},
+    startline = (vim.fn.getpos("w0")[2] or 0) - 1,
     cursor = vim.api.nvim_win_get_cursor(0),
     mode = vim.api.nvim_get_mode().mode,
     size = { vim.o.lines, vim.o.columns },
     highlights = get_buffer_highlights()
   }
+
 
   -- Capture each line of the terminal
   for row = 1, vim.o.lines do
@@ -159,7 +162,7 @@ local function format_screen_for_embedding(screen, name)
   for i, line in ipairs(screen.lines) do
     -- Make tabs visible in the comments for better understanding
     local visible_line = line:gsub("\t", "→")
-    table.insert(lines, string.format("%2d| %s", i, visible_line))
+    table.insert(lines, string.format("%2d| %s", i + screen.startline, visible_line))
   end
 
   table.insert(lines, "]]")
