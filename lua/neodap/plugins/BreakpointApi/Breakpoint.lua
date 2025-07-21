@@ -1,0 +1,154 @@
+local Class = require('neodap.tools.class')
+local Hookable = require("neodap.transport.hookable")
+
+---@class api.BreakpointProps
+---@field id string
+---@field manager api.BreakpointManager
+---@field location api.Location
+---@field condition? string
+---@field logMessage? string
+---@field hookable Hookable
+
+---@class api.Breakpoint: api.BreakpointProps
+---@field new Constructor<api.BreakpointProps>
+local Breakpoint = Class()
+
+---@param manager api.BreakpointManager
+---@param location api.Location
+---@param opts? { condition?: string, logMessage?: string }
+---@return api.Breakpoint
+function Breakpoint.atLocation(manager, location, opts)
+  opts = opts or {}
+  
+  -- print("BREAKPOINT_LIFECYCLE: Creating breakpoint with location:", location and location.key or "NIL")
+  
+  local instance = Breakpoint:new({
+    id = location.key,
+    manager = manager,
+    location = location,
+    condition = opts.condition,
+    logMessage = opts.logMessage,
+    hookable = Hookable.create(manager.hookable),
+  })
+  
+  -- print("BREAKPOINT_LIFECYCLE: Created breakpoint", instance.id, "with location:", instance.location and instance.location.key or "NIL")
+  
+  return instance
+end
+
+---@return api.Location
+function Breakpoint:getLocation()
+  return self.location
+end
+
+---@param condition? string
+function Breakpoint:setCondition(condition)
+  if self.condition ~= condition then
+    self.condition = condition
+    self:emit('ConditionChanged', condition)
+    -- Trigger resync for all sessions
+    self.manager:resyncBreakpoint(self)
+  end
+end
+
+---@param logMessage? string
+function Breakpoint:setLogMessage(logMessage)
+  if self.logMessage ~= logMessage then
+    self.logMessage = logMessage
+    self:emit('LogMessageChanged', logMessage)
+    -- Trigger resync for all sessions
+    self.manager:resyncBreakpoint(self)
+  end
+end
+
+-- Internal method to emit events
+---@param event string
+---@param data any
+function Breakpoint:emit(event, data)
+  return self.hookable:emit(event, data)
+end
+
+-- API Methods: Hierarchical Event Registration
+
+---@param listener fun(binding: api.Binding)
+---@param opts? HookOptions
+---@return fun() unsubscribe
+function Breakpoint:onBinding(listener, opts)
+  -- Register for future bindings
+  local unsubscribe1 = self.manager:onBound(function(binding)
+    if binding.breakpointId == self.id then
+      listener(binding)
+    end
+  end, opts)
+  
+  -- Call listener for existing bindings
+  for binding in self:getBindings():each() do
+    listener(binding)
+  end
+  
+  return unsubscribe1
+end
+
+---@param listener fun(hit: { thread: api.Thread, body: dap.StoppedEventBody, binding: api.Binding })
+---@param opts? HookOptions
+---@return fun() unsubscribe
+function Breakpoint:onHit(listener, opts)
+  return self:onBinding(function(binding)
+    binding:onHit(function(hit)
+      listener({
+        thread = hit.thread,
+        body = hit.body,
+        binding = binding,
+      })
+    end, opts)
+  end, opts)
+end
+
+
+---@param listener fun(condition: string?)
+---@param opts? HookOptions
+---@return fun() unsubscribe
+function Breakpoint:onConditionChanged(listener, opts)
+  return self.hookable:on('ConditionChanged', listener, opts)
+end
+
+---@param listener fun()
+---@param opts? HookOptions
+---@return fun() unsubscribe
+function Breakpoint:onDispose(listener, opts)
+  return self.hookable:onDispose(listener, opts)
+end
+
+---@param listener fun(logMessage: string?)
+---@param opts? HookOptions
+---@return fun() unsubscribe
+function Breakpoint:onLogMessageChanged(listener, opts)
+  return self.hookable:on('LogMessageChanged', listener, opts)
+end
+
+-- Query Methods (Read-only access to bindings)
+
+---@return api.BindingCollection
+function Breakpoint:getBindings()
+  -- Delegate to manager - maintain architectural purity
+  return self.manager.bindings:forBreakpoint(self)
+end
+
+---@return dap.SourceBreakpoint
+function Breakpoint:toDapBreakpoint()
+  return {
+    line = self.location.line,
+    column = self.location.column,
+    condition = self.condition,
+    logMessage = self.logMessage,
+  }
+end
+
+-- Internal lifecycle method (called by manager)
+function Breakpoint:destroy()
+  -- print("BREAKPOINT_LIFECYCLE: Destroying breakpoint", self.id, "location before destroy:", self.location and self.location.key or "NIL")
+  self.hookable:destroy()  -- Hookable will emit 'Dispose' event automatically
+  -- print("BREAKPOINT_LIFECYCLE: Destroyed breakpoint", self.id, "location after destroy:", self.location and self.location.key or "NIL")
+end
+
+return Breakpoint
