@@ -1,9 +1,9 @@
 return {
   default = {
     verbose = true,
-    ROOT = { "spec/" },
-    pattern = ".spec.lua$",
-    lua = "./spec/nvim-busted-interpreter.lua",
+    ROOT = { "spec/", "lua/" },
+    pattern = ".?spec.lua$",
+    lua = "./bin/busted.lua",
     lpath = "lua/?.lua;lua/?/init.lua",
     -- output = "plainTerminal",
     coverage = false,

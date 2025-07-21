@@ -13,7 +13,7 @@ end
 
 ---@return api.RangedScopeImpl|nil
 function RangedScopeTrait:isRanged()
-  return self:hasRange() and self
+  return self:hasRange() and self or nil
 end
 
 ---@class api.RangedScopeImpl: api.Scope

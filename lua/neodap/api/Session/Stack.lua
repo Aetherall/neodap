@@ -2,6 +2,7 @@ local Class = require('neodap.tools.class')
 
 local Frame = require('neodap.api.Session.Frame')
 local Hookable = require("neodap.transport.hookable")
+local logger = require("neodap.tools.logger")
 
 ---@class api.StackProps
 ---@field thread api.Thread
@@ -56,6 +57,45 @@ function Stack:frames()
 
   return self._frames
 end
+
+
+---@param opts { sourceId: SourceIdentifier? }?
+---@return fun(): api.Frame?
+function Stack:eachFrame(opts)
+  if not self.valid then
+    return function() return nil end
+  end
+
+  local frames = self:frames()
+  if not frames or #frames == 0 then
+    return function() return nil end
+  end
+
+  local index = 0
+  return function()
+    while true do
+      index = index + 1
+      if index > #frames then
+        return nil
+      end
+
+      local frame = frames[index]
+      if not frame then
+        return nil
+      end
+
+      if opts and opts.sourceId then
+        local location = frame:location()
+        if location and location.sourceId:equals(opts.sourceId) then
+          return frame
+        end
+      else
+        return frame
+      end
+    end
+  end
+end
+
 
 function Stack:top()
   if not self.valid then

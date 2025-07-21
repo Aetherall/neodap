@@ -1,0 +1,43 @@
+{
+  "folders": [
+    {
+      "name": "Frontend",
+      "path": "./frontend"
+    },
+    {
+      "name": "Backend", 
+      "path": "./backend"
+    },
+    {
+      "name": "Shared",
+      "path": "./shared"
+    }
+  ],
+  "settings": {
+    "files.exclude": {
+      "node_modules/": true,
+      "*.log": true
+    }
+  },
+  "launch": {
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Full Stack Debug",
+        "type": "compound",
+        "configurations": [
+          "Frontend Dev Server",
+          "Backend API"
+        ]
+      },
+      {
+        "name": "Integration Test",
+        "type": "compound", 
+        "configurations": [
+          "Backend API",
+          "Test Runner"
+        ]
+      }
+    ]
+  }
+}

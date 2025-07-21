@@ -1,6 +1,7 @@
 local Class = require('neodap.tools.class')
 local Scope = require('neodap.api.Session.Scope')
 local Logger = require('neodap.tools.logger')
+local Location = require("neodap.api.Location")
 
 
 ---@class api.FrameProps
@@ -9,7 +10,7 @@ local Logger = require('neodap.tools.logger')
 
 ---@class api.Frame: api.FrameProps
 ---@field _scopes { [integer]: api.Scope? } | nil
----@field _source api.BaseSource | nil
+---@field _source api.Source | nil
 ---@field new Constructor<api.FrameProps>
 local Frame = Class()
 
@@ -53,6 +54,9 @@ function Frame:scopes()
     threadId = self.stack.thread.id,
   }):wait()
 
+  if not response or not response.scopes then
+    return nil
+  end
 
   self._scopes = vim.tbl_map(function(scope)
     return Scope.instanciate(self, scope)
@@ -69,6 +73,18 @@ function Frame:variables(variablesReference)
   return response.variables
 end
 
+function Frame:location()
+  if not self._source then
+    return nil -- No source information available
+  end
+
+  -- Create a location from the source and frame reference
+  return Location.fromSource(self._source, {
+    line = self.ref.line,
+    column = self.ref.column
+  })
+end
+
 function Frame:up()
   return self.stack:upOf(self.ref.id)
 end
@@ -77,82 +93,84 @@ function Frame:down()
   return self.stack:downOf(self.ref.id)
 end
 
-function Frame:jump()
-  -- vim.schedule(function()
-    local source = self.ref.source
-    if not source then
-      return
-    end
+function Frame:Jump()
+  local location = self:location()
 
-    local uri = vim.uri_from_fname(source.path)
-    local bufnr = vim.uri_to_bufnr(uri)
-    if bufnr == -1 then
-      return
-    end
+  if not location then
+    return
+  end
 
-    vim.api.nvim_set_current_buf(bufnr)
-    vim.api.nvim_win_set_cursor(0, { self.ref.line, self.ref.column - 1 })
-  -- end)
+  local bufnr = location:manifests(self.stack.thread.session)
+
+  if not bufnr then
+    return
+  end
+
+  -- Ensure the buffer is valid before switching to it
+  if not vim.api.nvim_buf_is_valid(bufnr) then
+    return
+  end
+
+  -- Switch to the buffer and set cursor position
+  vim.api.nvim_set_current_buf(bufnr)
+
+  -- Ensure line and column are valid for the buffer
+  local line_count = vim.api.nvim_buf_line_count(bufnr)
+  local safe_line = math.min(math.max(1, self.ref.line), line_count)
+  local safe_column = math.max(0, (self.ref.column or 1) - 1) -- Convert to 0-based
+
+  vim.api.nvim_win_set_cursor(0, { safe_line, safe_column })
 end
 
 ---@param namespace integer
 ---@param hl_group string
 function Frame:highlight(namespace, hl_group)
-  -- vim.schedule(function()
-    local source = self.ref.source
-    if not source then
-      return
-    end
+  local location = self:location()
 
-    -- Ensure line is within buffer bounds for extmark
+  if not location then
+    -- If location creation failed, return without highlighting
+    return
+  end
 
-    local uri = vim.uri_from_fname(source.path)
+  local bufnr = location:manifests(self.stack.thread.session)
 
-    local log = Logger.get()
-    log:debug("Frame jump - URI:", uri)
-    local bufnr = vim.uri_to_bufnr(uri)
-    log:debug("Frame jump - Buffer number:", bufnr)
-    if bufnr == -1 then
-      return
-    end
+  if not bufnr then
+    -- If buffer creation/lookup failed, return without highlighting
+    return
+  end
 
-    local line_count = vim.api.nvim_buf_line_count(0)
-    local safe_extmark_line = math.min(self.ref.line - 1, line_count - 1)
-    safe_extmark_line = math.max(0, safe_extmark_line)
+  local log = Logger.get("API:Frame")
+  log:debug("Frame highlight - Buffer number:", bufnr)
+  if not vim.api.nvim_buf_is_valid(bufnr) then
+    return
+  end
 
-    -- Use a safe end_col value
-    local line_content = vim.api.nvim_buf_get_lines(0, safe_extmark_line, safe_extmark_line + 1, false)[1] or ""
-    local safe_end_col = math.max(0, #line_content)
+  local line_count = vim.api.nvim_buf_line_count(bufnr)
+  local safe_extmark_line = math.min(self.ref.line - 1, line_count - 1)
+  safe_extmark_line = math.max(0, safe_extmark_line)
 
-    local current_line = vim.api.nvim_buf_get_lines(bufnr, self.ref.line - 1, self.ref.line, false)[1]
-    local end_col = #current_line
+  -- Use a safe end_col value
+  local line_content = vim.api.nvim_buf_get_lines(bufnr, safe_extmark_line, safe_extmark_line + 1, false)[1] or ""
+  local safe_end_col = math.max(0, #line_content)
 
-    local log = Logger.get()
-    log:debug("Highlighting frame at line", self.ref.line, "column", self.ref.column, "end_col", end_col)
+  local current_line = vim.api.nvim_buf_get_lines(bufnr, self.ref.line - 1, self.ref.line, false)[1]
+  local end_col = current_line and #current_line or 0
 
-    vim.api.nvim_buf_set_extmark(bufnr, namespace, self.ref.line - 1, self.ref.column - 1, {
-      end_row = self.ref.line - 1,
-      end_col = end_col,
-      hl_group = hl_group,
-      id = 112882
-    })
-  -- end)
+  local log = Logger.get("API:Frame")
+  log:debug("Highlighting frame at line", self.ref.line, "column", self.ref.column, "end_col", end_col)
+
+  vim.api.nvim_buf_set_extmark(bufnr, namespace, self.ref.line - 1, self.ref.column - 1, {
+    end_row = self.ref.line - 1,
+    end_col = end_col,
+    hl_group = hl_group,
+    id = 112882
+  })
 
   return function()
-    -- vim.schedule(function()
-      local source = self.ref.source
-      if not source then
-        return
-      end
-
-      local uri = vim.uri_from_fname(source.path)
-      local bufnr = vim.uri_to_bufnr(uri)
-      if bufnr == -1 then
-        return
-      end
-
+    -- Cleanup function - clear the highlighting
+    if vim.api.nvim_buf_is_valid(bufnr) then
       vim.api.nvim_buf_clear_namespace(bufnr, namespace, 0, -1)
-    -- end)
+    end
   end
 end
 

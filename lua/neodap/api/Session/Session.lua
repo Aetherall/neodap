@@ -1,14 +1,14 @@
 local Class = require("neodap.tools.class")
 local Thread = require("neodap.api.Session.Thread")
-local Source = require('neodap.api.Session.Source.Source')
-local BaseSource = require('neodap.api.Session.Source.BaseSource')
+local Source = require('neodap.api.Session.Source')
+local SourceIdentifier = require('neodap.api.Location.SourceIdentifier')
 local Hookable = require("neodap.transport.hookable")
 local Logger = require("neodap.tools.logger")
 
 ---@class api.SessionProps
 ---@field id integer
 ---@field ref Session
----@field protected _threads { [integer]: api.Thread? }
+---@field _threads { [integer]: api.Thread? }
 ---@field _sources { [string]: api.Source? }
 ---@field hookable Hookable
 ---@field manager Manager
@@ -40,11 +40,11 @@ function Session.wrap(ref, manager, parentHookable, api)
   -- Register cleanup on session termination and exit
   ref.events:on('terminated', function()
     instance:destroy()
-  end, { name = "SessionCleanup_terminated_" .. instance.id, priority = 999 })
+  end, { name = "SessionCleanup_terminated_" .. instance.id, priority = 999, preemptible = false })
   
   ref.events:on('exited', function()
     instance:destroy()
-  end, { name = "SessionCleanup_exited_" .. instance.id, priority = 999 })
+  end, { name = "SessionCleanup_exited_" .. instance.id, priority = 999, preemptible = false })
 
   return instance
 end
@@ -71,12 +71,13 @@ function Session:listen()
       end
       self._threads[body.threadId] = nil
     end
-  end, { name = "SessionThreadExited_" .. uniqueId, priority = 98 })
+  end, { name = "SessionThreadExited_" .. uniqueId, priority = 98, preemptible = false })
 
 
   self:onLoadedSourceNew(function(dapSource)
-    local id = BaseSource.dap_identifier(dapSource)
-    if not id then return end
+    local identifier = SourceIdentifier.fromDapSource(dapSource, self)
+    if not identifier then return end
+    local id = identifier:toString()
 
     local existing = self._sources[id]
 
@@ -105,8 +106,9 @@ function Session:listen()
   end, { name = "SessionLoadedSourceNew_" .. uniqueId, priority = 1 })
 
   self:onLoadedSourceChanged(function(dapSource)
-    local id = BaseSource.dap_identifier(dapSource)
-    if not id then return end
+    local identifier = SourceIdentifier.fromDapSource(dapSource, self)
+    if not identifier then return end
+    local id = identifier:toString()
 
     local existing = self._sources[id]
     if existing then
@@ -121,8 +123,9 @@ function Session:listen()
 
 
   self:onLoadedSourceRemoved(function(dapSource)
-    local id = BaseSource.dap_identifier(dapSource)
-    if not id then return end
+    local identifier = SourceIdentifier.fromDapSource(dapSource, self)
+    if not identifier then return end
+    local id = identifier:toString()
 
     local existing = self._sources[id]
     if existing then
@@ -214,46 +217,25 @@ function Session:onLoadedSourceRemoved(listener, opts)
     , opts)
 end
 
----@return api.Source?
-function Session:getSourceForPath(path)
-  for _, source in pairs(self._sources) do
-    local filesource = source:asFile()
-    if filesource and filesource:absolutePath() == path then
-      return source
-    end
-  end
-end
-
 ---@generic T
----@param predicate fun(source: api.Source): T
+---@param predicate fun(source: api.Source): T?
 ---@return T
 function Session:findSource(predicate)
   for _, source in pairs(self._sources) do
     local result = predicate(source)
     if result then
-      return result
+      return source
     end
   end
   return nil
 end
 
-
----@param location api.SourceFileLocation
----@return api.FileSource?
-function Session:getFileSourceAt(location)
+---Find source by unified source identifier (preferred method)
+---@param identifier SourceIdentifier | api.Location
+---@return api.Source?
+function Session:getSource(identifier)
   return self:findSource(function(source)
-  local filesource = source:asFile()
-  if not filesource then
-    return false
-  end  
-  -- print("DEBUG: Checking source:", vim.inspect(filesource.id))
-
-    local samePlace = location:isAtSourceId(filesource.id)
-    if not samePlace then
-      return false
-    end
-
-    return filesource
+    return source.id:equals(identifier:getSourceId())
   end)
 end
 
@@ -268,24 +250,26 @@ function Session:getSourceFor(dapSource)
     self._sources = {}
   end
 
-  local identifier = BaseSource.dap_identifier(dapSource)
+  local identifier = SourceIdentifier.fromDapSource(dapSource, self)
   if not identifier then
     -- TODO: Should we error here ?
     return nil
   end
 
+  local id = identifier:toString()
+  
   -- Check if we already have this source cached
-  local existing = self._sources[identifier]
+  local existing = self._sources[id]
   if existing then
     return existing
   end
 
   -- Cache and return the new source
-  self._sources[identifier] = Source.instanciate(self, dapSource)
+  self._sources[id] = Source.instanciate(self, dapSource )
 
-  self.hookable:emit('SourceLoaded', self._sources[identifier])
+  self.hookable:emit('SourceLoaded', self._sources[id])
 
-  return self._sources[identifier]
+  return self._sources[id]
 end
 
 ---@param listener fun(body: dap.Breakpoint)
@@ -294,7 +278,7 @@ function Session:onBindingNew(listener, opts)
   return self.ref.events:on('breakpoint',
     ---@param body dap.BreakpointEventBody
     function(body)
-      local log = Logger.get()
+      local log = Logger.get("API:Session")
       log:debug("Session", self.id, "- Received breakpoint event - reason:", body.reason, "breakpoint:", body.breakpoint)
       if body.reason == "new" then
         log:debug("Session", self.id, "- Forwarding 'new' breakpoint to listener")
@@ -310,7 +294,7 @@ function Session:onBindingChanged(listener, opts)
   return self.ref.events:on('breakpoint',
     ---@param body dap.BreakpointEventBody
     function(body)
-      local log = Logger.get()
+      local log = Logger.get("API:Session")
       log:debug("Session", self.id, "- Received breakpoint event - reason:", body.reason, "breakpoint:", body.breakpoint)
       if body.reason == "changed" then
         log:debug("Session", self.id, "- Forwarding 'changed' breakpoint to listener")
@@ -332,31 +316,10 @@ function Session:onBindingRemoved(listener, opts)
   , opts)
 end
 
----@param listener fun(binding: api.FileSourceBinding)
-function Session:onBinding(listener, opts)
-  local BreakpointManager = require("neodap.plugins.BreakpointManager")
-  local breakpoint_service = BreakpointManager.for_api(self.api)
-  return breakpoint_service:onBound(function(binding)
-    if binding.session.id == self.id then
-      listener(binding)
-    end
-  end, opts)
-end
-
----@param listener fun(binding: api.FileSourceBinding, hit: table)
----@param opts? HookOptions
-function Session:onBindingHit(listener, opts)
-  return self:onBinding(function (binding)
-    binding:onHit(function(hit)
-      listener(binding, hit)
-    end, opts)
-  end, opts)
-end
-
 --- Destroys this session and all its child resources
 --- This method ensures complete cleanup of threads, sources, and handlers
 function Session:destroy()
-  local log = Logger.get()
+  local log = Logger.get("API:Session")
   log:debug("Session", self.id, "destroy() called - cleaning up child resources")
   
   -- Clean up all threads first
@@ -367,7 +330,7 @@ function Session:destroy()
     end
   end
   
-  -- Clean up all sources
+  -- Clean up all sources (VirtualSource:destroy() handles virtual buffer cleanup)
   for sourceId, source in pairs(self._sources) do
     if source and source.destroy then
       log:debug("Session", self.id, "destroying source", sourceId)
@@ -386,6 +349,135 @@ function Session:destroy()
   self._sources = {}
   
   log:info("Session", self.id, "destroyed successfully")
+end
+
+---Get valid breakpoint locations for a source range using DAP's breakpointLocations request
+---@param source api.Source
+---@param line? integer
+---@param column? integer
+---@return dap.BreakpointLocation[]|nil locations Array of valid breakpoint locations, or nil if not supported
+function Session:getBreakpointLocations(source, line, column)
+  local log = Logger.get("API:Session")
+  
+  -- Check if adapter supports breakpointLocations
+  log:debug("Session", self.id, "- Checking adapter capabilities...")
+  log:debug("Session", self.id, "- self.ref.capabilities:", vim.inspect(self.ref.capabilities))
+  
+  if not self.ref.capabilities or not self.ref.capabilities.supportsBreakpointLocationsRequest then
+    log:debug("Session", self.id, "- Adapter does not support breakpointLocations request")
+    if not self.ref.capabilities then
+      log:debug("Session", self.id, "- No capabilities object found")
+    else
+      log:debug("Session", self.id, "- supportsBreakpointLocationsRequest:", self.ref.capabilities.supportsBreakpointLocationsRequest)
+    end
+    return nil
+  end
+  
+  column = column or 0
+  
+  local args = {
+    source = source.ref,
+    line = line or 0,
+    -- Only specify line, not column - let adapter return all valid locations on this line
+    -- According to DAP spec: "If only the line is specified, the request returns all possible locations in that line"
+  }
+  
+  log:debug("Session", self.id, "- Requesting breakpoint locations for line", line, "column", column)
+  log:debug("Session", self.id, "- Request args:", vim.inspect(args))
+  
+  local success, result = pcall(function()
+    return self.ref.calls:breakpointLocations(args):wait()
+  end)
+  
+  if not success then
+    log:debug("Session", self.id, "- breakpointLocations request failed:", result)
+    return nil
+  end
+  
+  log:debug("Session", self.id, "- breakpointLocations response:", vim.inspect(result))
+  if result.breakpoints and #result.breakpoints > 0 then
+    log:debug("Session", self.id, "- Valid breakpoint locations:")
+    for i, location in ipairs(result.breakpoints) do
+      log:debug("Session", self.id, "  [" .. i .. "] line:", location.line, "column:", location.column)
+    end
+  end
+  log:debug("Session", self.id, "- Found", #result.breakpoints, "valid breakpoint locations")
+  return result.breakpoints
+end
+
+
+---@param opts { filter: 'stopped' | 'all' | 'running' }?
+---@return fun(): api.Thread?
+function Session:eachThread(opts)
+  local keys = vim.tbl_keys(self._threads)
+  local index = 0
+
+  local filter = opts and opts.filter or 'all'
+  return function()
+    index = index + 1
+    if index > #keys then
+      return nil
+    end
+
+    local threadId = keys[index]
+    local thread = self._threads[threadId]
+
+    if not thread then
+      return nil -- Thread was removed
+    end
+
+    if filter == 'stopped' and not thread.stopped then
+      return nil -- Skip running threads
+    elseif filter == 'running' and thread.stopped then
+      return nil -- Skip stopped threads
+    end
+
+    return thread
+  end
+end
+
+
+
+---Find the closest valid breakpoint location to the requested position
+---@param source api.Source
+---@param opts { line?: integer, column?: integer }
+---@return { line: integer, column: integer }|nil closest Closest valid location, or nil if none found
+function Session:findClosestBreakpointLocation(source, opts)
+  local locations = self:getBreakpointLocations(source, opts.line, opts.column)
+  if not locations or #locations == 0 then
+    return nil
+  end
+
+  opts.column = opts.column or 0
+  
+  -- Sort locations by column to find the best match
+  table.sort(locations, function(a, b) 
+    return (a.column or 0) < (b.column or 0) 
+  end)
+  
+  -- For better UX, prefer the earliest valid location (beginning of statement)
+  -- unless the user specifically clicked at a later valid location
+  local earliest = locations[1]
+  if not earliest then
+    return nil
+  end
+  
+  -- Check if any location is exactly at the requested position
+  for _, location in ipairs(locations) do
+    local locColumn = location.column or 0
+    if locColumn == opts.column then
+      return {
+        line = location.line,
+        column = locColumn
+      }
+    end
+  end
+  
+  -- Default to the earliest (leftmost) valid location
+  return {
+    line = earliest.line,
+    column = earliest.column or 0
+  }
 end
 
 return Session

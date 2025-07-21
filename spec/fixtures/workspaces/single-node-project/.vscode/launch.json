@@ -1,0 +1,42 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug Loop",
+      "type": "pwa-node",
+      "request": "launch",
+      "program": "${workspaceFolder}/loop.js",
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "NODE_ENV": "development"
+      }
+    },
+    {
+      "name": "Debug Server",
+      "type": "pwa-node",
+      "request": "launch",
+      "program": "${workspaceFolder}/server.js",
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "NODE_ENV": "development"
+      }
+    },
+    {
+      "name": "Debug Client",
+      "type": "pwa-node",
+      "request": "launch",
+      "program": "${workspaceFolder}/client.js",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Debug Step Test",
+      "type": "pwa-node",
+      "request": "launch",
+      "program": "${workspaceFolder}/step-test.js",
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "NODE_ENV": "development"
+      }
+    }
+  ]
+}

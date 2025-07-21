@@ -14,6 +14,57 @@ function Class(parent)
   -- the class will be the metatable for all its instances
   -- and they will look up their methods in it
   class.__index = class
+  
+  -- Auto-wrapping for uppercase methods on instances
+  class.__newindex = function(self, key, value)
+    -- Check if this is a function with uppercase first letter
+    if type(value) == "function" and type(key) == "string" then
+      local first_char = key:sub(1, 1)
+      if first_char == first_char:upper() and first_char ~= first_char:lower() then
+        -- This is an uppercase method - auto-wrap with NvimAsync.defer
+        local NvimAsync = require("neodap.tools.async")
+        
+        -- -- Log a warning about async wrapping for awareness
+        -- local logger = require("neodap.tools.logger").get("Class:AsyncWrap")
+        -- logger:debug("Auto-wrapping PascalCase method '" .. key .. "' with NvimAsync.defer - returns are fire-and-forget!")
+        
+        local wrapped_func = NvimAsync.defer(function(...)
+          return value(...)
+        end)
+        rawset(self, key, wrapped_func)
+        return
+      end
+    end
+    -- Regular assignment for non-uppercase methods
+    rawset(self, key, value)
+  end
+
+  -- Auto-wrapping for uppercase methods on the class itself
+  local class_newindex = function(self, key, value)
+    -- Check if this is a function with uppercase first letter
+    if type(value) == "function" and type(key) == "string" then
+      local first_char = key:sub(1, 1)
+      if first_char == first_char:upper() and first_char ~= first_char:lower() then
+        -- This is an uppercase method - auto-wrap with NvimAsync.defer
+        local NvimAsync = require("neodap.tools.async")
+        
+        -- Log a warning about async wrapping for awareness
+        local logger = require("neodap.tools.logger").get("Class:AsyncWrap")
+        logger:debug("Auto-wrapping PascalCase method '" .. key .. "' with NvimAsync.defer - returns are fire-and-forget!")
+        
+        local wrapped_func = NvimAsync.defer(function(...)
+          return value(...)
+        end)
+        rawset(self, key, wrapped_func)
+        return
+      end
+    end
+    -- Regular assignment for non-uppercase methods
+    rawset(self, key, value)
+  end
+
+  -- Set metamethod on the class itself to intercept method definitions
+  setmetatable(class, { __newindex = class_newindex })
 
   function class:new(opts)
     local instance = {}

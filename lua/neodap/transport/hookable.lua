@@ -8,12 +8,15 @@ local NvimAsync = require("neodap.tools.async")
 ---@field name? string
 ---@field priority? number
 ---@field once? boolean
+---@field preemptible? boolean
 
 ---@class HookProps<T>: { handler: string }
 ---@field name string
 ---@field key string
 ---@field priority number
 ---@field once boolean
+---@field preemptible boolean
+---@field destroyed boolean
 
 ---@class Hook: HookProps
 ---@field new Constructor<{}>
@@ -45,6 +48,7 @@ function Hookable.create(parent)
     parent.children[instance] = true
   end
 
+  -- print("HOOKABLE_CREATE: Created hookable instance", tostring(instance), "destroyed:", instance.destroyed)
   return instance
 end
 
@@ -69,7 +73,18 @@ function Hookable:emit(key, event)
           group[name] = nil
         end
         -- Use simplified NvimAsync that preserves NIO context
-        NvimAsync.run(hook.handler, event)
+        -- print("HOOKABLE_EMIT: Scheduling handler for", key, "hookable", tostring(self), "destroyed:", self.destroyed)
+        vim.schedule(function ()
+          -- print("HOOKABLE_EXECUTE: About to run handler for", key, "hookable", tostring(self), "destroyed:", self.destroyed)
+        
+        NvimAsync.run(hook.handler, event, {
+          isPreempted = hook.preemptible and function() 
+            local is_destroyed = self.destroyed
+            -- print("HOOKABLE_PREEMPT_CHECK: isPreempted() called for hookable", tostring(self), "destroyed:", is_destroyed, "preemptible:", hook.preemptible)
+            return is_destroyed
+          end or nil
+        })
+      end)
       end
     end
   end
@@ -92,6 +107,7 @@ function Hookable:on(key, handler, opts)
   local name = opts.name or math.random(1, 1000000) .. "_" .. key
   local priority = opts.priority or 10
   local once = opts.once or false
+  local preemptible = opts.preemptible ~= false  -- Default to true, only false if explicitly set
 
   if not self.listeners[key] then
     self.listeners[key] = {}
@@ -111,6 +127,7 @@ function Hookable:on(key, handler, opts)
     handler = handler,
     priority = priority,
     once = once,
+    preemptible = preemptible,
   })
 
   return function()
@@ -141,6 +158,17 @@ function Hookable:clearAll()
   self.listeners = {}
 end
 
+--- Register a disposal handler that will be called when this hookable is destroyed
+--- Disposal handlers are non-preemptible by default to ensure reliable cleanup
+---@param listener fun() The disposal handler function
+---@param opts? HookOptions Optional hook options (preemptible is forced to false)
+---@return fun() unsubscribe Cleanup function to remove the handler
+function Hookable:onDispose(listener, opts)
+  opts = opts or {}
+  opts.preemptible = false  -- Always non-preemptible for reliable cleanup
+  return self:on('Dispose', listener, opts)
+end
+
 --- Destroys this Hookable and all its children, cleaning up all handlers
 --- This method ensures complete cleanup of the handler hierarchy
 function Hookable:destroy()
@@ -148,8 +176,14 @@ function Hookable:destroy()
     return -- Already destroyed, avoid double cleanup
   end
   
-  -- Mark as destroyed early to prevent new registrations
+  -- print("HOOKABLE_DESTROY: Destroying hookable instance", tostring(self))
+  
+  -- Emit Dispose event BEFORE marking as destroyed so handlers can still access the resource
+  self:emit('Dispose')
+  
+  -- Mark as destroyed to prevent new registrations
   self.destroyed = true
+  -- print("HOOKABLE_DESTROY: Set destroyed=true for", tostring(self))
   
   -- Clean up all children first (depth-first cleanup)
   for child in pairs(self.children) do

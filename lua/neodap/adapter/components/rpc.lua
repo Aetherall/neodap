@@ -85,7 +85,7 @@ function M.create_read_loop(handle_body, on_no_chunk)
   parse_chunk()
   return function(err, chunk)
     if err then
-      local log = Logger.get()
+      local log = Logger.get("Core:RPC")
       log:error("Error in read loop:", err)
       -- utils.notify(err, vim.log.levels.ERROR)
       return

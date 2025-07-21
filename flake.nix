@@ -45,6 +45,11 @@
           # Neovim plugins for development
           vimPlugins.nvim-nio
           vimPlugins.plenary-nvim
+          vimPlugins.nui-nvim
+          vimPlugins.telescope-nvim
+
+          # make for building/testing
+          gnumake
         ];
 
         shellHook = ''
@@ -57,12 +62,23 @@
 
           # Provide nvim-nio as environment variable if needed
           export NVIM_NIO_PATH="${pkgs.vimPlugins.nvim-nio}"
+          export PLENARY_NVIM_PATH="${pkgs.vimPlugins.plenary-nvim}"
+          export NUI_NVIM_PATH="${pkgs.vimPlugins.nui-nvim}"
+          export TELESCOPE_NVIM_PATH="${pkgs.vimPlugins.telescope-nvim}"
 
           echo "🧪 Neodap development environment ready!"
+          # echo "📚 Library paths for .luarc.json:"
+          # echo "  Neovim runtime: ${pkgs.neovim}/share/nvim/runtime/lua"
+          # echo "  nvim-nio: ${pkgs.vimPlugins.nvim-nio}/lua"
+          # echo "  plenary-nvim: ${pkgs.vimPlugins.plenary-nvim}/lua"
+          # echo "  nui-nvim: ${pkgs.vimPlugins.nui-nvim}/lua"
+          # echo "  telescope-nvim: ${pkgs.vimPlugins.telescope-nvim}/lua"
+          # echo "  busted: ${pkgs.luajitPackages.busted}/share/lua/5.1"
 
-          echo "Run 'nix run .#test-all' to run tests"
-          echo "Run 'nix run .#test spec/$file' to run a specific test file"
-          echo "Run 'nix run .#lint' to run linter"
+          echo "Run 'make test' to run tests"
+          echo "Run 'make test spec/$file' to run a specific test file"
+          echo "Run 'NEODAP_LOG_LEVEL=TRACE make test' to run tests with verbose logging"
+          # echo "Run 'make play-all' to run the playground with all plugins"
         '';
       };
 
@@ -84,29 +100,5 @@
           platforms = platforms.all;
         };
       };
-
-      # Test runner
-      packages.test-all = pkgs.writeShellScriptBin "neodap-test" ''
-        export LUA_PATH="./lua/?.lua;./lua/?/init.lua;$LUA_PATH"
-        export LUA_CPATH="${pkgs.luajitPackages.luafilesystem}/lib/lua/5.1/?.so;${pkgs.luajitPackages.luasystem}/lib/lua/5.1/?.so;$LUA_CPATH"
-        ${pkgs.luajitPackages.busted}/bin/busted spec/ --verbose
-      '';
-
-      # Test runner
-      packages.test = pkgs.writeShellScriptBin "neodap-test" ''
-        export LUA_PATH="./lua/?.lua;./lua/?/init.lua;$LUA_PATH"
-        export LUA_CPATH="${pkgs.luajitPackages.luafilesystem}/lib/lua/5.1/?.so;${pkgs.luajitPackages.luasystem}/lib/lua/5.1/?.so;$LUA_CPATH"
-        ${pkgs.luajitPackages.busted}/bin/busted $@
-      '';
-
-      # Run Neovim Init
-      packages.test-nvim = pkgs.writeShellScriptBin "neodap-test-nvim" ''
-        NEODAP_PLAYGROUND=1 nvim -u NONE -U NONE -N -i NONE -V1 -S ./lua/neodap/playground.lua
-      '';
-
-      # Linter runner
-      packages.lint = pkgs.writeShellScriptBin "neodap-lint" ''
-        ${pkgs.luaPackages.luacheck}/bin/luacheck lua/ --globals vim
-      '';
     });
 }

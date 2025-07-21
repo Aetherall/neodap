@@ -1,5 +1,6 @@
 local nio = require("nio")
 local NvimAsync = require("neodap.tools.async")
+local TerminalSnapshot = require("spec.helpers.terminal_snapshot")
 
 return function(describe, it)
   local T = {}
@@ -23,11 +24,12 @@ return function(describe, it)
         fn()
         future.set()
       end)
-      assert(vim.wait(10000, future.is_set), "Should pass")
+      assert(vim.wait(10000, future.is_set), "Timed out after 10 seconds waiting for " .. name)
     end)
   end
 
   function T.spy(name)
+    name = name or "anonymous"
     local future = nio.control.future()
 
     ---@param ms number?
@@ -58,6 +60,21 @@ return function(describe, it)
       is_set = future.is_set,
 
     }
+  end
+
+  -- Terminal snapshot function
+  function T.TerminalSnapshot(name)
+    TerminalSnapshot.capture(name)
+  end
+
+  -- Region snapshot function
+  function T.RegionSnapshot(name, region)
+    TerminalSnapshot.capture_region(name, region)
+  end
+
+  -- Cleanup snapshots
+  function T.CleanupSnapshots()
+    TerminalSnapshot.cleanup()
   end
 
   return T

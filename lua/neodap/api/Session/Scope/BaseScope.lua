@@ -7,7 +7,7 @@ local RangedScopeTrait = require('neodap.api.Session.Scope.traits.RangedScopeTra
 ---@field frame api.Frame
 ---@field ref dap.Scope
 ---@field _variables api.Variable[] | nil
----@field protected _source api.BaseSource | nil
+---@field protected _source api.Source | nil
 
 ---@class api.Scope: api.ScopeProps, api.RangedScopeTrait
 ---@field new Constructor<api.ScopeProps>
@@ -51,7 +51,6 @@ function Scope:variables()
 
   local response = self.frame.stack.thread.session.ref.calls:variables({
     variablesReference = self.ref.variablesReference,
-    threadId = self.frame.stack.thread.id,
   }):wait()
 
   self._variables = vim.tbl_map(function(variable)

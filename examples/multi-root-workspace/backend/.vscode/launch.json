@@ -1,0 +1,54 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Backend API",
+      "type": "pwa-node",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/server.js",
+      "args": ["--port", "8080"],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "NODE_ENV": "development",
+        "DATABASE_URL": "postgres://localhost:5432/devdb",
+        "JWT_SECRET": "dev-secret"
+      },
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "name": "Backend Test",
+      "type": "pwa-node",
+      "request": "launch",
+      "program": "${workspaceFolder}/node_modules/.bin/jest",
+      "args": ["--runInBand", "--testPathPattern=test"],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "NODE_ENV": "test",
+        "DATABASE_URL": "postgres://localhost:5432/testdb"
+      },
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Database Migration",
+      "type": "pwa-node",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/migrate.js",
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "NODE_ENV": "development",
+        "DATABASE_URL": "postgres://localhost:5432/devdb"
+      },
+      "console": "integratedTerminal"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Backend with DB",
+      "configurations": [
+        "Database Migration",
+        "Backend API"
+      ]
+    }
+  ]
+}

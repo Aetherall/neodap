@@ -1,5 +1,6 @@
 local Class = require("neodap.tools.class")
 local nio = require("nio")
+local Logger = require("neodap.tools.logger")
 
 
 ---@class CallsProps
@@ -10,6 +11,7 @@ local nio = require("nio")
 
 ---@class Calls: CallsProps
 ---@field attach fun(self: Calls, args: dap.AttachRequestArguments): { wait: fun(): nil }
+---@field breakpointLocations fun(self: Calls, args: dap.BreakpointLocationsArguments): { wait: fun(): dap.BreakpointLocationsResponseBody }
 ---@field completions fun(self: Calls, args: dap.CompletionsArguments): { wait: fun(): dap.CompletionsResponseBody }
 ---@field configurationDone fun(self: Calls, args: dap.ConfigurationDoneArguments): { wait: fun(): nil }
 ---@field continue fun(self: Calls, args: dap.ContinueArguments): { wait: fun(): dap.ContinueResponseBody }
@@ -139,14 +141,31 @@ function Calls:call(command, params)
   local future = nio.control.future()
 
   self.listeners[request_seq] = function(response)
+    local log = Logger.get("DAP:Calls")
+    log:debug("Received DAP response:", response.command, "seq:", response.seq, "success:", response.success)
+    
     if response.success then
+      log:trace("DAP response body:", response.body)
+      -- Special attention to step command responses
+      if response.command == "next" or response.command == "stepIn" or response.command == "stepOut" then
+        log:debug("STEP RESPONSE SUCCESS:", response.command, "body:", response.body or "nil")
+      end
       future.set(response.body or nil)
     else
+      log:error("DAP response error:", response.command, "message:", response.message)
       future.set_error(response.message)
     end
   end
 
-  -- print("Sending " .. message.command, vim.inspect(message.arguments))
+  -- Enhanced DAP communication tracing
+  local log = Logger.get("DAP:Calls")
+  log:debug("Sending DAP command:", message.command, "seq:", request_seq)
+  log:trace("DAP command arguments:", message.arguments)
+  
+  -- Special attention to step commands
+  if message.command == "next" or message.command == "stepIn" or message.command == "stepOut" then
+    log:debug("STEP COMMAND:", message.command, "threadId:", message.arguments.threadId, "singleThread:", message.arguments.singleThread, "granularity:", message.arguments.granularity)
+  end
 
   self.send(message)
 
