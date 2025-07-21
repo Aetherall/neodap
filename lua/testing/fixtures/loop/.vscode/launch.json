@@ -1,0 +1,12 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Loop",
+      "type": "pwa-node",
+      "request": "launch",
+      "program": "${workspaceFolder}/loop.js",
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}

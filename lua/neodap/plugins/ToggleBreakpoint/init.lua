@@ -20,10 +20,22 @@ ToggleBreakpoint.description = "Plugin to toggle breakpoints in Neodap"
 function ToggleBreakpoint.plugin(api)
   local logger = Logger.get("Plugin:ToggleBreakpoint")
 
-  return ToggleBreakpoint:new({
+  local instance = ToggleBreakpoint:new({
     api = api,
     logger = logger,
     breakpointApi = api:getPluginInstance(BreakpointApi),
+  })
+
+  instance:init()
+
+  return instance
+end
+
+function ToggleBreakpoint:init(props)
+  vim.api.nvim_create_user_command("NeodapToggleBreakpoint", function(args)
+    self:Toggle()
+  end, {
+    desc = "Toggle a breakpoint at the current cursor position",
   })
 end
 
@@ -70,6 +82,12 @@ end
 -- Auto-wrapped version for vim context boundaries
 function ToggleBreakpoint:Toggle(location)
   return self:toggle(location)
+end
+
+function ToggleBreakpoint:destroy()
+  -- Clean up any resources if needed
+  self.logger:info("Destroying ToggleBreakpoint plugin")
+  vim.api.nvim_del_user_command("NeodapToggleBreakpoint")
 end
 
 return ToggleBreakpoint

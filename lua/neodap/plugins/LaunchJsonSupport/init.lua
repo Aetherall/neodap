@@ -3,6 +3,7 @@ local Logger = require("neodap.tools.logger")
 local Class = require("neodap.tools.class")
 local Session = require("neodap.session.session")
 local ExecutableTCPAdapter = require("neodap.adapter.executable_tcp")
+local NvimAsync = require("neodap.tools.async")
 
 ---@class WorkspaceFolder
 ---@field name string
@@ -46,14 +47,14 @@ LaunchJsonSupport.description = "VS Code launch.json configuration support with 
 
 function LaunchJsonSupport.plugin(api)
   local logger = Logger.get("Plugin:LaunchJsonSupport")
-  
+
   local instance = LaunchJsonSupport:new({
     api = api,
     logger = logger,
     cached_workspace_info = nil,
     cached_configurations = nil,
   })
-  
+
   instance:registerCommands()
   return instance
 end
@@ -63,13 +64,13 @@ end
 ---@return WorkspaceInfo
 function LaunchJsonSupport:detectWorkspace(path)
   path = path or vim.fn.getcwd()
-  
+
   -- First, try to find the closest launch.json file for better workspace detection
   local closest_launch_json = self:findClosestLaunchJson(path)
-  
+
   -- Check for .code-workspace file in current directory or parent directories
   local workspace_file = self:findWorkspaceFile(path)
-  
+
   if workspace_file then
     return self:parseMultiRootWorkspace(workspace_file)
   elseif closest_launch_json then
@@ -78,11 +79,11 @@ function LaunchJsonSupport:detectWorkspace(path)
     return {
       type = "single",
       rootPath = workspace_root,
-      folders = {{
+      folders = { {
         name = vim.fn.fnamemodify(workspace_root, ":t"),
         path = ".",
         absolutePath = workspace_root
-      }},
+      } },
       workspaceFile = nil
     }
   else
@@ -90,11 +91,11 @@ function LaunchJsonSupport:detectWorkspace(path)
     return {
       type = "single",
       rootPath = path,
-      folders = {{
+      folders = { {
         name = vim.fn.fnamemodify(path, ":t"),
         path = ".",
         absolutePath = path
-      }},
+      } },
       workspaceFile = nil
     }
   end
@@ -109,7 +110,7 @@ function LaunchJsonSupport:findClosestLaunchJson(start_path)
   if vim.fn.isdirectory(start_path) == 0 then
     current = vim.fn.fnamemodify(start_path, ":h")
   end
-  
+
   -- Traverse up the directory tree looking for .vscode/launch.json
   while current ~= "/" and current ~= "" and current ~= "." do
     local launch_json_path = current .. "/.vscode/launch.json"
@@ -124,7 +125,7 @@ function LaunchJsonSupport:findClosestLaunchJson(start_path)
     end
     current = parent
   end
-  
+
   self.logger:debug("No launch.json found for path:", start_path)
   return nil
 end
@@ -150,36 +151,36 @@ end
 function LaunchJsonSupport:parseMultiRootWorkspace(workspace_file)
   local content = vim.fn.readfile(workspace_file)
   local json_string = table.concat(content, "\n")
-  
+
   -- Handle JSON5 comments
   json_string = json_string:gsub("//.-\n", "\n")
   json_string = json_string:gsub("/%*.--%*/", "")
-  
+
   local ok, parsed = pcall(vim.json.decode, json_string)
   if not ok then
     self.logger:error("Failed to parse workspace file:", workspace_file, parsed)
     error("Failed to parse workspace file: " .. workspace_file)
   end
-  
+
   local workspace_dir = vim.fn.fnamemodify(workspace_file, ":h")
   local folders = {}
-  
+
   for _, folder_config in ipairs(parsed.folders or {}) do
     local folder_path = folder_config.path
     local absolute_path = folder_path
-    
+
     -- Resolve relative paths
     if not vim.fn.fnamemodify(folder_path, ":p"):match("^/") then
       absolute_path = vim.fn.fnamemodify(workspace_dir .. "/" .. folder_path, ":p")
     end
-    
+
     table.insert(folders, {
       name = folder_config.name or vim.fn.fnamemodify(absolute_path, ":t"),
       path = folder_path,
       absolutePath = absolute_path
     })
   end
-  
+
   return {
     type = "multi-root",
     rootPath = workspace_dir,
@@ -194,16 +195,16 @@ end
 ---@return table<string, NamespacedConfiguration>
 function LaunchJsonSupport:loadAllConfigurations(workspaceInfo)
   workspaceInfo = workspaceInfo or self:detectWorkspace()
-  
+
   -- Return cached configurations if workspace hasn't changed
-  if self.cached_workspace_info and 
-     self.cached_workspace_info.rootPath == workspaceInfo.rootPath and
-     self.cached_configurations then
+  if self.cached_workspace_info and
+      self.cached_workspace_info.rootPath == workspaceInfo.rootPath and
+      self.cached_configurations then
     return self.cached_configurations
   end
-  
+
   local all_configs = {}
-  
+
   -- Load folder-level configurations
   for _, folder in ipairs(workspaceInfo.folders) do
     local folder_configs = self:loadFolderConfigurations(folder)
@@ -211,7 +212,7 @@ function LaunchJsonSupport:loadAllConfigurations(workspaceInfo)
       all_configs[config_name] = config
     end
   end
-  
+
   -- Load workspace-level configurations
   if workspaceInfo.type == "multi-root" and workspaceInfo.workspaceConfig then
     local workspace_configs = self:loadWorkspaceConfigurations(workspaceInfo)
@@ -219,11 +220,11 @@ function LaunchJsonSupport:loadAllConfigurations(workspaceInfo)
       all_configs[config_name] = config
     end
   end
-  
+
   -- Cache the results
   self.cached_workspace_info = workspaceInfo
   self.cached_configurations = all_configs
-  
+
   return all_configs
 end
 
@@ -232,26 +233,26 @@ end
 ---@return table<string, NamespacedConfiguration>
 function LaunchJsonSupport:loadFolderConfigurations(folder)
   local launch_json_path = folder.absolutePath .. "/.vscode/launch.json"
-  
+
   if not vim.fn.filereadable(launch_json_path) then
     return {}
   end
-  
+
   local content = vim.fn.readfile(launch_json_path)
   local json_string = table.concat(content, "\n")
-  
+
   -- Handle JSON5 comments
   json_string = json_string:gsub("//.-\n", "\n")
   json_string = json_string:gsub("/%*.--%*/", "")
-  
+
   local ok, parsed = pcall(vim.json.decode, json_string)
   if not ok then
     self.logger:error("Failed to parse launch.json:", launch_json_path, parsed)
     return {}
   end
-  
+
   local configs = {}
-  
+
   -- Process regular configurations
   for _, config in ipairs(parsed.configurations or {}) do
     local namespaced_name = self:namespaceConfigName(config.name, folder)
@@ -263,7 +264,7 @@ function LaunchJsonSupport:loadFolderConfigurations(folder)
       source = "folder"
     }
   end
-  
+
   -- Process compound configurations
   for _, compound in ipairs(parsed.compounds or {}) do
     local namespaced_name = self:namespaceConfigName(compound.name, folder, true)
@@ -275,7 +276,7 @@ function LaunchJsonSupport:loadFolderConfigurations(folder)
       source = "folder"
     }
   end
-  
+
   return configs
 end
 
@@ -287,9 +288,9 @@ function LaunchJsonSupport:loadWorkspaceConfigurations(workspaceInfo)
   if not launch_config then
     return {}
   end
-  
+
   local configs = {}
-  
+
   -- Process regular configurations
   for _, config in ipairs(launch_config.configurations or {}) do
     local namespaced_name = self:namespaceConfigName(config.name, nil, false, "workspace")
@@ -301,7 +302,7 @@ function LaunchJsonSupport:loadWorkspaceConfigurations(workspaceInfo)
       source = "workspace"
     }
   end
-  
+
   -- Process compound configurations
   for _, compound in ipairs(launch_config.compounds or {}) do
     local namespaced_name = self:namespaceConfigName(compound.name, nil, true, "workspace")
@@ -313,7 +314,7 @@ function LaunchJsonSupport:loadWorkspaceConfigurations(workspaceInfo)
       source = "workspace"
     }
   end
-  
+
   return configs
 end
 
@@ -325,7 +326,7 @@ end
 ---@return string
 function LaunchJsonSupport:namespaceConfigName(name, folder, is_compound, source_type)
   local suffix = is_compound and " (compound)" or ""
-  
+
   if folder then
     return string.format("%s [%s]%s", name, folder.name, suffix)
   elseif source_type == "workspace" then
@@ -342,7 +343,7 @@ end
 function LaunchJsonSupport:substituteVariables(config, context)
   local workspaceInfo = context.workspaceInfo or self:detectWorkspace()
   local currentFolder = context.folder
-  
+
   -- Build variable map
   local vars = {
     file = vim.fn.expand("%:p"),
@@ -353,7 +354,7 @@ function LaunchJsonSupport:substituteVariables(config, context)
     fileExtname = vim.fn.expand("%:e"),
     cwd = workspaceInfo.rootPath or vim.fn.getcwd(),
   }
-  
+
   -- Add workspace-specific variables
   if workspaceInfo.type == "single" then
     vars.workspaceFolder = workspaceInfo.rootPath
@@ -362,24 +363,24 @@ function LaunchJsonSupport:substituteVariables(config, context)
     -- Multi-root workspace
     vars.workspaceFolder = workspaceInfo.rootPath
     vars.workspaceFolderBasename = vim.fn.fnamemodify(workspaceInfo.rootPath, ":t")
-    
+
     -- Add scoped workspace folder variables
     for _, folder in ipairs(workspaceInfo.folders) do
       vars["workspaceFolder:" .. folder.name] = folder.absolutePath
     end
-    
+
     -- If we have a current folder context, set default workspaceFolder
     if currentFolder then
       vars.workspaceFolder = currentFolder.absolutePath
       vars.workspaceFolderBasename = currentFolder.name
     end
   end
-  
+
   -- Add custom context variables
   for k, v in pairs(context.vars or {}) do
     vars[k] = v
   end
-  
+
   -- Recursively substitute variables
   local function substitute_recursive(obj)
     if type(obj) == "string" then
@@ -388,12 +389,12 @@ function LaunchJsonSupport:substituteVariables(config, context)
         local scoped_var = var .. ":" .. scope
         return vars[scoped_var] or ("${" .. var .. ":" .. scope .. "}")
       end)
-      
+
       -- Handle regular variables
       obj = obj:gsub("%${([%w_]+)}", function(var)
         return vars[var] or ("${" .. var .. "}")
       end)
-      
+
       return obj
     elseif type(obj) == "table" then
       local result = {}
@@ -405,7 +406,7 @@ function LaunchJsonSupport:substituteVariables(config, context)
       return obj
     end
   end
-  
+
   return substitute_recursive(config)
 end
 
@@ -433,12 +434,12 @@ function LaunchJsonSupport:createAdapterFromConfig(config, folder)
     },
     -- Add more adapter mappings as needed
   }
-  
+
   local adapter_config = adapter_configs[config.type]
   if not adapter_config then
     error("Unsupported adapter type: " .. tostring(config.type))
   end
-  
+
   return ExecutableTCPAdapter.create({
     executable = adapter_config,
     connection = { host = "::1" }
@@ -450,10 +451,10 @@ end
 ---@return table
 function LaunchJsonSupport:transformConfiguration(config)
   local transformed = vim.deepcopy(config)
-  
+
   -- Keep type and request fields as they are required by DAP protocol
   -- Only remove VS Code specific fields that are not part of DAP standard
-  
+
   return transformed
 end
 
@@ -465,18 +466,18 @@ end
 function LaunchJsonSupport:createSessionFromConfig(config_name, manager, workspaceInfo)
   local all_configs = self:loadAllConfigurations(workspaceInfo)
   local namespaced_config = all_configs[config_name]
-  
+
   if not namespaced_config then
     error("Configuration not found: " .. config_name)
   end
-  
+
   local config = namespaced_config.config
-  
+
   -- Skip compound configurations
   if config.configurations then
     error("Use createCompoundSessions for compound configurations")
   end
-  
+
   -- Substitute variables with proper context
   local context = {
     workspaceInfo = workspaceInfo or self:detectWorkspace(),
@@ -484,22 +485,22 @@ function LaunchJsonSupport:createSessionFromConfig(config_name, manager, workspa
     vars = {}
   }
   config = self:substituteVariables(config, context)
-  
+
   -- Create adapter
   local adapter = self:createAdapterFromConfig(config, namespaced_config.folder)
-  
+
   -- Create session
   local session = Session.create({
     manager = manager,
     adapter = adapter,
   })
-  
+
   -- Start session
   session:start({
     configuration = self:transformConfiguration(config),
     request = config.request or "launch",
   })
-  
+
   self.logger:info("Created session from configuration:", config_name)
   return session
 end
@@ -512,23 +513,23 @@ end
 function LaunchJsonSupport:createCompoundSessions(compound_name, manager, workspaceInfo)
   local all_configs = self:loadAllConfigurations(workspaceInfo)
   local namespaced_config = all_configs[compound_name]
-  
+
   if not namespaced_config then
     error("Compound configuration not found: " .. compound_name)
   end
-  
+
   local compound = namespaced_config.config
-  
+
   if not compound.configurations then
     error("Not a compound configuration: " .. compound_name)
   end
-  
+
   local sessions = {}
-  
+
   for _, config_name in ipairs(compound.configurations) do
     -- Handle cross-folder references
     local resolved_config_name = self:resolveConfigurationReference(config_name, namespaced_config, all_configs)
-    
+
     if resolved_config_name then
       local session = self:createSessionFromConfig(resolved_config_name, manager, workspaceInfo)
       table.insert(sessions, session)
@@ -536,7 +537,7 @@ function LaunchJsonSupport:createCompoundSessions(compound_name, manager, worksp
       self.logger:warn("Could not resolve configuration reference:", config_name)
     end
   end
-  
+
   self.logger:info("Created compound sessions for:", compound_name, "(" .. #sessions .. " sessions)")
   return sessions
 end
@@ -551,23 +552,23 @@ function LaunchJsonSupport:resolveConfigurationReference(config_name, compound_c
   if all_configs[config_name] then
     return config_name
   end
-  
+
   -- Search for matching configuration by original name
   for namespaced_name, config in pairs(all_configs) do
     if config.originalName == config_name then
       -- If compound is from same folder, prioritize same folder configs
-      if compound_config.folder and config.folder and 
-         compound_config.folder.name == config.folder.name then
+      if compound_config.folder and config.folder and
+          compound_config.folder.name == config.folder.name then
         return namespaced_name
       end
-      
+
       -- Otherwise, return first match
       if not compound_config.folder or not config.folder then
         return namespaced_name
       end
     end
   end
-  
+
   return nil
 end
 
@@ -577,11 +578,11 @@ end
 function LaunchJsonSupport:getAvailableConfigurations(workspaceInfo)
   local all_configs = self:loadAllConfigurations(workspaceInfo)
   local names = {}
-  
+
   for name, _ in pairs(all_configs) do
     table.insert(names, name)
   end
-  
+
   table.sort(names)
   return names
 end
@@ -592,7 +593,7 @@ function LaunchJsonSupport:registerCommands()
   vim.api.nvim_create_user_command("NeodapLaunchJson", function(opts)
     local config_name = opts.args
     local workspaceInfo = self:detectWorkspace()
-    
+
     if config_name == "" then
       -- Show picker
       local configs = self:getAvailableConfigurations(workspaceInfo)
@@ -600,7 +601,7 @@ function LaunchJsonSupport:registerCommands()
         vim.notify("No launch configurations found", vim.log.levels.WARN)
         return
       end
-      
+
       vim.ui.select(configs, {
         prompt = "Select launch configuration:",
         format_item = function(item)
@@ -623,14 +624,14 @@ function LaunchJsonSupport:registerCommands()
         self:createSessionFromConfig(config_name, self.api.manager, workspaceInfo)
       end
     end
-  end, { 
+  end, {
     nargs = "?",
     complete = function()
       return self:getAvailableConfigurations()
     end,
     desc = "Start debugging session from launch.json configuration"
   })
-  
+
   -- Workspace info command
   vim.api.nvim_create_user_command("NeodapWorkspaceInfo", function()
     local workspaceInfo = self:detectWorkspace()
@@ -641,39 +642,39 @@ function LaunchJsonSupport:registerCommands()
       "",
       "Folders:"
     }
-    
+
     for _, folder in ipairs(workspaceInfo.folders) do
       table.insert(info, string.format("  - %s: %s", folder.name, folder.absolutePath))
     end
-    
+
     if workspaceInfo.workspaceFile then
       table.insert(info, "")
       table.insert(info, "Workspace File: " .. workspaceInfo.workspaceFile)
     end
-    
+
     local configs = self:getAvailableConfigurations(workspaceInfo)
     table.insert(info, "")
     table.insert(info, "Available Configurations: " .. #configs)
     for _, config in ipairs(configs) do
       table.insert(info, "  - " .. config)
     end
-    
-    vim.api.nvim_echo({{table.concat(info, "\n"), "Normal"}}, true, {})
+
+    vim.api.nvim_echo({ { table.concat(info, "\n"), "Normal" } }, true, {})
   end, { desc = "Show workspace and configuration information" })
-  
+
   -- Closest launch.json command - uses current buffer's path
   vim.api.nvim_create_user_command("NeodapLaunchClosest", function(opts)
     local config_name = opts.args
     local current_file = vim.api.nvim_buf_get_name(0)
-    
+
     if current_file == "" then
       vim.notify("No file in current buffer", vim.log.levels.WARN)
       return
     end
-    
+
     -- Detect workspace from current buffer's path
     local workspaceInfo = self:detectWorkspace(current_file)
-    
+
     if config_name == "" then
       -- Show picker for configurations in closest workspace
       local configs = self:getAvailableConfigurations(workspaceInfo)
@@ -681,7 +682,7 @@ function LaunchJsonSupport:registerCommands()
         vim.notify("No launch configurations found for current buffer's workspace", vim.log.levels.WARN)
         return
       end
-      
+
       vim.ui.select(configs, {
         prompt = "Select configuration from closest workspace:",
         format_item = function(item)
@@ -695,8 +696,10 @@ function LaunchJsonSupport:registerCommands()
       end)
     else
       -- Run specified configuration
-      local session = self:createSessionFromConfig(config_name, self.api.manager, workspaceInfo)
-      self.logger:info("Created session from closest configuration:", config_name)
+      NvimAsync.run(function()
+        local session = self:createSessionFromConfig(config_name, self.api.manager, workspaceInfo)
+        self.logger:info("Created session from closest configuration:", config_name)
+      end)
     end
   end, {
     nargs = "?",
@@ -715,10 +718,10 @@ function LaunchJsonSupport:registerCommands()
   vim.api.nvim_create_user_command("NeodapReloadConfigs", function()
     self.cached_workspace_info = nil
     self.cached_configurations = nil
-    
+
     local workspaceInfo = self:detectWorkspace()
     local configs = self:getAvailableConfigurations(workspaceInfo)
-    
+
     vim.notify(string.format("Reloaded %d launch configurations", #configs), vim.log.levels.INFO)
   end, { desc = "Reload launch.json configurations" })
 end

@@ -1,6 +1,6 @@
 local nio = require("nio")
 local NvimAsync = require("neodap.tools.async")
-local TerminalSnapshot = require("spec.helpers.terminal_snapshot")
+local TerminalSnapshot = require("testing.terminal_snapshot")
 
 return function(describe, it)
   local T = {}
@@ -28,6 +28,23 @@ return function(describe, it)
     end)
   end
 
+  ---@param fn fun(api: Api, manager: Manager)
+  function T.Scenario(fn)
+    local filename = debug.getinfo(2, "S").source:match("([^/]+)%.lua$")
+    it(filename, function()
+      local future = nio.control.future()
+      local Api = require('neodap.api.Api')
+      local Manager = require('neodap.session.manager')
+      local manager = Manager.create()
+      local api = Api.register(manager)
+      NvimAsync.run(function()
+        fn(api, manager)
+        future.set()
+      end)
+      assert(vim.wait(5000, future.is_set), "Timed out after 5 seconds waiting for scenario: " .. filename)
+    end)
+  end
+
   function T.spy(name)
     name = name or "anonymous"
     local future = nio.control.future()
@@ -36,7 +53,7 @@ return function(describe, it)
     local function wait(ms)
       -- assert(vim.wait(ms or 1000, future.is_set), name)
       local result = future:wait()
-      print("=====> Waited for " .. name )
+      print("=====> Waited for " .. name)
       return result
     end
 
@@ -64,7 +81,14 @@ return function(describe, it)
 
   -- Terminal snapshot function
   function T.TerminalSnapshot(name)
+    nio.sleep(500) -- Give time for terminal to update
     TerminalSnapshot.capture(name)
+  end
+
+  function T.cmd(command)
+    nio.sleep(20) -- Allow time for command to execute
+    vim.cmd(command)
+    nio.sleep(20) -- Allow time for command to execute
   end
 
   -- Region snapshot function
@@ -75,6 +99,15 @@ return function(describe, it)
   -- Cleanup snapshots
   function T.CleanupSnapshots()
     TerminalSnapshot.cleanup()
+  end
+
+  function T.sleep(ms)
+    nio.sleep(ms or 1000)
+  end
+
+  function T.moveTo(line, column)
+    vim.api.nvim_win_set_cursor(0, { line or 1, column or 0 })
+    nio.sleep(100)
   end
 
   return T
