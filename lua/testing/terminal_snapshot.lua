@@ -128,7 +128,7 @@ local function format_screen_for_embedding(screen, name)
 
   -- Header with clear delimiters
   table.insert(lines, "")
-  table.insert(lines, "--[[ TERMINAL SNAPSHOT: " .. name)
+  table.insert(lines, "--[{ TERMINAL SNAPSHOT: " .. name)
   table.insert(lines, "Size: " .. screen.size[1] .. "x" .. screen.size[2])
   table.insert(lines,
     "Cursor: [" ..
@@ -165,7 +165,7 @@ local function format_screen_for_embedding(screen, name)
     table.insert(lines, string.format("%2d| %s", i + screen.startline, visible_line))
   end
 
-  table.insert(lines, "]]")
+  table.insert(lines, "}]")
 
   return lines
 end
@@ -180,9 +180,12 @@ local function parse_snapshot_from_file(filepath, name)
   local content = file:read("*a")
   file:close()
 
-  -- Look for the snapshot block
-  local pattern = "%-%-%[%[ TERMINAL SNAPSHOT: " .. name:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1") .. "\n(.-)\n%]%]"
-  local snapshot_content = content:match(pattern)
+  -- Look for the snapshot block (both old [[ ]] and new [{ }] formats)
+  local pattern_new = "%-%-%[%{ TERMINAL SNAPSHOT: " .. name:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1") .. "\n(.-)\n%}%]"
+  local pattern_old = "%-%-%[%[ TERMINAL SNAPSHOT: " .. name:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1") .. "\n(.-)\n%]%]"
+  
+  -- Try new format first, then old format for backward compatibility
+  local snapshot_content = content:match(pattern_new) or content:match(pattern_old)
 
   if not snapshot_content then
     return nil
@@ -264,13 +267,18 @@ local function update_snapshot_in_file(filepath, name, screen)
 
   local formatted_snapshot = table.concat(format_screen_for_embedding(screen, name), "\n")
 
-  -- Check if snapshot already exists
-  local pattern = "%-%-%[%[ TERMINAL SNAPSHOT: " .. name:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1") .. "\n.-\n%]%]"
+  -- Check if snapshot already exists (both old and new formats)
+  local pattern_new = "%-%-%[%{ TERMINAL SNAPSHOT: " .. name:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1") .. "\n.-\n%}%]"
+  local pattern_old = "%-%-%[%[ TERMINAL SNAPSHOT: " .. name:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1") .. "\n.-\n%]%]"
+  local pattern = pattern_new
 
-  if content:match(pattern) then
-    -- Replace existing snapshot (escape % and newlines for gsub replacement)
-    local escaped_snapshot = formatted_snapshot:gsub("%%", "%%%%"):gsub("\n", "%%n")
-    content = content:gsub(pattern, function() return formatted_snapshot end)
+  if content:match(pattern_new) or content:match(pattern_old) then
+    -- Replace existing snapshot (try both patterns)
+    if content:match(pattern_new) then
+      content = content:gsub(pattern_new, function() return formatted_snapshot end)
+    else
+      content = content:gsub(pattern_old, function() return formatted_snapshot end)
+    end
   else
     -- Append new snapshot at the end
     content = content .. "\n" .. formatted_snapshot
