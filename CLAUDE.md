@@ -331,6 +331,49 @@ end)
   T.cmd("normal! <cr>") -- Activate node
   ```
 
+  5.4. Neo-tree Integration Specifics
+
+  **Critical Discovery:** Neo-tree buffers are non-modifiable, which affects how you interact with them in tests.
+
+  **Problem:** Standard vim commands fail in Neo-tree buffers:
+  ```lua
+  -- ❌ FAILS with "Cannot make changes, 'modifiable' is off"
+  T.cmd("normal! o")
+  ```
+
+  **Solution:** Use execute to send keystrokes properly:
+  ```lua
+  -- ✅ WORKS - Neo-tree receives the keypress correctly
+  T.cmd("execute \"normal \\<CR>\"")  -- Send Enter key
+  T.cmd("execute \"normal \\<Space>\"")  -- Send Space key
+  ```
+
+  **Key Insights:**
+  - Neo-tree uses command mappings, not direct buffer modifications
+  - Keys are mapped to command names (e.g., "o" → "toggle_node")
+  - The plugin must define its own commands in the source definition
+  - Async data loading requires appropriate sleep times after expansion
+
+  **Example: Variables Plugin Integration**
+  ```lua
+  -- In the plugin's source definition
+  commands = {
+    toggle_node = function(state)
+      -- Neo-tree's base toggle_node handles visual expansion
+      commands.toggle_node(state, function()
+        -- Custom callback for async data loading
+        local node = state.tree:get_node()
+        if node and not node.loaded and node.has_children then
+          plugin:LoadVariablesData(state, node.id, function()
+            node.loaded = true
+            renderer.redraw(state)
+          end)
+        end
+      end)
+    end,
+  }
+  ```
+
   6. Common Pitfalls and Solutions
 
   6.1. Silent Test Passes
