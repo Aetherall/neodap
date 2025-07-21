@@ -61,38 +61,6 @@ T.Scenario(function(api)
   T.TerminalSnapshot('deep_nested_property')
 end)
 
-
---[[ TERMINAL SNAPSHOT: initial_scopes
-Size: 24x80
-Cursor: [1, 0] (line 1, col 0)
-Mode: n
-
- 1|   Local                                │let i = 0;
- 2|   Closure                              │setInterval(() => {
- 3|   Global                               │●  ◆console.log("A Loop iteration:", i+
- 4| ~                                       │+);
- 5| ~                                       │  console.log("B Loop iteration:", i++)
- 6| ~                                       │;
- 7| ~                                       │  console.log("C Loop iteration:", i++)
- 8| ~                                       │;
- 9| ~                                       │  console.log("D Loop iteration:", i++)
-10| ~                                       │;
-11| ~                                       │}, 1000);
-12| ~                                       │~
-13| ~                                       │~
-14| ~                                       │~
-15| ~                                       │~
-16| ~                                       │~
-17| ~                                       │~
-18| ~                                       │~
-19| ~                                       │~
-20| ~                                       │~
-21| ~                                       │~
-22| ~                                       │~
-23| <e variables [1] [RO] 1,1            All <xtures/loop/loop.js 3,1-2          All
-24| 
-]]
-
 --[[ TERMINAL SNAPSHOT: global_expanded
 Size: 24x80
 Cursor: [3, 0] (line 3, col 0)
@@ -121,37 +89,6 @@ Mode: n
 21|     DOMException: () => {              │~
 22|     fetch: ƒ fetch(input, init = undefi│~
 23| <e variables [1] [RO] 3,1            Top <xtures/loop/loop.js 3,1-2          All
-24| 
-]]
-
---[[ TERMINAL SNAPSHOT: global_contents_visible
-Size: 24x80
-Cursor: [4, 0] (line 4, col 0)
-Mode: n
-
- 1|   Local                                │let i = 0;
- 2|   Closure                              │setInterval(() => {
- 3|   Global                               │●  ◆console.log("A Loop iteration:", i+
- 4|     AbortController: ƒ () {       mod ?│+);
- 5|     AbortSignal: ƒ () {       mod ??= r│  console.log("B Loop iteration:", i++)
- 6|     atob: ƒ () {       mod ??= require(│;
- 7|     Blob: ƒ () {       mod ??= require(│  console.log("C Loop iteration:", i++)
- 8|     BroadcastChannel: ƒ () {       mod │;
- 9|     btoa: ƒ () {       mod ??= require(│  console.log("D Loop iteration:", i++)
-10|     Buffer: ƒ get() {       return _Buf│;
-11|     ByteLengthQueuingStrategy: ƒ () {  │}, 1000);
-12|     clearImmediate: ƒ clearImmediate(im│~
-13|     clearInterval: ƒ clearInterval(time│~
-14|     clearTimeout: ƒ clearTimeout(timer)│~
-15|     CompressionStream: ƒ () {       mod│~
-16|     CountQueuingStrategy: ƒ () {       │~
-17|     crypto: ƒ () {       if (check !== │~
-18|     Crypto: ƒ () {       mod ??= requir│~
-19|     CryptoKey: ƒ () {       mod ??= req│~
-20|     DecompressionStream: ƒ () {       m│~
-21|     DOMException: () => {              │~
-22|     fetch: ƒ fetch(input, init = undefi│~
-23| <e variables [1] [RO] 4,1            Top <xtures/loop/loop.js 3,1-2          All
 24| 
 ]]
 

@@ -137,67 +137,84 @@ function VariablesPlugin:setupCommands()
   end, { desc = "Focus Neodap variables window" })
 end
 
----Load variables data for the tree
+---Load scopes at the root level
 ---@param state neotree.State
----@param parent_id? string Parent node ID for lazy loading
----@param callback? function Callback when loading is complete
-function VariablesPlugin:LoadVariablesData(state, parent_id, callback)
+---@param callback? fun()
+function VariablesPlugin:loadScopes(state, callback)
   if not self.current_frame then
     renderer.show_nodes({}, state, nil, callback)
     return
   end
 
   local nodes = {}
+  local scopes = self.current_frame:scopes()
+  if scopes then
+    for i, scope in ipairs(scopes) do
+      local node = scopeToNode(scope.ref)
+      table.insert(nodes, node)
+    end
+  end
+  renderer.show_nodes(nodes, state, nil, callback)
+end
 
+---Load variables for a specific scope
+---@param state neotree.State
+---@param scope_id string
+---@param callback? fun()
+function VariablesPlugin:loadScopeVariables(state, scope_id, callback)
+  local variables_reference = tonumber(scope_id:match("^scope_(%d+)"))
+  if not variables_reference or not self.current_frame then
+    renderer.show_nodes({}, state, scope_id, callback)
+    return
+  end
+
+  local nodes = {}
+  -- Use the Frame API method instead of internal access
+  local variables = self.current_frame:variables(variables_reference)
+  if variables then
+    for i, var_ref in ipairs(variables) do
+      local node = variableToNode(var_ref, scope_id)
+      table.insert(nodes, node)
+    end
+  end
+  renderer.show_nodes(nodes, state, scope_id, callback)
+end
+
+---Load child variables for an expandable variable
+---@param state neotree.State  
+---@param variable_id string
+---@param callback? fun()
+function VariablesPlugin:loadChildVariables(state, variable_id, callback)
+  local ref_str = variable_id:match("var_(%d+)$")
+  if not ref_str or not self.current_frame then
+    renderer.show_nodes({}, state, variable_id, callback)
+    return
+  end
+
+  local variables_reference = tonumber(ref_str)
+  local nodes = {}
+  
+  -- Use the Frame API method instead of internal access
+  local variables = self.current_frame:variables(variables_reference)
+  if variables then
+    for _, var_ref in ipairs(variables) do
+      table.insert(nodes, variableToNode(var_ref, variable_id))
+    end
+  end
+  renderer.show_nodes(nodes, state, variable_id, callback)
+end
+
+---Load variables data for the tree
+---@param state neotree.State
+---@param parent_id? string Parent node ID for lazy loading
+---@param callback? fun() Callback when loading is complete
+function VariablesPlugin:LoadVariablesData(state, parent_id, callback)
   if not parent_id then
-    -- Root level: show scopes
-    local scopes = self.current_frame:scopes()
-    if scopes then
-      for i, scope in ipairs(scopes) do
-        local node = scopeToNode(scope.ref)
-        table.insert(nodes, node)
-      end
-    end
-    renderer.show_nodes(nodes, state, nil, callback)
+    self:loadScopes(state, callback)
   elseif parent_id:match("^scope_") then
-    -- Expanding a scope: load its variables
-    local variables_reference = tonumber(parent_id:match("^scope_(%d+)"))
-
-    if variables_reference then
-      -- Use DAP call to get variables
-      local response = self.current_frame.stack.thread.session.ref.calls:variables({
-        variablesReference = variables_reference,
-        threadId = self.current_frame.stack.thread.id,
-      }):wait()
-
-      if response and response.variables then
-        for i, var_ref in ipairs(response.variables) do
-          local node = variableToNode(var_ref, parent_id)
-          table.insert(nodes, node)
-        end
-      end
-    end
-    renderer.show_nodes(nodes, state, parent_id, callback)
+    self:loadScopeVariables(state, parent_id, callback)
   else
-    -- Expanding a variable: load its child properties
-    -- Extract variable reference from the encoded ID
-    local ref_str = parent_id:match("var_(%d+)$")
-    if ref_str then
-      local variables_reference = tonumber(ref_str)
-
-      -- Use DAP call to get child variables
-      local response = self.current_frame.stack.thread.session.ref.calls:variables({
-        variablesReference = variables_reference,
-        threadId = self.current_frame.stack.thread.id,
-      }):wait()
-
-      if response and response.variables then
-        for _, var_ref in ipairs(response.variables) do
-          table.insert(nodes, variableToNode(var_ref, parent_id))
-        end
-      end
-    end
-    renderer.show_nodes(nodes, state, parent_id, callback)
+    self:loadChildVariables(state, parent_id, callback)
   end
 end
 
