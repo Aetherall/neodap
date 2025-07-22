@@ -115,9 +115,9 @@ Mode: n
 16|    │ * length: 1                        │~
 17|    │ * name: 'clearInterval'            │~
 18|    │  prototype: {constructor: ƒ}      │~
-19|    │ * [[FunctionLocation]]: @ <node_int│~
-20|    │  [[Prototype]]: ƒ ()              │~
-21|    └  [[Scopes]]: Scopes[2]            │~
+19|    │ * [{FunctionLocation}]: @ <node_int│~
+20|    │  [{Prototype}]: ƒ ()              │~
+21|    └  [{Scopes}]: Scopes[2]            │~
 22|     clearTimeout: ƒ clearTimeout(timer)│~
 23| <e variables [1] [RO] 13,1           Top <xtures/loop/loop.js 3,1-2          All
 24| 
@@ -146,8 +146,8 @@ Mode: n
 16|    │ │  caller: ƒ ()                   │~
 17|    │ │ * length: 0                      │~
 18|    │ │ * name: ''                       │~
-19|    │ │  [[Prototype]]: ƒ ()            │~
-20|    │ └  [[Scopes]]: Scopes[0]          │~
+19|    │ │  [{Prototype}]: ƒ ()            │~
+20|    │ └  [{Scopes}]: Scopes[0]          │~
 21|    │  caller: ƒ ()                     │~
 22|    │ * length: 1                        │~
 23| <e variables [1] [RO] 14,1           Top <xtures/loop/loop.js 3,1-2          All
