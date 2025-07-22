@@ -40,6 +40,12 @@ if os.getenv("BUSTED_DEBUG") then
     print("lazy-busted-interpreter: LAZY_STDPATH:", vim.env.LAZY_STDPATH)
 end
 
+if os.getenv("LOCAL_LUA_DEBUGGER_VSCODE") == "1" then
+    package.loaded["lldebugger"] = assert(loadfile(os.getenv("LOCAL_LUA_DEBUGGER_FILEPATH")))()
+    -- require("lldebugger").start()
+    require("lldebugger").start()
+end
+
 -- Use lazy.nvim's minit functionality for busted testing
 require("lazy.minit").busted({
     spec = {
@@ -86,6 +92,7 @@ require("lazy.minit").busted({
             dir = ".",
             name = "neodap",
             lazy = false,
+            dev = true
         },
 
         -- Add busted as a plugin for testing

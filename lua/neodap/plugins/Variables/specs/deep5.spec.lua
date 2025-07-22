@@ -66,33 +66,34 @@ T.Scenario(function(api)
   T.TerminalSnapshot('five_levels_deep')
 end)
 
+
 --[[ TERMINAL SNAPSHOT: five_levels_deep
 Size: 24x80
-Cursor: [16, 0] (line 16, col 0)
+Cursor: [3, 0] (line 3, col 0)
 Mode: n
 
  1|   Local                                │let i = 0;
  2|   Closure                              │setInterval(() => {
- 3|   Global                               │●  ◆console.log("A Loop iteration:", i+
- 4|     AbortController: ƒ () {       mod ?│+);
- 5|     AbortSignal: ƒ () {       mod ??= r│  console.log("B Loop iteration:", i++)
- 6|     atob: ƒ () {       mod ??= require(│;
- 7|     Blob: ƒ () {       mod ??= require(│  console.log("C Loop iteration:", i++)
- 8|     BroadcastChannel: ƒ () {       mod │;
- 9|     btoa: ƒ () {       mod ??= require(│  console.log("D Loop iteration:", i++)
-10|     Buffer: ƒ get() {       return _Buf│;
-11|     ByteLengthQueuingStrategy: ƒ () {  │}, 1000);
-12|     clearImmediate: ƒ clearImmediate(im│~
-13|     clearInterval: ƒ clearInterval(time│~
-14|    │  arguments: ƒ ()                  │~
-15|    │ │  arguments: ƒ ()                │~
-16|    │ │ │  arguments: ƒ ()              │~
-17|    │ │ │ │  arguments: ƒ ()            │~
-18|    │ │ │ │  caller: ƒ ()               │~
-19|    │ │ │ │ * length: 0                  │~
-20|    │ │ │ │ * name: ''                   │~
-21|    │ │ │ │  [{Prototype}]: ƒ ()        │~
-22|    │ │ │ └  [{Scopes}]: Scopes[0]      │~
-23| <e variables [1] [RO] 16,1           Top <xtures/loop/loop.js 3,1-2          All
+ 3|  󰉖 Global                               │●  ◆console.log("A Loop iteration:", i+
+ 4| ~                                       │+);
+ 5| ~                                       │  console.log("B Loop iteration:", i++)
+ 6| ~                                       │;
+ 7| ~                                       │  console.log("C Loop iteration:", i++)
+ 8| ~                                       │;
+ 9| ~                                       │  console.log("D Loop iteration:", i++)
+10| ~                                       │;
+11| ~                                       │}, 1000);
+12| ~                                       │~
+13| ~                                       │~
+14| ~                                       │~
+15| ~                                       │~
+16| ~                                       │~
+17| ~                                       │~
+18| ~                                       │~
+19| ~                                       │~
+20| ~                                       │~
+21| ~                                       │~
+22| ~                                       │~
+23| <e variables [1] [RO] 3,1            All <xtures/loop/loop.js 3,1-2          All
 24| 
 ]]

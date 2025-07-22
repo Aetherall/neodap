@@ -41,7 +41,13 @@ return function(describe, it)
         fn(api, manager)
         future.set()
       end)
-      assert(vim.wait(10000, future.is_set), "Timed out after 10 seconds waiting for scenario: " .. filename)
+      local is_debugger = os.getenv("LOCAL_LUA_DEBUGGER_VSCODE") == "1"
+      if not is_debugger then
+        assert(vim.wait(10000, future.is_set), "Timed out after 10 seconds waiting for scenario: " .. filename)
+      else
+        -- For debugging, we wait 5 minutes to allow manual inspection
+        assert(vim.wait(300000, future.is_set), "Timed out after 5 minutes waiting for scenario: " .. filename)
+      end
     end)
   end
 

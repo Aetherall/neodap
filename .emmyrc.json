@@ -44,7 +44,9 @@
 			"/nix/store/q570k9f80p21sbr4x74vbggjxhg82brz-neovim-unwrapped-0.11.2/share/nvim/runtime/lua",
 			"/nix/store/y78ri890hql30kcyrwa0688fs8r0k0g4-vimplugin-luajit2.1-nvim-nio-1.10.1-1-unstable-1.10.1-1/lua",
 			"/nix/store/7w7pggh8vz5fx6daamb42q84ny14175a-luajit2.1-busted-2.2.0-1/share/lua/5.1",
-			"/nix/store/v7pjwaxd7wmkkji81dl73jvb5x1hm9bi-vimplugin-luajit2.1-nui.nvim-0.4.0-1-unstable-0.4.0-1/lua"
+			"/nix/store/v7pjwaxd7wmkkji81dl73jvb5x1hm9bi-vimplugin-luajit2.1-nui.nvim-0.4.0-1-unstable-0.4.0-1/lua",
+			"/nix/store/v7pjwaxd7wmkkji81dl73jvb5x1hm9bi-vimplugin-luajit2.1-nui.nvim-0.4.0-1-unstable-0.4.0-1/lua/nui",
+			"/nix/store/v7pjwaxd7wmkkji81dl73jvb5x1hm9bi-vimplugin-luajit2.1-nui.nvim-0.4.0-1-unstable-0.4.0-1/lua/nui/tree"
 		]
 	},
 	"typeFormat": {

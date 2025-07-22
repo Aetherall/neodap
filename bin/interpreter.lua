@@ -28,6 +28,9 @@ vim.opt.tabstop = 1
 vim.opt.shiftwidth = 1
 vim.opt.expandtab = false
 
+_G.it = function(name, fn) fn() end
+_G.describe = function(name, fn) fn() end
+
 -- Suppress lazy.nvim output unless debugging
 local original_notify = vim.notify
 local original_print = print
@@ -75,14 +78,14 @@ require("lazy.minit").repro({
       branch = "v3.x",
       dependencies = {
         "nvim-lua/plenary.nvim",
-        "nvim-tree/nvim-web-devicons",         -- not strictly required, but recommended
+        "nvim-tree/nvim-web-devicons", -- not strictly required, but recommended
         "MunifTanjim/nui.nvim",
         -- Optional image support for file preview: See `# Preview Mode` for more information.
         -- {"3rd/image.nvim", opts = {}},
         -- OR use snacks.nvim's image module:
         -- "folke/snacks.nvim",
       },
-      lazy = false,       -- neo-tree will lazily load itself
+      lazy = false, -- neo-tree will lazily load itself
       ---@module "neo-tree"
       ---@type neotree.Config?
       opts = {
@@ -117,6 +120,10 @@ require("lazy.minit").repro({
     {
       dir = ".",
       name = "neodap",
+      lazy = false,
+    },
+    {
+      "olivine-labs/busted",
       lazy = false,
     },
   },
