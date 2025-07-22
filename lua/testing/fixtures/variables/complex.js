@@ -7,6 +7,8 @@ function testVariables() {
     let booleanVar = true;
     let nullVar = null;
     let undefinedVar = undefined;
+    let veryLongVariableNameThatExceedsNormalLimitsForDisplay = "short value";
+    let longStringValue = "This is a very long string value that should be truncated when displayed in the tree view to prevent line wrapping";
     
     // Complex types
     let arrayVar = [1, 2, 3, "four", { five: 5 }];

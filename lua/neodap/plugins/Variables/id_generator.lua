@@ -16,23 +16,28 @@ end
 ---@return string id Hierarchical variable ID
 function IdGenerator.forVariable(parent_id, var_ref, index)
   local name_part = var_ref.name
-  
+
   -- Handle array indices
   if index then
     return string.format("%s[%d]", parent_id, index)
   end
-  
-  -- Handle already bracketed names (like "[Symbol.iterator]")
+
+  -- Handle already bracketed names (like "[Symbol.iterator]" or "[[Prototype]]")
   if name_part:match("^%[.+%]$") then
+    -- For special internal properties like [[Prototype]], ensure uniqueness
+    if name_part:match("^%[%[.+%]%]$") then
+      -- Add the variablesReference to ensure uniqueness
+      return string.format("%s%s[%d]", parent_id, name_part, var_ref.variablesReference or 0)
+    end
     return parent_id .. name_part
   end
-  
+
   -- Handle names that need escaping (contain dots, spaces, etc)
   if name_part:match("[%.%s%[%]%(%)%'%\"]") then
     -- Escape as bracketed property
     return string.format("%s[%q]", parent_id, name_part)
   end
-  
+
   -- Simple property name
   return string.format("%s.%s", parent_id, name_part)
 end
@@ -47,25 +52,25 @@ function IdGenerator.parse(id)
   if parent then
     return parent, index
   end
-  
+
   -- Match bracketed property: parent["name"] or parent['name']
   parent, name = id:match("^(.+)%[([\"'])(.-)%2%]$")
   if parent then
     return parent, name
   end
-  
+
   -- Match special bracket: parent[Symbol.iterator]
   parent, name = id:match("^(.+)(%[.+%])$")
   if parent then
     return parent, name
   end
-  
+
   -- Match simple property: parent.name
   parent, name = id:match("^(.+)%.([^.]+)$")
   if parent then
     return parent, name
   end
-  
+
   -- No parent (root scope)
   return nil, id
 end

@@ -1,376 +1,307 @@
+-- Direct NUI Implementation for Variables Plugin
+-- This is a proof of concept showing how simple it would be
+
 local Class = require('neodap.tools.class')
-local Logger = require('neodap.tools.logger')
-local renderer = require("neo-tree.ui.renderer")
+local NuiSplit = require("nui.split")
+local NuiTree = require("nui.tree")
+local NuiLine = require("nui.line")
 local IdGenerator = require('neodap.plugins.Variables.id_generator')
+local VisualImprovements = require('neodap.plugins.Variables.visual_improvements')
 
-
-local ICONS = {
-  fn = "󰊕",
-  var = "󰀫",
-  scope = "󰅩",
-  global = "󰇧",
-  scope_expanded = "{",
-  scope_collapsed = "󰅩",
-}
-
-
----@class neodap.plugins.VariablesProps
+---@class VariablesTreeNuiProps
 ---@field api Api
----@field logger Logger
 ---@field current_frame? Frame
+---@field windows table<number, {split: NuiSplit, tree: NuiTree}>
 
----@class neodap.plugins.Variables: neodap.plugins.VariablesProps, neotree.Source
----@field new Constructor<neodap.plugins.VariablesProps>
-local VariablesPlugin = Class()
-VariablesPlugin.instance = nil
+---@class VariablesTreeNui: VariablesTreeNuiProps
+---@field new Constructor<VariablesTreeNuiProps>
+local VariablesTreeNui = Class()
 
----@return neodap.plugins.Variables
-function VariablesPlugin.get()
-  if not VariablesPlugin.instance then
-    error("Variables plugin not initialized. Call Variables.plugin(api) first.")
-  end
-  return VariablesPlugin.instance
-end
+VariablesTreeNui.name = "Variables"
 
----@param api Api
-function VariablesPlugin.plugin(api)
-  local instance = VariablesPlugin:new({
+function VariablesTreeNui.plugin(api)
+  local instance = VariablesTreeNui:new({
     api = api,
-    logger = Logger.get("Variables"),
-    current_frame = nil
+    current_frame = nil,
+    windows = {},
   })
 
-  VariablesPlugin.instance = instance
+  -- Setup DAP event handlers
+  instance:setupEventHandlers()
 
-  instance:init()
-
+  -- Create user commands
+  instance:setupCommands()
   return instance
 end
 
----Format variable display name
----@param var_ref table DAP variable reference
----@return string display_name Formatted name for display
-local function formatVariableDisplay(var_ref)
-  local name = var_ref.name or "<anonymous>"
-  local value = var_ref.value or ""
-  local type_hint = var_ref.type and (" (" .. var_ref.type .. ")") or ""
-
-  -- For expandable items, just show name and type
-  if var_ref.variablesReference and var_ref.variablesReference > 0 then
-    return name .. type_hint .. ": " .. "value"
-  end
-
-  -- For leaf items, show name: value
-  return name .. ": " .. "value"
-end
-
----Convert a DAP variable to a Neo-tree node
----@param var_ref table DAP variable reference
----@param parent_id string Parent node ID for building hierarchical IDs
----@param index? number Optional index for array elements
----@return table node Neo-tree node
-local function variableToNode(var_ref, parent_id, index)
-  local node_id = IdGenerator.forVariable(parent_id, var_ref, index)
-  local is_expandable = var_ref.variablesReference and var_ref.variablesReference > 0
-
-  return {
-    id = node_id,
-    name = formatVariableDisplay(var_ref),
-    type = "variable",
-    path = node_id,
-    loaded = not is_expandable,
-    has_children = is_expandable,
-    extra = {
-      is_expandable = is_expandable,
-      variable_reference = var_ref.variablesReference,
-      var_type = var_ref.type,
-      var_value = var_ref.value,
-      evaluate_name = var_ref.evaluateName,
-      indexed_variables = var_ref.indexedVariables,
-      named_variables = var_ref.namedVariables,
-    },
-  }
-end
-
----Convert a scope to a Neo-tree node
----@param scope_ref table DAP scope reference
----@return table node Neo-tree node
-local function scopeToNode(scope_ref)
-  local node_id = IdGenerator.forScope(scope_ref)
-  return {
-    id = node_id,
-    name = scope_ref.name,
-    type = "scope",
-    path = node_id,
-    loaded = false,
-    has_children = true,
-    extra = {
-      is_expandable = true,
-      variables_reference = scope_ref.variablesReference,
-      expensive = scope_ref.expensive,
-      scope_name = scope_ref.name,
-    },
-  }
-end
-
-
-function VariablesPlugin:init()
-  self:setupCommands()
-
+function VariablesTreeNui:setupEventHandlers()
   self.api:onSession(function(session)
     session:onThread(function(thread)
       thread:onStopped(function()
         local stack = thread:stack()
         self.current_frame = stack and stack:top() or nil
-
-        -- Simply update the frame reference
-        -- The Variables window will refresh when navigated to
+        self:RefreshAllWindows()
       end)
 
       thread:onContinued(function()
         self.current_frame = nil
-
-        -- Clear the frame reference when execution continues
+        self:RefreshAllWindows()
       end)
     end)
   end)
 end
 
----Setup user commands for Variables window
-function VariablesPlugin:setupCommands()
-  vim.api.nvim_create_user_command("NeodapVariablesShow", function()
-    vim.cmd("Neotree variables show")
-  end, { desc = "Show Neodap variables window" })
+function VariablesTreeNui:setupCommands()
+  vim.api.nvim_create_user_command("VariablesShow", function()
+    self:Show()
+  end, { desc = "Show variables window" })
 
-  vim.api.nvim_create_user_command("NeodapVariablesClose", function()
-    vim.cmd("Neotree variables close")
-  end, { desc = "Close Neodap variables window" })
+  vim.api.nvim_create_user_command("VariablesClose", function()
+    self:Close()
+  end, { desc = "Close variables window" })
 
-  vim.api.nvim_create_user_command("NeodapVariablesToggle", function()
-    vim.cmd("Neotree variables toggle")
-  end, { desc = "Toggle Neodap variables window" })
-
-  vim.api.nvim_create_user_command("NeodapVariablesFocus", function()
-    vim.cmd("Neotree variables focus")
-  end, { desc = "Focus Neodap variables window" })
+  vim.api.nvim_create_user_command("VariablesToggle", function()
+    self:Toggle()
+  end, { desc = "Toggle variables window" })
 end
 
----Convert variables to nodes
----@param variables table[] Array of DAP variables
----@param parent_id string Parent node ID
----@return table[] nodes Array of Neo-tree nodes
-function VariablesPlugin:variablesToNodes(variables, parent_id)
-  local nodes = {}
-  if variables then
-    for _, var_ref in ipairs(variables) do
-      -- We add a 0 to make sure tonumber dont interpret words numbers such as infinity
-      local index = tonumber("0" .. var_ref.name)
-      local node = variableToNode(var_ref, parent_id, index)
-      table.insert(nodes, node)
+function VariablesTreeNui:Show()
+  local tabpage = vim.api.nvim_get_current_tabpage()
+
+  -- Check if already open
+  local win = self.windows[tabpage]
+  if win and vim.api.nvim_win_is_valid(win.split.winid) then
+    vim.api.nvim_set_current_win(win.split.winid)
+    return
+  end
+
+  -- Create split window
+  local split = NuiSplit({
+    relative = "editor",
+    position = "left",
+    size = "30%",
+    buf_options = {
+      buftype = "nofile",
+      bufhidden = "hide",
+      swapfile = false,
+      modifiable = false,
+    },
+    win_options = {
+      wrap = false,  -- Disable line wrapping
+      linebreak = false,
+      cursorline = true,  -- Highlight current line
+      number = false,
+      relativenumber = false,
+    },
+  })
+
+  split:mount()
+
+  -- Create tree
+  local tree = NuiTree({
+    bufnr = split.bufnr,
+    nodes = self:getRootNodes(),
+    get_node_id = function(node) return node.id end,
+    prepare_node = function(node)
+      return self:prepareNodeLine(node)
+    end,
+  })
+
+  -- Setup keybindings
+  self:setupKeybindings(split, tree)
+
+  -- Store reference
+  self.windows[tabpage] = {
+    split = split,
+    tree = tree,
+  }
+
+  -- Initial render
+  tree:render()
+
+  -- Set buffer name for display
+  vim.api.nvim_buf_set_name(split.bufnr, "Variables")
+end
+
+function VariablesTreeNui:setupKeybindings(split, tree)
+  local map = function(key, fn)
+    vim.keymap.set("n", key, fn, {
+      buffer = split.bufnr,
+      nowait = true,
+      silent = true,
+    })
+  end
+
+  -- Toggle expansion
+  map("<CR>", function() self:ToggleNode(tree) end)
+  map("o", function() self:ToggleNode(tree) end)
+  map("<Space>", function() self:ToggleNode(tree) end)
+
+  -- Close window
+  map("q", function() self:Close() end)
+
+  -- Auto-close on leave
+  vim.api.nvim_create_autocmd("BufLeave", {
+    buffer = split.bufnr,
+    callback = function()
+      -- Optional: auto-close on leave
+      -- self:close()
+    end,
+  })
+end
+
+function VariablesTreeNui:prepareNodeLine(node)
+  -- Use the enhanced visual improvements
+  return VisualImprovements.prepareNodeLine(node, {
+    useTreeGuides = true  -- Enable tree guides for better depth perception
+  })
+end
+
+function VariablesTreeNui:ToggleNode(tree)
+  local node = tree:get_node()
+  if not node then return end
+
+  if not node.loaded or node:has_children() then
+    if node:is_expanded() then
+      node:collapse()
+    else
+      -- Load children if needed
+      if not node.loaded then
+        self:loadNodeChildren(tree, node)
+        node.loaded = true
+      end
+      node:expand()
+    end
+    tree:render()
+  end
+end
+
+function VariablesTreeNui:loadNodeChildren(tree, node)
+  if not self.current_frame then
+    return
+  end
+
+  local children = {}
+
+  -- Load based on node type
+  if node.type == "scope" then
+    -- Load variables for scope
+    local variables = self.current_frame:variables(node.variablesReference)
+    if variables then
+      for _, var in ipairs(variables) do
+        table.insert(children, self:createVariableNode(var, node.id))
+      end
+    end
+  elseif node.type == "variable" and node.variableReference then
+    -- Load child variables
+    local variables = self.current_frame:variables(node.variableReference)
+    if variables then
+      for _, var in ipairs(variables) do
+        table.insert(children, self:createVariableNode(var, node.id))
+      end
     end
   end
+
+  -- Add children to tree
+  tree:set_nodes(children, node.id)
+end
+
+function VariablesTreeNui:createVariableNode(var, parent_id)
+  -- Check if this is an array index
+  local index = tonumber(var.name)
+  local id = IdGenerator.forVariable(parent_id, var, index)
+  local is_expandable = var.variablesReference and var.variablesReference > 0
+
+  return NuiTree.Node({
+    id = id,
+    name = VisualImprovements.formatVariableDisplay(var),
+    text = VisualImprovements.formatVariableDisplay(var),
+    type = "variable",
+    varType = var.type,  -- Store for icon selection
+    is_expandable = is_expandable,
+    variableReference = var.variablesReference,
+    loaded = false,
+  }, is_expandable and {} or nil) -- Empty children if expandable
+end
+
+-- Deprecated: Use VisualImprovements.formatVariableDisplay instead
+function VariablesTreeNui:formatVariable(var)
+  return VisualImprovements.formatVariableDisplay(var)
+end
+
+function VariablesTreeNui:getRootNodes()
+  if not self.current_frame then
+    return {
+      NuiTree.Node({
+        id = "no-debug",
+        name = "No active debug session",
+        text = "No active debug session",
+        type = "info",
+      })
+    }
+  end
+
+  local nodes = {}
+  local scopes = self.current_frame:scopes()
+  if scopes then
+    for _, scope in ipairs(scopes) do
+      local id = IdGenerator.forScope(scope.ref)
+      table.insert(nodes, NuiTree.Node({
+        id = id,
+        name = scope.ref.name,
+        text = scope.ref.name,
+        type = "scope",
+        variablesReference = scope.ref.variablesReference,
+        expensive = scope.ref.expensive,
+        loaded = false,
+      }, {})) -- Empty children, will load on expand
+    end
+  end
+
   return nodes
 end
 
----Load variables data for the tree
----@param state neotree.State
----@param parent_id? string Parent node ID for lazy loading
----@param parent_extra? table Extra data from parent node to avoid tree access
----@param callback? fun() Callback when loading is complete
-function VariablesPlugin:LoadVariablesData(state, parent_id, parent_extra, callback)
-  -- vim.notify(string.format("[Variables] LoadVariablesData called: parent_id=%s", tostring(parent_id)))
-  if not parent_id then
-    -- Root level: load scopes
-    if not self.current_frame then
-      renderer.show_nodes({}, state, nil, callback)
-      return
+function VariablesTreeNui:RefreshAllWindows()
+  for tabpage, win in pairs(self.windows) do
+    if vim.api.nvim_tabpage_is_valid(tabpage) and
+        vim.api.nvim_win_is_valid(win.split.winid) then
+      -- Reset tree with new data
+      local nodes = self:getRootNodes()
+      win.tree = NuiTree({
+        bufnr = win.split.bufnr,
+        nodes = nodes,
+        get_node_id = function(node) return node.id end,
+        prepare_node = function(node)
+          return self:prepareNodeLine(node)
+        end,
+      })
+      win.tree:render()
+    else
+      -- Clean up invalid windows
+      self.windows[tabpage] = nil
     end
-
-    local nodes = {}
-    local scopes = self.current_frame:scopes()
-    if scopes then
-      for _, scope in ipairs(scopes) do
-        table.insert(nodes, scopeToNode(scope.ref))
-      end
-    end
-    renderer.show_nodes(nodes, state, nil, callback)
-  else
-    -- Child level: load variables using parent's reference
-    local ref = parent_extra and (parent_extra.variables_reference or parent_extra.variable_reference)
-    if not ref or not self.current_frame then
-      renderer.show_nodes({}, state, parent_id, callback)
-      return
-    end
-
-    local variables = self.current_frame:variables(ref)
-    local nodes = self:variablesToNodes(variables, parent_id)
-    renderer.show_nodes(nodes, state, parent_id, callback)
   end
 end
 
----Navigate function for Neo-tree integration
----@type fun(state: neotree.State, path?: string, path_to_reveal?: string, callback?: function, async?: boolean)
-function VariablesPlugin:Navigate(state, path, pathToReveal, callback, _async)
-  -- Load and display the root-level scopes
-  self:LoadVariablesData(state, nil, nil, callback)
+function VariablesTreeNui:Close()
+  local tabpage = vim.api.nvim_get_current_tabpage()
+  local win = self.windows[tabpage]
+
+  if win then
+    win.split:unmount()
+    self.windows[tabpage] = nil
+  end
 end
 
-local components = require("neo-tree.sources.common.components")
+function VariablesTreeNui:Toggle()
+  local tabpage = vim.api.nvim_get_current_tabpage()
+  local win = self.windows[tabpage]
 
----@type neotree.Source & { plugin: fun(api: Api): neodap.plugins.Variables }
-local VariablesSource = {
-  name = "variables",
-  display_name = "Variables",
-  commands = {
-    ---@param state neotree.State
-    toggle_node = function(state)
-      local commands = require("neo-tree.sources.common.commands")
-      local plugin = VariablesPlugin.get()
-      local renderer = require("neo-tree.ui.renderer")
+  if win and vim.api.nvim_win_is_valid(win.split.winid) then
+    self:Close()
+  else
+    self:Show()
+  end
+end
 
-      local node = state.tree and state.tree:get_node()
-      if not node then return end
-
-      if not node.loaded then
-        -- If not loaded, we need to fetch data
-        plugin:LoadVariablesData(state, node.id, node.extra)
-
-        local loader = {
-          id = node.id .. "/loading",
-          name = "Loading...",
-          type = "loading",
-        }
-        renderer.show_nodes({ loader }, state, node.id)
-      elseif node.extra.is_expandable then
-        local updated = false
-        if node:is_expanded() then
-          updated = node:collapse()
-        else
-          updated = node:expand()
-        end
-        if updated then
-          renderer.redraw(state)
-        end
-      end
-
-
-      -- -- Use the common toggle_node with our custom handler
-      -- -- Neo-tree only calls this for expandable nodes needing data
-      -- commands.toggle_node(state, function(node)
-      --   -- vim.notify(string.format("[Variables] Toggle handler called for: %s, loaded=%s", node.id, tostring(node.loaded)))
-      --   if plugin and not node.loaded then
-      --     -- Only load if not already loaded
-      --     plugin:LoadVariablesData(state, node.id, node.extra)
-      --   end
-      -- end)
-    end,
-  },
-  components = components,
-  ---@param opts neotree.SourceOptions
-  ---@param config neotree.Config.Base
-  setup = function(opts, config)
-    local kinds = config.document_symbols.kinds
-    -- Ensure we have proper renderers
-    if not opts.renderers then
-      opts.renderers = {}
-    end
-
-    local expanded = {
-      "icon",
-      ---@param node NuiTreeNode
-      ---@param state neotree.State
-      provider = function(icon, node, state)
-        return {
-          text = node:is_expanded() and "-" or "+",
-          highlight = "NeoTreeScopeIcon",
-        }
-      end
-    }
-
-    -- Set default renderers if they don't exist
-    if not opts.renderers.scope then
-      opts.renderers.scope = {
-        {
-          "indent",
-          indent_size = 2,
-          padding = 1,
-          -- indent guides
-          with_markers = true,
-          indent_marker = "│",
-          last_indent_marker = "└",
-          highlight = "NeoTreeIndentMarker",
-          -- expander config, needed for nesting files
-          with_expanders = nil, -- if nil and file nesting is enabled, will enable expanders
-          expander_collapsed = "",
-          expander_expanded = "",
-          expander_highlight = "NeoTreeExpander",
-        },
-        expanded,
-        { "name" }
-      }
-    end
-
-    if not opts.renderers.variable then
-      opts.renderers.variable = {
-        { "indent" },
-        expanded,
-        {
-          "icon",
-          ---@param node NuiTreeNode
-          provider = function(icon, node, state)
-            local kind = kinds[node.extra.var_type or "Unknown"]
-            if kind then
-              return {
-                text = kind.icon,
-                highlight = kind.hl or "NeoTreeVariableIcon"
-              }
-            end
-            return {
-              text = ICONS.var,
-              highlight = "NeoTreeVariableIcon"
-            }
-            -- config.document_symbols.kinds
-            -- local extra = node.extra or {}
-            -- if extra.var_type then
-            --   return {
-            --     text = " (" .. extra.var_type .. ")",
-            --     highlight = "NeoTreeVariableType"
-            --   }
-            -- end
-            -- return ""
-          end
-        },
-        { "name" },
-      }
-    end
-
-    -- Set up window mappings
-    if not opts.window then
-      opts.window = {}
-    end
-    if not opts.window.mappings then
-      opts.window.mappings = {}
-    end
-
-    -- Override specific mappings for our source
-    opts.window.mappings["<cr>"] = "toggle_node"
-    opts.window.mappings["<space>"] = "toggle_node"
-    opts.window.mappings["o"] = "toggle_node"
-  end,
-  navigate = function(state, path, pathToReveal, callback, _async)
-    local plugin = VariablesPlugin.get()
-    if not plugin then
-      if callback then vim.schedule(callback) end
-      return
-    end
-
-    plugin:Navigate(state, path, pathToReveal, callback, _async)
-  end,
-
-  Plugin = VariablesPlugin,
-  plugin = function(api)
-    return VariablesPlugin.plugin(api)
-  end,
-}
-
-return VariablesSource
+return VariablesTreeNui
