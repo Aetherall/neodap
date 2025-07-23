@@ -148,7 +148,7 @@ require("lazy.minit").repro({
 
   -- Control headless output
   headless = {
-    process = false,
+    process = true,
     log = os.getenv("LAZY_DEBUG") and true or false,
     task = os.getenv("LAZY_DEBUG") and true or false,
     colors = os.getenv("LAZY_DEBUG") and true or false,
@@ -257,7 +257,7 @@ local function execute_code()
       end
     else
       print("Error executing Lua code:", result)
-      vim.cmd("cquit 1")
+      -- vim.cmd("cquit 1")
     end
   else
     if os.getenv("LAZY_DEBUG") then
@@ -266,15 +266,44 @@ local function execute_code()
   end
 end
 
--- Use vim.schedule to ensure lazy.nvim has finished setup before executing code
 vim.schedule(function()
-  -- Restore original functions after lazy.nvim setup
-  if silent_mode then
-    vim.notify = original_notify
-    print = original_print
-  end
+  -- local NvimAsync = require("neodap.tools.async")
+  -- local nio = require("nio")
 
-  execute_code()
-  -- Exit successfully
-  vim.cmd("quit")
+  require("neodap.test_nested_async_returns")
+  -- NvimAsync.run(function()
+  --   -- -- Execute the code provided via stdin or command line arguments
+  --   -- execute_code()
+
+  --   -- Run the test suite if available
+  --   if vim.fn.filereadable("test_nested_async_returns.lua") == 1 then
+  --   else
+  --     print("No test file found, skipping tests")
+  --   end
+
+  --   -- Exit successfully
+  --   -- nio.sleep(2000) -- Give time for all async tasks to complete
+  --   vim.cmd("quit")
+  -- end)
+  -- require("neodap.test_nested_async_returns")
+  vim.wait(1000, function() return false end)
 end)
+
+-- execute_code()
+-- -- Use vim.schedule to ensure lazy.nvim has finished setup before executing code
+-- vim.schedule(function()
+--   -- Restore original functions after lazy.nvim setup
+--   if silent_mode then
+--     vim.notify = original_notify
+--     print = original_print
+--   end
+
+--   local NvimAsync = require("neodap.tools.async")
+--   local nio = require("nio")
+
+--   NvimAsync.run(function()
+--     -- Exit successfully
+--     -- nio.sleep(2000) -- Give time for all async tasks to complete
+--     -- vim.cmd("quit")
+--   end)
+-- end)

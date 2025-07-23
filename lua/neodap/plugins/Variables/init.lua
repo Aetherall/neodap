@@ -113,7 +113,7 @@ function VariablesTreeNui:Show()
       buftype = "nofile",
       bufhidden = "hide",
       swapfile = false,
-      modifiable = false,
+      modifiable = true,
     },
     win_options = {
       wrap = false,      -- Disable line wrapping

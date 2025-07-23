@@ -170,7 +170,7 @@ function ViewportIntegration:RenderWithViewport(tabpage)
   end
   vim.api.nvim_buf_set_lines(win.split.bufnr, 0, -1, false, header_text)
 
-  vim.api.nvim_buf_set_option(win.split.bufnr, 'modifiable', false)
+  -- vim.api.nvim_buf_set_option(win.split.bufnr, 'modifiable', false)
 
   -- Create and render NUI Tree starting after header
   win.tree = NuiTree({

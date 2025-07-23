@@ -3,6 +3,22 @@ local Logger = require("neodap.tools.logger")
 
 local logger = Logger.get("Core:Async")
 
+-- Registry for NvimAsync-managed coroutines
+-- Weak keys ensure coroutines are garbage collected when done
+local nvim_async_coroutines = setmetatable({}, { __mode = "k" })
+
+-- Store the original nio.current_task before overriding
+local original_current_task = nio.current_task
+
+-- Global override to provide nio task context for NvimAsync coroutines
+nio.current_task = function()
+    local co = coroutine.running()
+    if co and nvim_async_coroutines[co] then
+        return nvim_async_coroutines[co].task
+    end
+    return original_current_task()
+end
+
 -- NvimAsync integration for simplified coroutine-based handlers
 local NvimAsync = {}
 
@@ -15,13 +31,14 @@ function NvimAsync.run(coroutine_func, event, options)
     options = options or {}
     local isPreempted = options.isPreempted
 
-    -- If we're already in a NvimAsync context, check preemption and run directly
-    if nio.current_task() then
+    -- Check if we're already in a registered NvimAsync context
+    local current_co = coroutine.running()
+    if current_co and nvim_async_coroutines[current_co] then
         if isPreempted and isPreempted() then
             print("NVIM_ASYNC: Preempted in nested context")
             return
         end
-        -- print("NVIM_ASYNC: Running in nested context")
+        -- Already in NvimAsync context, run directly
         coroutine_func(event)
         return
     end
@@ -54,6 +71,9 @@ function NvimAsync.run(coroutine_func, event, options)
                 local error_msg = tostring(yielded[2])
                 logger:error("NvimAsync coroutine error: " .. error_msg)
 
+                -- Clean up registry entry on error
+                nvim_async_coroutines[co] = nil
+
                 -- Error recovery: By default, we continue gracefully instead of crashing
                 -- This prevents erratic plugin behavior from taking down the entire system
                 -- Set NEODAP_PANIC=true environment variable to restore original crash behavior for debugging
@@ -74,6 +94,8 @@ function NvimAsync.run(coroutine_func, event, options)
 
             if coroutine.status(co) == "dead" then
                 -- Coroutine finished successfully
+                -- Clean up registry entry
+                nvim_async_coroutines[co] = nil
                 return
             end
 
@@ -111,23 +133,14 @@ function NvimAsync.run(coroutine_func, event, options)
         end
     }
 
-    -- Temporarily override nio.current_task for this coroutine
-    local original_current_task = nio.current_task
-    nio.current_task = function()
-        local current_co = coroutine.running()
-        if current_co == co then
-            return fake_task
-        end
-        return original_current_task()
-    end
+    -- Register this coroutine with its fake task
+    nvim_async_coroutines[co] = {
+        task = fake_task,
+        completed = false
+    }
 
     -- Start the coroutine
     step()
-
-    -- Restore after the initial step
-    vim.schedule(function()
-        nio.current_task = original_current_task
-    end)
 
     return fake_task
 end
@@ -154,29 +167,17 @@ end
 function NvimAsync.defer(func)
     return function(...)
         local args = { ... }
+        local co = coroutine.running()
 
-        if current_non_main_co() then
-            -- local method_name = debug.getinfo(func, "n").name or "unknown"
-            -- local caller_info = debug.getinfo(3, "Sl")
-            -- local location = caller_info and (caller_info.short_src .. ":" .. caller_info.currentline) or "unknown"
-            -- -- If we're not in a NvimAsync context, run directly
+        -- If we're already in a registered NvimAsync context, run directly
+        if co and nvim_async_coroutines[co] then
             return func(unpack(args))
         end
 
-        print("NVIM_ASYNC>>>: Deferring function call in NvimAsync context " ..
-            vim.inspect({ thread = thread, ismain = ismain }))
-        local result = NvimAsync.run(function()
-            local thread, ismain = coroutine.running()
-            print("NVIM_ASYNC+++: Running deferred function in NvimAsync context" ..
-                vim.inspect({ thread = thread, ismain = ismain }))
-            local result = func(unpack(args))
-            local thread, ismain = coroutine.running()
-            print("NVIM_ASYNC---: Deferred function completed with result:", result,
-                vim.inspect({ thread = thread, ismain = ismain }))
-            return result
+        -- Otherwise, create new NvimAsync context
+        NvimAsync.run(function()
+            func(unpack(args))
         end)
-        local thread, ismain = coroutine.running()
-        print("NVIM_ASYNC<<<: Deferred function returned:", result, vim.inspect({ thread = thread, ismain = ismain }))
         -- Returns immediately (fire-and-forget)
         -- Return a special value that warns when used
         local warned = false
