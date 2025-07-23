@@ -8,6 +8,7 @@ local NuiLine = require("nui.line")
 local IdGenerator = require('neodap.plugins.Variables.id_generator')
 local VisualImprovements = require('neodap.plugins.Variables.visual_improvements')
 local BreadcrumbNav = require('neodap.plugins.Variables.breadcrumb_navigation')
+local ViewportIntegration = require('neodap.plugins.Variables.viewport_integration')
 
 ---@class VariablesTreeNuiProps
 ---@field api Api
@@ -15,6 +16,7 @@ local BreadcrumbNav = require('neodap.plugins.Variables.breadcrumb_navigation')
 ---@field windows table<number, {split: NuiSplit, tree: NuiTree}>
 ---@field breadcrumb_mode boolean
 ---@field breadcrumb BreadcrumbNav?
+---@field viewport_integration ViewportIntegration?
 
 ---@class VariablesTreeNui: VariablesTreeNuiProps
 ---@field new Constructor<VariablesTreeNuiProps>
@@ -31,6 +33,7 @@ function VariablesTreeNui.create(api)
     windows = {},
     breadcrumb_mode = false,
     breadcrumb = nil,
+    viewport_integration = nil,
   })
 
   instance:init()
@@ -45,6 +48,9 @@ function VariablesTreeNui:init()
   -- Initialize breadcrumb navigation
   self.breadcrumb = BreadcrumbNav.create(self)
   self.breadcrumb_mode = false
+
+  -- Initialize viewport integration (experimental)
+  self.viewport_integration = ViewportIntegration.create(self)
 
   -- Setup DAP event handlers
   self:setupEventHandlers()
@@ -255,10 +261,10 @@ function VariablesTreeNui:createVariableNode(var, parent_id)
   -- For expandable items, we'll fetch preview data asynchronously
   local node = NuiTree.Node({
     id = id,
-    name = var.name,                              -- PURE variable name for navigation
-    text = VisualImprovements.formatVariableDisplay(var),  -- Formatted display text
+    name = var.name,                                      -- PURE variable name for navigation
+    text = VisualImprovements.formatVariableDisplay(var), -- Formatted display text
     type = "variable",
-    varType = var.type, -- Store for icon selection
+    varType = var.type,                                   -- Store for icon selection
     is_expandable = is_expandable,
     variableReference = var.variablesReference,
     variable = var,               -- Store the variable for preview updates
@@ -319,7 +325,11 @@ function VariablesTreeNui:RefreshAllWindows()
   for tabpage, win in pairs(self.windows) do
     if vim.api.nvim_tabpage_is_valid(tabpage) and
         vim.api.nvim_win_is_valid(win.split.winid) then
-      if self.breadcrumb_mode then
+      -- Check if viewport mode should be used
+      if self.viewport_integration and self.viewport_integration:shouldUseViewport(tabpage) then
+        -- Use viewport integration refresh
+        self.viewport_integration:RenderWithViewport(tabpage)
+      elseif self.breadcrumb_mode then
         -- Use breadcrumb navigation refresh
         self.breadcrumb:RefreshView(tabpage)
       else
@@ -372,7 +382,7 @@ function VariablesTreeNui:Close()
     if self.breadcrumb_mode then
       self.breadcrumb:closeBreadcrumbSplit(tabpage)
     end
-    
+
     win.split:unmount()
     self.windows[tabpage] = nil
   end
@@ -527,7 +537,7 @@ function VariablesTreeNui:FetchPreviewData(node, var, parent_id)
 
       -- Store preview separately and update display text only
       node.preview = preview
-      var.preview = preview  -- Also update the variable for consistency
+      var.preview = preview -- Also update the variable for consistency
       node.text = VisualImprovements.formatVariableDisplay(var)
       -- node.name stays as pure variable name for navigation!
 

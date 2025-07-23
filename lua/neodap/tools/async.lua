@@ -53,21 +53,22 @@ function NvimAsync.run(coroutine_func, event, options)
             if not success then
                 local error_msg = tostring(yielded[2])
                 logger:error("NvimAsync coroutine error: " .. error_msg)
-                
+
                 -- Error recovery: By default, we continue gracefully instead of crashing
                 -- This prevents erratic plugin behavior from taking down the entire system
                 -- Set NEODAP_PANIC=true environment variable to restore original crash behavior for debugging
                 local panic_mode = os.getenv("NEODAP_PANIC") == "true"
-                
+
                 if panic_mode then
                     -- Original catastrophic behavior for debugging
-                    vim.notify("CRITICAL FAILURE, INTERRUPTING, check the last log file in the log folder to understand why.")
+                    vim.notify(
+                        "CRITICAL FAILURE, INTERRUPTING, check the last log file in the log folder to understand why.")
                     vim.cmd("qa!") -- Quit all
                 else
                     -- Graceful recovery - log and continue execution
                     logger:warn("Continuing execution despite error (set NEODAP_PANIC=true to debug)")
                 end
-                
+
                 return
             end
 
@@ -95,6 +96,7 @@ function NvimAsync.run(coroutine_func, event, options)
 
     -- Create a fake task for nio.current_task() compatibility
     local fake_task = {
+        fake = true,
         cancel = function()
             cancelled = true
         end,
@@ -130,6 +132,20 @@ function NvimAsync.run(coroutine_func, event, options)
     return fake_task
 end
 
+local function current_non_main_co()
+    local data = { coroutine.running() }
+
+    if select("#", unpack(data)) == 2 then
+        local co, is_main = unpack(data)
+        if is_main then
+            return nil
+        end
+        return co
+    end
+
+    return unpack(data)
+end
+
 --- Creates a fire-and-forget async wrapper for a function
 --- Useful for vim autocommands, keybindings, and other sync contexts
 --- that need to trigger async operations
@@ -138,9 +154,29 @@ end
 function NvimAsync.defer(func)
     return function(...)
         local args = { ... }
-        NvimAsync.run(function()
+
+        if current_non_main_co() then
+            -- local method_name = debug.getinfo(func, "n").name or "unknown"
+            -- local caller_info = debug.getinfo(3, "Sl")
+            -- local location = caller_info and (caller_info.short_src .. ":" .. caller_info.currentline) or "unknown"
+            -- -- If we're not in a NvimAsync context, run directly
             return func(unpack(args))
+        end
+
+        print("NVIM_ASYNC>>>: Deferring function call in NvimAsync context " ..
+            vim.inspect({ thread = thread, ismain = ismain }))
+        local result = NvimAsync.run(function()
+            local thread, ismain = coroutine.running()
+            print("NVIM_ASYNC+++: Running deferred function in NvimAsync context" ..
+                vim.inspect({ thread = thread, ismain = ismain }))
+            local result = func(unpack(args))
+            local thread, ismain = coroutine.running()
+            print("NVIM_ASYNC---: Deferred function completed with result:", result,
+                vim.inspect({ thread = thread, ismain = ismain }))
+            return result
         end)
+        local thread, ismain = coroutine.running()
+        print("NVIM_ASYNC<<<: Deferred function returned:", result, vim.inspect({ thread = thread, ismain = ismain }))
         -- Returns immediately (fire-and-forget)
         -- Return a special value that warns when used
         local warned = false
@@ -150,39 +186,68 @@ function NvimAsync.defer(func)
                 local method_name = debug.getinfo(func, "n").name or "unknown"
                 local caller_info = debug.getinfo(3, "Sl")
                 local location = caller_info and (caller_info.short_src .. ":" .. caller_info.currentline) or "unknown"
-                
+
                 vim.notify(
-                    "⚠️  ASYNC/SYNC MISMATCH: PascalCase method '" .. method_name .. "' called from sync context at " .. location .. ". " ..
+                    "⚠️  ASYNC/SYNC MISMATCH: PascalCase method '" ..
+                    method_name .. "' called from sync context at " .. location .. ". " ..
                     "Return value is fire-and-forget (nil). Use camelCase for sync methods or nio.wrap() for proper async.",
                     vim.log.levels.WARN
                 )
             end
         end
-        
+
         -- Create a special truthy value that warns when used
         -- This way `if not result` will be false, but any other usage triggers warning
         local poison = setmetatable({ __async_poison = true }, {
-            __index = function() warn_once(); return nil end,
-            __newindex = function() warn_once() end,
-            __call = function() warn_once(); error("Cannot call async method return value") end,
-            __tostring = function() warn_once(); return "ASYNC_FIRE_AND_FORGET" end,
-            __concat = function() warn_once(); return "ASYNC_FIRE_AND_FORGET" end,
-            __eq = function(a, b) 
-                if b ~= poison then warn_once() end
-                return false 
+            __index = function()
+                warn_once(); return nil
             end,
-            __lt = function() warn_once(); return false end,
-            __le = function() warn_once(); return false end,
-            __add = function() warn_once(); return 0 end,
-            __sub = function() warn_once(); return 0 end,
-            __mul = function() warn_once(); return 0 end,
-            __div = function() warn_once(); return 0 end,
-            __mod = function() warn_once(); return 0 end,
-            __pow = function() warn_once(); return 0 end,
-            __unm = function() warn_once(); return 0 end,
-            __len = function() warn_once(); return 0 end,
+            __newindex = function() warn_once() end,
+            __call = function()
+                warn_once(); error("Cannot call async method return value")
+            end,
+            __tostring = function()
+                warn_once(); return "ASYNC_FIRE_AND_FORGET"
+            end,
+            __concat = function()
+                warn_once(); return "ASYNC_FIRE_AND_FORGET"
+            end,
+            __eq = function(a, b)
+                if b ~= poison then warn_once() end
+                return false
+            end,
+            __lt = function()
+                warn_once(); return false
+            end,
+            __le = function()
+                warn_once(); return false
+            end,
+            __add = function()
+                warn_once(); return 0
+            end,
+            __sub = function()
+                warn_once(); return 0
+            end,
+            __mul = function()
+                warn_once(); return 0
+            end,
+            __div = function()
+                warn_once(); return 0
+            end,
+            __mod = function()
+                warn_once(); return 0
+            end,
+            __pow = function()
+                warn_once(); return 0
+            end,
+            __unm = function()
+                warn_once(); return 0
+            end,
+            __len = function()
+                warn_once(); return 0
+            end,
         })
-        
+
         return poison
     end
 end
