@@ -55,6 +55,7 @@ end)
 
 
 
+
 --[[ TERMINAL SNAPSHOT: visual_scopes
 Size: 24x80
 Cursor: [1, 0] (line 1, col 0)

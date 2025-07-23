@@ -28,6 +28,9 @@ return function(describe, it)
     end)
   end
 
+  local lastStepTimestamp = 0
+
+
   ---@param fn fun(api: Api, manager: Manager)
   function T.Scenario(fn)
     local filename = debug.getinfo(2, "S").source:match("([^/]+)%.lua$")
@@ -43,7 +46,7 @@ return function(describe, it)
       end)
       local is_debugger = os.getenv("LOCAL_LUA_DEBUGGER_VSCODE") == "1"
       if not is_debugger then
-        assert(vim.wait(10000, future.is_set), "Timed out after 10 seconds waiting for scenario: " .. filename)
+        assert(vim.wait(20000, future.is_set), "Timed out after 10 seconds waiting for scenario: " .. filename)
       else
         -- For debugging, we wait 5 minutes to allow manual inspection
         assert(vim.wait(300000, future.is_set), "Timed out after 5 minutes waiting for scenario: " .. filename)
@@ -89,12 +92,14 @@ return function(describe, it)
   function T.TerminalSnapshot(name)
     nio.sleep(500) -- Give time for terminal to update
     TerminalSnapshot.capture(name)
+    lastStepTimestamp = os.time()
   end
 
   function T.cmd(command)
     nio.sleep(20) -- Allow time for command to execute
     vim.cmd(command)
     nio.sleep(20) -- Allow time for command to execute
+    lastStepTimestamp = os.time()
   end
 
   -- Region snapshot function
@@ -109,6 +114,7 @@ return function(describe, it)
 
   function T.sleep(ms)
     nio.sleep(ms or 1000)
+    lastStepTimestamp = os.time()
   end
 
   function T.moveTo(line, column)

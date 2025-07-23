@@ -468,6 +468,16 @@ function LaunchJsonSupport:createSessionFromConfig(config_name, manager, workspa
   local namespaced_config = all_configs[config_name]
 
   if not namespaced_config then
+    --- Look if first word matches any configuration name
+    for namespaced_name, config in pairs(all_configs) do
+      if namespaced_name:match("^" .. vim.pesc(config_name) .. "%s") then
+        namespaced_config = config
+        break
+      end
+    end
+  end
+
+  if not namespaced_config then
     error("Configuration not found: " .. config_name)
   end
 

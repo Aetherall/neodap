@@ -181,11 +181,16 @@ function M.formatVariableDisplay(var, maxTotalLength)
   -- Format name
   local displayName = M.formatName(name, isArrayIndex)
   
-  -- For expandable items, show name and enhanced type info
+  -- For expandable items, show name with preview or type info
   if isExpandable then
     local result
-    if varType then
-      -- Enhance type display with counts when available
+    
+    -- Check if we have a preview
+    if var.preview then
+      -- Use the inline preview
+      result = displayName .. " " .. var.preview
+    elseif varType then
+      -- Fallback to enhanced type display with counts
       local enhancedType = varType
       
       -- Extract count from value if available

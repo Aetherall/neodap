@@ -7,6 +7,13 @@
       "request": "launch",
       "program": "${workspaceFolder}/complex.js",
       "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Deep Nested",
+      "type": "pwa-node",
+      "request": "launch",
+      "program": "${workspaceFolder}/deep_nested.js",
+      "cwd": "${workspaceFolder}"
     }
   ]
 }

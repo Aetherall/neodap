@@ -129,6 +129,16 @@ end)
 
 
 
+
+
+
+
+
+
+
+
+
+
 --[[ TERMINAL SNAPSHOT: 01_initial_file
 Size: 24x80
 Cursor: [1, 0] (line 1, col 0)
@@ -143,19 +153,19 @@ Mode: n
  7|     let booleanVar = true;
  8|     let nullVar = null;
  9|     let undefinedVar = undefined;
-10| 
-11|     // Complex types
-12|     let arrayVar = [1, 2, 3, "four", { five: 5 }];
-13|     let objectVar = {
-14|         name: "Test Object",
-15|         count: 100,
-16|         nested: {
-17|             level: 2,
-18|             data: ["a", "b", "c"]
-19|         },
-20|         method: function() { return "method"; }
-21|     };
-22| 
+10|     let veryLongVariableNameThatExceedsNormalLimitsForDisplay = "short value";
+11|     let longStringValue = "This is a very long string value that should be trunc
+12| ated when displayed in the tree view to prevent line wrapping";
+13| 
+14|     // Complex types
+15|     let arrayVar = [1, 2, 3, "four", { five: 5 }];
+16|     let objectVar = {
+17|         name: "Test Object",
+18|         count: 100,
+19|         nested: {
+20|             level: 2,
+21|             data: ["a", "b", "c"]
+22|         },
 23| complex.js                                                    1,1            Top
 24| 
 ]]
