@@ -309,7 +309,7 @@ function TerminalSnapshot.capture(name)
 
     if #differences > 0 then
       -- Update the snapshot with new content
-      -- update_snapshot_in_file(test_file, name, current_screen)
+      update_snapshot_in_file(test_file, name, current_screen)
 
       -- Create error message with diff
       local error_msg = "\n! Terminal snapshot '" .. name .. "' differs:\n\n" .. table.concat(differences, "\n")
@@ -322,7 +322,7 @@ function TerminalSnapshot.capture(name)
     end
   else
     -- First time: create new snapshot
-    -- update_snapshot_in_file(test_file, name, current_screen)
+    update_snapshot_in_file(test_file, name, current_screen)
     print("\n📸 Created terminal snapshot '" .. name .. "' in " .. vim.fn.fnamemodify(test_file, ":t"))
   end
 end

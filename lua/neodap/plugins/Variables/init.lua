@@ -1,5 +1,5 @@
--- Direct NUI Implementation for Variables Plugin
--- This is a proof of concept showing how simple it would be
+-- Variables Plugin with Viewport-Based Architecture
+-- Revolutionary tree navigation using geometric viewport concepts
 
 local Class = require('neodap.tools.class')
 local NuiSplit = require("nui.split")
@@ -7,16 +7,15 @@ local NuiTree = require("nui.tree")
 local NuiLine = require("nui.line")
 local IdGenerator = require('neodap.plugins.Variables.id_generator')
 local VisualImprovements = require('neodap.plugins.Variables.visual_improvements')
-local BreadcrumbNav = require('neodap.plugins.Variables.breadcrumb_navigation')
-local ViewportIntegration = require('neodap.plugins.Variables.viewport_integration')
+local ViewportSystem = require('neodap.plugins.Variables.viewport_system')
+local ViewportRenderer = require('neodap.plugins.Variables.viewport_renderer')
 
 ---@class VariablesTreeNuiProps
 ---@field api Api
 ---@field current_frame? Frame
 ---@field windows table<number, {split: NuiSplit, tree: NuiTree}>
----@field breadcrumb_mode boolean
----@field breadcrumb BreadcrumbNav?
----@field viewport_integration ViewportIntegration?
+---@field viewport Viewport Current viewport state
+---@field complete_tree table[] Complete tree structure for viewport system
 
 ---@class VariablesTreeNui: VariablesTreeNuiProps
 ---@field new Constructor<VariablesTreeNuiProps>
@@ -31,9 +30,8 @@ function VariablesTreeNui.create(api)
     api = api,
     current_frame = nil,
     windows = {},
-    breadcrumb_mode = false,
-    breadcrumb = nil,
-    viewport_integration = nil,
+    viewport = ViewportSystem.createViewport(),
+    complete_tree = {}
   })
 
   instance:init()
@@ -45,18 +43,14 @@ function VariablesTreeNui.plugin(api)
 end
 
 function VariablesTreeNui:init()
-  -- Initialize breadcrumb navigation
-  self.breadcrumb = BreadcrumbNav.create(self)
-  self.breadcrumb_mode = false
-
-  -- Initialize viewport integration (experimental)
-  self.viewport_integration = ViewportIntegration.create(self)
-
   -- Setup DAP event handlers
   self:setupEventHandlers()
 
   -- Create user commands
   self:setupCommands()
+
+  -- Initialize complete tree
+  self:BuildCompleteTree()
 end
 
 function VariablesTreeNui:setupEventHandlers()
@@ -89,10 +83,119 @@ function VariablesTreeNui:setupCommands()
     self:Toggle()
   end, { desc = "Toggle variables window" })
 
-  vim.api.nvim_create_user_command("VariablesBreadcrumb", function()
-    self:ToggleBreadcrumbMode()
-  end, { desc = "Toggle breadcrumb navigation mode" })
+  -- Viewport control commands
+  vim.api.nvim_create_user_command("VariablesViewport", function(opts)
+    local cmd = opts.args or "status"
+
+    if cmd == "reset" then
+      self.viewport = ViewportSystem.resetToRoot(self.viewport)
+      self:RefreshAllWindows()
+    elseif cmd == "rebuild" then
+      self:BuildCompleteTree()
+      self:RefreshAllWindows()
+    elseif cmd == "status" then
+      local path = table.concat(self.viewport.focus_path, " → ")
+      vim.notify("Viewport: " .. (path ~= "" and path or "root") ..
+        " | Radius: " .. self.viewport.radius ..
+        " | Style: " .. self.viewport.style, vim.log.levels.INFO)
+    end
+  end, {
+    desc = "Control viewport",
+    nargs = "?",
+    complete = function()
+      return { "reset", "rebuild", "status" }
+    end
+  })
 end
+
+-- ================================
+-- COMPLETE TREE BUILDING
+-- ================================
+
+---Build complete tree structure from current debug frame
+function VariablesTreeNui:BuildCompleteTree()
+  if not self.current_frame then
+    self.complete_tree = {}
+    return
+  end
+
+  local tree = {}
+  local scopes = self.current_frame:scopes()
+
+  if scopes then
+    for _, scope in ipairs(scopes) do
+      local scope_node = self:CreateCompleteTreeNode(scope.ref, nil, "scope")
+      table.insert(tree, scope_node)
+    end
+  end
+
+  self.complete_tree = tree
+end
+
+---Create a complete tree node with all children loaded
+---@param data_ref table DAP variable or scope reference
+---@param parent_id? string Parent node ID
+---@param node_type string "scope" or "variable"
+---@return table Complete tree node
+function VariablesTreeNui:CreateCompleteTreeNode(data_ref, parent_id, node_type)
+  local node_id
+  if node_type == "scope" then
+    node_id = IdGenerator.forScope(data_ref)
+  else
+    node_id = IdGenerator.forVariable(parent_id, data_ref)
+  end
+
+  local node = {
+    id = node_id,
+    name = data_ref.name,
+    type = node_type,
+    dap_data = data_ref,
+    children = {},
+    loaded = false
+  }
+
+  -- Add variable-specific properties
+  if node_type == "variable" then
+    node.variable = data_ref
+    node.varType = data_ref.type
+    node.is_expandable = data_ref.variablesReference and data_ref.variablesReference > 0
+    node.variableReference = data_ref.variablesReference
+  else
+    node.variableReference = data_ref.variablesReference
+    node.expensive = data_ref.expensive
+  end
+
+  -- Load children if expandable
+  -- if data_ref.variablesReference and data_ref.variablesReference > 0 then
+  --   NvimAsync.run(function()
+  --     self:LoadCompleteTreeChildren(node)
+  --   end)
+  -- end
+
+  return node
+end
+
+---Load all children for a node in the complete tree
+---@param node table Node to load children for
+function VariablesTreeNui:LoadCompleteTreeChildren(node)
+  if not self.current_frame or node.loaded then
+    return
+  end
+
+  local variables = self.current_frame:variables(node.variableReference)
+  if variables then
+    for _, var in ipairs(variables) do
+      local child_node = self:CreateCompleteTreeNode(var, node.id, "variable")
+      table.insert(node.children, child_node)
+    end
+  end
+
+  node.loaded = true
+end
+
+-- ================================
+-- WINDOW MANAGEMENT
+-- ================================
 
 function VariablesTreeNui:Show()
   local tabpage = vim.api.nvim_get_current_tabpage()
@@ -128,249 +231,17 @@ function VariablesTreeNui:Show()
 
   split:mount()
 
-  -- Create tree
-  local tree = NuiTree({
-    bufnr = split.bufnr,
-    nodes = self:getRootNodes(),
-    get_node_id = function(node) return node.id end,
-    prepare_node = function(node)
-      return self:prepareNodeLine(node)
-    end,
-  })
-
-  -- Setup keybindings
-  self:setupKeybindings(split, tree)
-
   -- Store reference
   self.windows[tabpage] = {
     split = split,
-    tree = tree,
+    tree = nil, -- Will be created by RenderWithViewport
   }
 
-  -- Initial render
-  tree:render()
+  -- Initial render with viewport
+  self:RenderWithViewport(tabpage)
 
   -- Set buffer name for display
   vim.api.nvim_buf_set_name(split.bufnr, "Variables")
-end
-
-function VariablesTreeNui:setupKeybindings(split, tree)
-  local map = function(key, fn, desc)
-    vim.keymap.set("n", key, fn, {
-      buffer = split.bufnr,
-      nowait = true,
-      silent = true,
-      desc = desc or ""
-    })
-  end
-
-  if self.breadcrumb_mode then
-    -- Breadcrumb mode keybindings
-    self.breadcrumb:setupKeybindings(split, tree)
-  else
-    -- Standard tree mode keybindings
-    map("<CR>", function() self:ToggleNode(tree) end, "Toggle node")
-    map("o", function() self:ToggleNode(tree) end, "Toggle node")
-    map("<Space>", function() self:ToggleNode(tree) end, "Toggle node")
-  end
-
-  -- Common keybindings for both modes
-  map("q", function() self:Close() end, "Close variables")
-  map("B", function() self:ToggleBreadcrumbMode() end, "Toggle breadcrumb mode")
-
-  -- Auto-close on leave
-  vim.api.nvim_create_autocmd("BufLeave", {
-    buffer = split.bufnr,
-    callback = function()
-      -- Optional: auto-close on leave
-      -- self:close()
-    end,
-  })
-end
-
-function VariablesTreeNui:prepareNodeLine(node)
-  -- Use the enhanced visual improvements
-  return VisualImprovements.prepareNodeLine(node, {
-    useTreeGuides = true -- Enable tree guides for better depth perception
-  })
-end
-
-function VariablesTreeNui:ToggleNode(tree)
-  local node = tree:get_node()
-  if not node then return end
-
-  if not node.loaded or node:has_children() then
-    if node:is_expanded() then
-      node:collapse()
-    else
-      -- Load children if needed
-      if not node.loaded then
-        self:loadNodeChildren(tree, node)
-        node.loaded = true
-      end
-      node:expand()
-
-      -- Auto-scroll to ensure visibility after expansion
-      self:ensureNodeVisibility(tree, node)
-    end
-    tree:render()
-  end
-end
-
-function VariablesTreeNui:loadNodeChildren(tree, node)
-  if not self.current_frame then
-    return
-  end
-
-  local children = {}
-
-  -- Load based on node type
-  if node.type == "scope" then
-    -- Load variables for scope
-    local variables = self.current_frame:variables(node.variablesReference)
-    if variables then
-      for _, var in ipairs(variables) do
-        table.insert(children, self:createVariableNode(var, node.id))
-      end
-    end
-  elseif node.type == "variable" and node.variableReference then
-    -- Load child variables
-    local variables = self.current_frame:variables(node.variableReference)
-    if variables then
-      for _, var in ipairs(variables) do
-        table.insert(children, self:createVariableNode(var, node.id))
-      end
-    end
-  end
-
-  -- Add children to tree
-  tree:set_nodes(children, node.id)
-
-  -- After loading children, ensure visibility if needed
-  vim.defer_fn(function()
-    self:ensureNodeVisibility(tree, node)
-  end, 50)
-end
-
-function VariablesTreeNui:createVariableNode(var, parent_id)
-  -- Check if this is an array index
-  local index = tonumber("0" .. var.name)
-  local id = IdGenerator.forVariable(parent_id, var, index)
-  local is_expandable = var.variablesReference and var.variablesReference > 0
-
-  -- For expandable items, we'll fetch preview data asynchronously
-  local node = NuiTree.Node({
-    id = id,
-    name = var.name,                                      -- PURE variable name for navigation
-    text = VisualImprovements.formatVariableDisplay(var), -- Formatted display text
-    type = "variable",
-    varType = var.type,                                   -- Store for icon selection
-    is_expandable = is_expandable,
-    variableReference = var.variablesReference,
-    variable = var,               -- Store the variable for preview updates
-    preview = nil,                -- Will be populated by FetchPreviewData
-    loaded = false,
-  }, is_expandable and {} or nil) -- Empty children if expandable
-
-  -- Fetch preview data for expandable items (after a small delay to let UI render)
-  if is_expandable and self.current_frame and (var.type == "Object" or var.type == "Array") then
-    vim.defer_fn(function()
-      self:FetchPreviewData(node, var, parent_id)
-    end, 100)
-  end
-
-  return node
-end
-
--- Deprecated: Use VisualImprovements.formatVariableDisplay instead
-function VariablesTreeNui:formatVariable(var)
-  return VisualImprovements.formatVariableDisplay(var)
-end
-
-function VariablesTreeNui:getRootNodes()
-  if not self.current_frame then
-    return {
-      NuiTree.Node({
-        id = "no-debug",
-        name = "No active debug session",
-        text = "No active debug session",
-        type = "info",
-      })
-    }
-  end
-
-  local nodes = {}
-  local scopes = self.current_frame:scopes()
-  if scopes then
-    for _, scope in ipairs(scopes) do
-      local id = IdGenerator.forScope(scope.ref)
-      local node = NuiTree.Node({
-        id = id,
-        name = scope.ref.name,
-        text = scope.ref.name,
-        type = "scope",
-        variablesReference = scope.ref.variablesReference,
-        expensive = scope.ref.expensive,
-        loaded = false,
-      }, {}) -- Empty children, will load on expand
-
-      table.insert(nodes, node)
-    end
-  end
-
-  return nodes
-end
-
-function VariablesTreeNui:RefreshAllWindows()
-  for tabpage, win in pairs(self.windows) do
-    if vim.api.nvim_tabpage_is_valid(tabpage) and
-        vim.api.nvim_win_is_valid(win.split.winid) then
-      -- Check if viewport mode should be used
-      if self.viewport_integration and self.viewport_integration:shouldUseViewport(tabpage) then
-        -- Use viewport integration refresh
-        self.viewport_integration:RenderWithViewport(tabpage)
-      elseif self.breadcrumb_mode then
-        -- Use breadcrumb navigation refresh
-        self.breadcrumb:RefreshView(tabpage)
-      else
-        -- Standard tree refresh
-        local nodes = self:getRootNodes()
-        win.tree = NuiTree({
-          bufnr = win.split.bufnr,
-          nodes = nodes,
-          get_node_id = function(node) return node.id end,
-          prepare_node = function(node)
-            return self:prepareNodeLine(node)
-          end,
-        })
-        win.tree:render()
-        -- Update keybindings for standard mode
-        self:setupKeybindings(win.split, win.tree)
-      end
-    else
-      -- Clean up invalid windows
-      self.windows[tabpage] = nil
-    end
-  end
-end
-
-function VariablesTreeNui:ToggleBreadcrumbMode()
-  self.breadcrumb_mode = not self.breadcrumb_mode
-
-  if self.breadcrumb_mode then
-    -- Switch to breadcrumb mode
-    self.breadcrumb:initialize()
-  else
-    -- Switch back to tree mode - cleanup breadcrumb splits
-    self.breadcrumb:cleanup()
-  end
-
-  -- Refresh all windows with new mode
-  self:RefreshAllWindows()
-
-  -- Show mode status
-  local mode_text = self.breadcrumb_mode and "Breadcrumb" or "Tree"
-  vim.notify("Variables navigation: " .. mode_text .. " mode", vim.log.levels.INFO)
 end
 
 function VariablesTreeNui:Close()
@@ -378,11 +249,6 @@ function VariablesTreeNui:Close()
   local win = self.windows[tabpage]
 
   if win then
-    -- Close breadcrumb split if it exists
-    if self.breadcrumb_mode then
-      self.breadcrumb:closeBreadcrumbSplit(tabpage)
-    end
-
     win.split:unmount()
     self.windows[tabpage] = nil
   end
@@ -399,155 +265,223 @@ function VariablesTreeNui:Toggle()
   end
 end
 
-function VariablesTreeNui:ensureNodeVisibility(tree, node)
-  -- Get the current window and buffer
-  local tabpage = vim.api.nvim_get_current_tabpage()
+-- ================================
+-- VIEWPORT-BASED RENDERING
+-- ================================
+
+---Render tree using viewport system
+---@param tabpage number Tabpage to render for
+function VariablesTreeNui:RenderWithViewport(tabpage)
   local win = self.windows[tabpage]
   if not win or not vim.api.nvim_win_is_valid(win.split.winid) then
     return
   end
 
-  local winid = win.split.winid
-  local bufnr = win.split.bufnr
+  -- Ensure complete tree is up to date
+  self:BuildCompleteTree()
 
-  -- Get window dimensions
-  local win_height = vim.api.nvim_win_get_height(winid)
-  local cursor_pos = vim.api.nvim_win_get_cursor(winid)
-  local current_line = cursor_pos[1]
+  -- Render tree at current viewport
+  local rendered_nodes = ViewportRenderer.RenderTreeAtViewport(self.complete_tree, self.viewport)
 
-  -- Calculate the node's depth and potential expanded size
-  local node_depth = node:get_depth()
-  local estimated_child_count = self:estimateChildCount(node)
+  -- Apply viewport style
+  rendered_nodes = ViewportRenderer.applyViewportStyle(rendered_nodes, self.viewport)
 
-  -- Calculate where the expanded content will end
-  local content_end_line = current_line + estimated_child_count
+  -- Sort nodes for display
+  local sorted_nodes = ViewportRenderer.sortNodesForDisplay(rendered_nodes)
 
-  -- Get current window view
-  local win_view = vim.fn.winsaveview()
-  local topline = win_view.topline
-  local botline = topline + win_height - 1
+  -- Create breadcrumb header
+  local header_lines = ViewportRenderer.createBreadcrumbHeader(
+    self.viewport,
+    vim.api.nvim_win_get_width(win.split.winid)
+  )
 
-  -- Determine if we need to adjust the view
-  if content_end_line > botline then
-    -- Content will extend below visible area
-    -- Calculate optimal scroll position based on depth
-    local offset = self:calculateScrollOffset(node_depth, estimated_child_count, win_height)
+  -- Convert to NUI Tree nodes
+  local nui_nodes = self:convertToNuiNodes(sorted_nodes)
 
-    -- Set new view position
-    local new_topline = math.max(1, current_line - offset)
-    vim.api.nvim_win_set_cursor(winid, { current_line, 0 })
-    vim.api.nvim_command(string.format("normal! %dzt", offset))
-  elseif current_line < topline + 3 then
-    -- Node is too close to top, ensure some context above
-    local new_topline = math.max(1, current_line - 3)
-    vim.api.nvim_win_call(winid, function()
-      vim.cmd(string.format("normal! %dgg", new_topline))
-      vim.cmd("normal! zt")
-      vim.api.nvim_win_set_cursor(0, { current_line, 0 })
-    end)
+  -- Update buffer content with header
+  vim.api.nvim_buf_set_option(win.split.bufnr, 'modifiable', true)
+
+  -- Add header lines
+  local header_text = {}
+  for _, header in ipairs(header_lines) do
+    table.insert(header_text, header.text)
   end
+  vim.api.nvim_buf_set_lines(win.split.bufnr, 0, -1, false, header_text)
+
+  -- Create and render NUI Tree starting after header
+  win.tree = NuiTree({
+    bufnr = win.split.bufnr,
+    nodes = nui_nodes,
+    get_node_id = function(node) return node.id end,
+    prepare_node = function(node)
+      if node.viewport_geometry then
+        return ViewportRenderer.prepareNodeLineWithGeometry(
+          node,
+          node.viewport_geometry,
+          self.viewport
+        )
+      else
+        return VisualImprovements.prepareNodeLine(node)
+      end
+    end,
+  })
+
+  -- Render starting after header lines
+  win.tree:render(#header_lines + 1)
+
+  -- Setup viewport keybindings
+  self:setupViewportKeybindings(win.split, win.tree)
 end
 
-function VariablesTreeNui:estimateChildCount(node)
-  -- Estimate based on node type and available information
-  if node.type == "scope" then
-    -- Scopes typically have multiple variables
-    return 10 -- Conservative estimate
-  elseif node.variable then
-    local var = node.variable
-    -- Try to extract count from value
-    if var.type == "Array" then
-      local count = var.value and var.value:match("%((%d+)%)") or var.value:match("Array%[(%d+)%]")
-      return count and math.min(tonumber(count), 20) or 5
-    elseif var.type == "Object" then
-      local count = var.value and var.value:match("%((%d+)%)") or var.value:match("{(%d+)}")
-      return count and math.min(tonumber(count), 15) or 5
+---Convert rendered nodes to NUI Tree nodes
+---@param sorted_nodes table[] Sorted nodes from renderer
+---@return table[] NUI Tree nodes
+function VariablesTreeNui:convertToNuiNodes(sorted_nodes)
+  local nui_nodes = {}
+
+  for _, node_data in ipairs(sorted_nodes) do
+    local node = node_data.node
+    local nui_node = NuiTree.Node({
+      id = node.id,
+      name = node.name,
+      text = node_data.display,
+      type = node.type,
+      variableReference = node.variableReference,
+      variable = node.variable,
+      dap_data = node.dap_data,
+      is_expandable = node.is_expandable or false,
+      loaded = node.loaded or false,
+      viewport_geometry = node_data.geometry, -- Store geometry for rendering
+      viewport_path = node_data.path,         -- Store path for navigation
+    }, node.children and #node.children > 0 and {} or nil)
+
+    table.insert(nui_nodes, nui_node)
+  end
+
+  return nui_nodes
+end
+
+-- ================================
+-- VIEWPORT NAVIGATION
+-- ================================
+
+---Navigate using viewport system
+---@param action string Navigation action
+---@param current_node? table Currently selected node
+function VariablesTreeNui:NavigateViewport(action, current_node)
+  local old_focus = vim.deepcopy(self.viewport.focus_path)
+
+  if action == "enter" and current_node then
+    -- Navigate deeper using viewport path
+    if current_node.viewport_path then
+      -- Store history
+      table.insert(self.viewport.history, vim.deepcopy(self.viewport.focus_path))
+      self.viewport.focus_path = vim.deepcopy(current_node.viewport_path)
     end
+  elseif action == "up" then
+    -- Go up one level
+    if #self.viewport.focus_path > 0 then
+      table.insert(self.viewport.history, vim.deepcopy(self.viewport.focus_path))
+      self.viewport.focus_path = ViewportSystem.shortenPath(self.viewport.focus_path)
+    end
+  elseif action == "back" then
+    -- Navigate back in history
+    self.viewport = ViewportSystem.navigateBack(self.viewport)
+  elseif action == "root" then
+    -- Go to root
+    self.viewport = ViewportSystem.resetToRoot(self.viewport)
   end
-  -- Default for unknown expandable nodes
-  return 5
+
+  -- Refresh view if focus changed
+  if not ViewportSystem.arePathsEqual(old_focus, self.viewport.focus_path) then
+    self:RefreshAllWindows()
+  end
 end
 
-function VariablesTreeNui:calculateScrollOffset(depth, child_count, win_height)
-  -- Calculate optimal offset based on depth and content size
-  -- Deeper nodes get more aggressive scrolling to show their context
-
-  -- Base offset: try to show parent and some children
-  local base_offset = 3
-
-  -- Adjust for depth (deeper = more offset)
-  local depth_factor = math.min(depth * 2, 10)
-
-  -- Adjust for content size
-  local content_factor = 0
-  if child_count > win_height * 0.5 then
-    -- Large content: position near top to maximize visible children
-    content_factor = 5
-  elseif child_count > win_height * 0.3 then
-    -- Medium content: balanced positioning
-    content_factor = 3
+---Setup viewport keybindings
+---@param split NuiSplit Window split
+---@param tree NuiTree Tree instance
+function VariablesTreeNui:setupViewportKeybindings(split, tree)
+  local map = function(key, fn, desc)
+    vim.keymap.set("n", key, fn, {
+      buffer = split.bufnr,
+      nowait = true,
+      silent = true,
+      desc = desc or ""
+    })
   end
 
-  -- Calculate final offset
-  local offset = base_offset + depth_factor + content_factor
+  -- Viewport navigation
+  map("<CR>", function()
+    local node = tree:get_node()
+    self:NavigateViewport("enter", node)
+  end, "Navigate into node")
 
-  -- Ensure we don't scroll too much (keep at least 1/4 of window for context)
-  return math.min(offset, math.floor(win_height * 0.75))
-end
+  map("o", function()
+    local node = tree:get_node()
+    self:NavigateViewport("enter", node)
+  end, "Navigate into node")
 
-function VariablesTreeNui:FetchPreviewData(node, var, parent_id)
-  if not self.current_frame or not var.variablesReference then
-    return
-  end
+  map("u", function()
+    self:NavigateViewport("up")
+  end, "Go up one level")
 
-  -- Fetch first few children for preview
-  local variables = self.current_frame:variables(var.variablesReference)
-  if variables then
-    -- Create preview data with first few items
-    local previewItems = {}
-    local maxItems = 3 -- Show first 3 items in preview
+  map("<BS>", function()
+    self:NavigateViewport("up")
+  end, "Go up one level")
 
-    for i, childVar in ipairs(variables) do
-      if i > maxItems then
-        table.insert(previewItems, "...")
+  map("b", function()
+    self:NavigateViewport("back")
+  end, "Go back in history")
+
+  map("r", function()
+    self:NavigateViewport("root")
+  end, "Go to root")
+
+  -- Viewport controls
+  map("+", function()
+    self.viewport.radius = math.min(self.viewport.radius + 1, 5)
+    self:RefreshAllWindows()
+  end, "Increase viewport radius")
+
+  map("-", function()
+    self.viewport.radius = math.max(self.viewport.radius - 1, 1)
+    self:RefreshAllWindows()
+  end, "Decrease viewport radius")
+
+  map("s", function()
+    local styles = { "contextual", "minimal", "full", "highlight" }
+    local current_index = 1
+    for i, style in ipairs(styles) do
+      if style == self.viewport.style then
+        current_index = i
         break
       end
-
-      -- Format preview item
-      local itemText
-      if var.type == "Array" then -- Check parent type
-        -- For arrays, just show the value
-        itemText = VisualImprovements.formatValue(childVar.value, childVar.type, 15)
-      else
-        -- For objects, show key: value
-        itemText = childVar.name .. ": " .. VisualImprovements.formatValue(childVar.value, childVar.type, 15)
-      end
-
-      table.insert(previewItems, itemText)
     end
+    local next_index = (current_index % #styles) + 1
+    self.viewport.style = styles[next_index]
+    vim.notify("Viewport style: " .. self.viewport.style, vim.log.levels.INFO)
+    self:RefreshAllWindows()
+  end, "Cycle viewport style")
 
-    -- Update node display with preview
-    if #previewItems > 0 then
-      local preview
-      if var.type == "Array" then
-        preview = "[" .. table.concat(previewItems, ", ") .. "]"
-      else
-        preview = "{" .. table.concat(previewItems, ", ") .. "}"
-      end
+  -- Common keybindings
+  map("q", function()
+    self:Close()
+  end, "Close variables")
+end
 
-      -- Store preview separately and update display text only
-      node.preview = preview
-      var.preview = preview -- Also update the variable for consistency
-      node.text = VisualImprovements.formatVariableDisplay(var)
-      -- node.name stays as pure variable name for navigation!
+-- ================================
+-- WINDOW REFRESH
+-- ================================
 
-      -- Re-render if we have a window
-      for _, win in pairs(self.windows) do
-        if win.tree then
-          win.tree:render()
-          break
-        end
-      end
+function VariablesTreeNui:RefreshAllWindows()
+  for tabpage, win in pairs(self.windows) do
+    if vim.api.nvim_tabpage_is_valid(tabpage) and
+        vim.api.nvim_win_is_valid(win.split.winid) then
+      self:RenderWithViewport(tabpage)
+    else
+      -- Clean up invalid windows
+      self.windows[tabpage] = nil
     end
   end
 end
