@@ -126,14 +126,94 @@ local original_var = var_nodes[1]._variable
 - You're doing heavy UI work with many conversions (Variables3 might be better)
 - You want completely automatic conversion (Variables2/3 handle this)
 
-## Files
+## Interactive NUI Tree Implementation
+
+### **Complete Debugging UI**
+
+Variables4 includes a fully functional interactive debugging interface:
+
+```lua
+-- Opens a NUI popup with tree view of debug scopes and variables
+:Variables4TreeDemo
+```
+
+**Features:**
+- **Dynamic scope expansion**: Scopes start collapsed, variables loaded on-demand
+- **Interactive navigation**: j/k to navigate, Enter/Space to expand/collapse
+- **Async-safe operations**: Proper handling of `scope:variables()` calls
+- **Rich variable display**: Shows names, values, and expandable indicators
+- **Clean popup management**: q/Esc to close, ? for help
+
+### **Critical Technical Solutions**
+
+#### **1. Async Context Handling**
+```lua
+-- ❌ WRONG - causes "Cannot call async function from non-async context"
+local variables = node._scope:variables()
+
+-- ✅ CORRECT - wraps async call properly  
+NvimAsync.defer(function()
+  local variables = node._scope:variables()
+  -- ... handle variables
+end)()
+```
+
+#### **2. NUI Tree Dynamic Children API**
+```lua
+-- ❌ WRONG - NUI Tree doesn't recognize manual children
+node.children = var_children
+
+-- ✅ CORRECT - Use NUI Tree API for dynamic addition
+tree:add_node(variable:asNode(), parent_node_id)
+```
+
+#### **3. BaseScope Inheritance Fix**
+```lua
+-- Concrete scope classes need manual inheritance fix
+for _, ScopeClass in ipairs(scope_classes) do
+  if not ScopeClass.variables and BaseScope.variables then
+    ScopeClass.variables = BaseScope.variables
+  end
+end
+```
+
+## Testing Results
+
+The visual verification tests demonstrate successful implementation:
+
+### **Interactive Scope Expansion Test**
+
+- **Session ready**: Debug session hits breakpoint in `complex.js`
+- **Popup opened**: Shows collapsed scopes (`▶ 📁 Local: testVariables`, `▶ 📁 Global`)
+- **Local expanded**: Shows 14 variables with actual values and expandable indicators:
+  - `▶ arrayVar: (5) [1, 2, 3, 'four', {…}]` (expandable array)
+  - `booleanVar: true` (primitive value)
+  - `numberVar: 42` (primitive value)
+  - `▶ objectVar: {name: 'Test Object', count: 100, nested: {…}, method: ƒ}` (expandable object)
+- **Navigation works**: Cursor moves properly through tree items
+- **Clean closure**: Popup closes and returns to normal editing
+
+## File Structure
 
 ```
-Variables4/
-├── README.md                      # This documentation
-├── init.lua                       # Main plugin with asNode() strategy
+lua/neodap/plugins/Variables4/
+├── README.md              # This documentation
+├── init.lua              # Dynamic method extension approach
+├── alternative.lua       # Static method definition approach (recommended)
 └── specs/
-    └── asnode_caching.spec.lua    # Visual verification tests
+    ├── asnode_caching.spec.lua      # Tests caching strategy
+    ├── tree_rendering.spec.lua      # Tests NUI tree rendering  
+    └── interactive_expansion.spec.lua # Tests dynamic scope expansion
 ```
 
-The asNode() approach provides an elegant middle ground - maintaining API purity while providing efficient, cached node conversion when needed.
+## Conclusion
+
+Variables4's asNode() caching strategy provides the optimal balance of:
+
+- **Simplicity**: Direct method addition without complex transformations
+- **Performance**: Efficient caching with minimal overhead
+- **Integration**: Seamless NUI Tree compatibility  
+- **Maintainability**: Clear, understandable code without indirection
+- **Functionality**: **Full-featured interactive debugging UI**
+
+This approach should be the **preferred pattern** for integrating neodap API objects with UI libraries in future plugins.
