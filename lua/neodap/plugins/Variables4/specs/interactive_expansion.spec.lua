@@ -67,6 +67,13 @@ end)
 
 
 
+
+
+
+
+
+
+
 --[[ TERMINAL SNAPSHOT: interactive_session_ready
 Size: 24x80
 Cursor: [7, 0] (line 7, col 0)
@@ -133,6 +140,13 @@ Mode: n
 
 
 
+
+
+
+
+
+
+
 --[[ TERMINAL SNAPSHOT: interactive_local_expanded
 Size: 24x80
 Cursor: [1, 0] (line 1, col 0)
@@ -163,6 +177,13 @@ Mode: n
 23| lua/testing/fixtures/variables/complex.js                     7,1            Top
 24|                                                               1,1           Top
 ]]
+
+
+
+
+
+
+
 
 
 
@@ -204,6 +225,12 @@ Mode: n
 
 
 
+
+
+
+
+
+
 --[[ TERMINAL SNAPSHOT: interactive_global_expanded
 Size: 24x80
 Cursor: [2, 0] (line 2, col 0)
@@ -214,19 +241,19 @@ Mode: n
  3| functio╭──────────────────── Variables4 Debug Tree ─────────────────────╮
  4|     // │▼ 📁  Local: testVariables                                       │
  5|     let│  ▼ arrayVar: (5) [1, 2, 3, 'four', {…}]                        │
- 6|     let│    booleanVar: true                                            │
- 7|     let│    dateVar: Mon Jan 01 2024 01:00:00 GMT+0100 (Central European│
- 8|     let│ Standard Time)                                                 │
- 9|     let│  ▶ functionVar: ƒ (x) { return x * 2; }                        │
-10|     let│    longStringValue: 'This is a very long string value that shou│lue";
-11|     let│ld be truncated when displayed in the tree view to prevent line │e trunc
-12| ated wh│wrapping'                                                       │
-13|        │  ▶ mapVar: Map(2) {size: 2, key1 => value1, key2 => value2}    │
-14|     // │    nullVar: null                                               │
-15|     let│    numberVar: 42                                               │
-16|     let│  ▶ objectVar: {name: 'Test Object', count: 100, nested: {…}, me│
-17|        │thod: ƒ}                                                        │
-18|        │  ▶ setVar: Set(4) {size: 4, 1, 2, 3, 4}                        │
+ 6|     let│      0: 1                                                      │
+ 7|     let│      1: 2                                                      │
+ 8|     let│      2: 3                                                      │
+ 9|     let│      3: 'four'                                                 │
+10|     let│    ▶ 4: {five: 5}                                              │lue";
+11|     let│      length: 5                                                 │e trunc
+12| ated wh│    ▶ [{Prototype}]: Object                                     │
+13|        │    ▶ [{Prototype}]: Object                                     │
+14|     // │    booleanVar: true                                            │
+15|     let│    dateVar: Mon Jan 01 2024 01:00:00 GMT+0100 (Central European│
+16|     let│ Standard Time)                                                 │
+17|        │  ▶ functionVar: ƒ (x) { return x * 2; }                        │
+18|        │    longStringValue: 'This is a very long string value that s@@@│
 19|        ╰────────────────────────────────────────────────────────────────╯
 20|             level: 2,
 21|             data: ["a", "b", "c"]
@@ -234,6 +261,12 @@ Mode: n
 23| lua/testing/fixtures/variables/complex.js                     7,1            Top
 24|                                                               2,1           Top
 ]]
+
+
+
+
+
+
 
 
 

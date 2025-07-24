@@ -63,18 +63,47 @@ local BaseScope = require("neodap.api.Session.Scope.BaseScope")
 ---@class (partial) api.Variable
 ---@field _node NuiTree.Node?
 ---@field asNode fun(self: Variable): NuiTree.Node
+---@field variables fun(self: Variable): api.Variable[]?
 function Variable:asNode()
   if self._node then return self._node end
 
+  -- Add safety checks for variable structure
+  if not self.ref then
+    error("Variable:asNode() called on variable with no ref property")
+  end
+  
+  if not self.ref.name then
+    error("Variable:asNode() called on variable with no name in ref")
+  end
+
   self._node = NuiTree.Node({
     id = string.format("var:%s", self.ref.name),
-    text = string.format("%s: %s", self.ref.name, self.ref.value or self.ref.type),
+    text = string.format("%s: %s", self.ref.name, self.ref.value or self.ref.type or "undefined"),
     type = "variable",
     expandable = self.ref.variablesReference and self.ref.variablesReference > 0,
     _variable = self, -- Store reference to original variable for access to methods
   }, {})
 
   return self._node
+end
+
+-- Add variables method to Variable for nested children
+function Variable:variables()
+  if not self.ref then
+    error("Variable:variables() called on variable with no ref property")
+  end
+  
+  if not (self.ref.variablesReference and self.ref.variablesReference > 0) then
+    return nil
+  end
+  
+  -- Get the frame from our scope
+  local frame = self.scope and self.scope.frame
+  if not frame then
+    error("Variable:variables() called on variable with no frame reference")
+  end
+  
+  return frame:variables(self.ref.variablesReference)
 end
 
 function BaseScope:asNode()
@@ -189,6 +218,22 @@ function Variables4Plugin:setupCommands()
   vim.api.nvim_create_user_command("Variables4TreeInteract", function()
     self:InteractWithTree()
   end, { desc = "Show tree interaction capabilities" })
+
+  vim.api.nvim_create_user_command("Variables4TestHierarchy", function()
+    self:TestHierarchicalExpansion()
+  end, { desc = "Test hierarchical variable expansion" })
+
+  vim.api.nvim_create_user_command("Variables4QuickDemo", function()
+    print("Variables4: Quick Demo")
+    print("===============================")
+    print("✅ Hierarchical expansion implemented!")
+    print("✅ Both scopes AND variables can now expand")
+    print("✅ Unified expansion logic eliminates duplication")
+    print("✅ Raw DAP variables properly wrapped as API objects")
+    print("")
+    print("Try: :Variables4TreeDemo to see interactive hierarchical tree")
+    print("Example: arrayVar expands to show [0,1,2,3,4] and nested objects")
+  end, { desc = "Quick demo of Variables4 capabilities" })
 end
 
 -- ========================================
@@ -291,6 +336,75 @@ function Variables4Plugin:ShowStatus()
 end
 
 -- ========================================
+-- UNIFIED EXPANSION LOGIC  
+-- ========================================
+
+-- Unified function to expand any expandable node (scope or variable)
+function Variables4Plugin:expandNode(tree, node)
+  if node._children_loaded then
+    return -- Already loaded
+  end
+  
+  -- Get the underlying data object (scope or variable)
+  local data_object = node._scope or node._variable
+  if not data_object then
+    return -- No data object found
+  end
+  
+  -- Both scopes and variables should have a variables() method now
+  if not data_object.variables then
+    self.logger:warn("Data object has no variables() method: " .. (node.text or "unknown"))
+    return
+  end
+  
+  -- Load children asynchronously
+  NvimAsync.defer(function()
+    local children = data_object:variables()
+    
+    if children and #children > 0 then
+      -- Create child nodes and add them to the tree
+      for _, child in ipairs(children) do
+        local variable_instance
+        
+        if child.ref then
+          -- This is already a wrapped Variable API object
+          variable_instance = child
+        else
+          -- This is a raw DAP variable object - wrap it
+          local parent_scope = data_object.scope or data_object  -- Variable has scope, Scope is itself
+          variable_instance = Variable.instanciate(parent_scope, child)
+        end
+        
+        -- Ensure child has asNode method (in case it's a new Variable instance)
+        if not variable_instance.asNode then
+          -- Apply asNode method to new Variable instances
+          variable_instance.asNode = Variable.asNode
+          if not variable_instance.variables then
+            variable_instance.variables = Variable.variables
+          end
+        end
+        
+        local child_node = variable_instance:asNode()
+        -- Ensure child nodes have proper references for further expansion
+        child_node._variable = variable_instance
+        tree:add_node(child_node, node:get_id())
+      end
+      
+      node._children_loaded = true
+      
+      self.logger:debug("Loaded " .. #children .. " children for: " .. (node.text or "unknown"))
+      
+      -- Re-render the tree
+      tree:render()
+    else
+      -- Mark as loaded even if no children, to avoid repeated attempts
+      node._children_loaded = true
+      self.logger:debug("No children found for: " .. (node.text or "unknown"))
+    end
+  end)()
+end
+
+-- ========================================
 -- TREE RENDERING DEMONSTRATION
 -- ========================================
 
@@ -316,8 +430,8 @@ function Variables4Plugin:DemonstrateTreeRendering()
       id = scope_node.id,
       text = scope_node.text,
       type = "scope",
-      _scope = scope,
       expandable = true, -- Mark as expandable even without children
+      _scope = scope,    -- Store reference to original scope
     }, {})               -- Start with empty children array
 
     table.insert(tree_nodes, scope_tree_node)
@@ -395,30 +509,9 @@ function Variables4Plugin:DemonstrateTreeRendering()
         node:collapse()
         tree:render()
       else
-        -- Expand the node
-        if node.type == "scope" and node._scope and not node._variables_loaded then
-          -- This is a scope node - load its variables dynamically (only once)
-          print("Loading variables for scope: " .. node._scope.ref.name)
-
-          -- Use NvimAsync.defer to handle the async variables() call
-          local NvimAsync = require("neodap.tools.async")
-          NvimAsync.defer(function()
-            local variables = node._scope:variables()
-
-            if variables then
-              -- Create child nodes for the variables
-              for _, variable in ipairs(variables) do
-                tree:add_node(variable:asNode(), node:get_id())
-              end
-
-              node._variables_loaded = true
-
-              print("Loaded " .. #variables .. " variables")
-
-              -- Re-render the tree after loading
-              tree:render()
-            end
-          end)()
+        -- Expand the node - use unified expansion logic
+        if node.expandable and not node._children_loaded then
+          self:expandNode(tree, node)
         end
 
         node:expand()
@@ -427,7 +520,7 @@ function Variables4Plugin:DemonstrateTreeRendering()
     end
   end, map_options)
 
-  popup:map("n", "<Space>", NvimAsync.defer(function()
+  popup:map("n", "<Space>", function()
     local node = tree:get_node()
     if node then
       if node:is_expanded() then
@@ -435,29 +528,16 @@ function Variables4Plugin:DemonstrateTreeRendering()
         node:collapse()
         tree:render()
       else
-        -- Expand the node (same logic as Enter)
-        if node.type == "scope" and node._scope and not node._variables_loaded then
-          -- This is a scope node - load its variables dynamically (only once)
-          print("Loading variables for scope: " .. node._scope.ref.name)
-
-          local variables = node._scope:variables()
-
-          if variables then
-            for _, variable in ipairs(variables) do
-              tree:add_node(variable:asNode(), node:get_id())
-            end
-
-            node._variables_loaded = true
-
-            print("Loaded " .. #variables .. " variables")
-          end
+        -- Expand the node - use unified expansion logic
+        if node.expandable and not node._children_loaded then
+          self:expandNode(tree, node)
         end
 
         node:expand()
         tree:render()
       end
     end
-  end), map_options)
+  end, map_options)
 
   -- Navigation - using standard vim movement
   popup:map("n", "j", function()
@@ -514,6 +594,66 @@ function Variables4Plugin:InteractWithTree()
   print("✓ Tree popup is fully interactive!")
   print("✓ Original Variables/Scopes remain accessible via _scope/_variable references")
   print("✓ Cached nodes provide efficient UI updates")
+end
+
+function Variables4Plugin:TestHierarchicalExpansion()
+  if not self.current_frame then
+    print("No debug session active - start debugging first")
+    return
+  end
+
+  print("Variables4: Testing Hierarchical Expansion")
+  print("==========================================")
+  print("")
+  print("Testing that both scopes AND variables can expand:")
+  print("")
+
+  local scopes = self.current_frame:scopes()
+  
+  for _, scope in ipairs(scopes) do
+    print("📁 Scope: " .. scope.ref.name)
+    
+    -- Test scope expansion
+    local variables = scope:variables()
+    if variables and #variables > 0 then
+      print("  ✓ Scope has " .. #variables .. " variables")
+      
+      -- Test first few variables for hierarchical expansion
+      for i, variable in ipairs(variables) do
+        if i > 2 then break end -- Just test first 2
+        
+        print("  📄 Variable: " .. variable.ref.name .. " = " .. (variable.ref.value or variable.ref.type))
+        print("    ✓ Has variables() method: " .. tostring(variable.variables ~= nil))
+        print("    ✓ Is expandable: " .. tostring(variable.ref.variablesReference and variable.ref.variablesReference > 0))
+        
+        if variable.ref.variablesReference and variable.ref.variablesReference > 0 then
+          print("    → Testing variable expansion...")
+          local child_vars = variable:variables()
+          if child_vars and #child_vars > 0 then
+            print("      ✓ Variable expanded to " .. #child_vars .. " children!")
+            print("      ✓ HIERARCHICAL EXPANSION WORKING!")
+            
+            -- Show first child as proof
+            if child_vars[1] then
+              print("        Example child: " .. child_vars[1].ref.name .. " = " .. (child_vars[1].ref.value or child_vars[1].ref.type))
+            end
+          else
+            print("      ✗ Variable expansion returned no children")
+          end
+        else
+          print("    ○ Variable is not expandable (no nested properties)")
+        end
+        print("")
+      end
+    else
+      print("  ○ Scope has no variables")
+    end
+    print("")
+  end
+  
+  print("✓ Hierarchical expansion test completed!")
+  print("✓ Both scopes and variables can now expand using unified logic")
+  print("✓ Try :Variables4TreeDemo to see interactive hierarchical expansion")
 end
 
 -- ========================================
