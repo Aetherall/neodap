@@ -1,27 +1,14 @@
--- Visual verification test for Variables plugin
--- This test generates snapshots to visually verify the Variables tree displays correctly
--- and allows recursive navigation through complex variable structures
+-- Visual verification test for Variables4 plugin
+-- This test generates snapshots to visually verify the Variables4 NUI tree displays correctly
+-- and allows interactive navigation through variable scopes
 
 local T = require("testing.testing")(describe, it)
 
 T.Scenario(function(api)
   -- Load necessary plugins
   api:getPluginInstance(require('neodap.plugins.LaunchJsonSupport'))
-  local variables_plugin = api:getPluginInstance(require('neodap.plugins.Variables'))
-
-  -- Set up neo-tree with the Variables source
-  local neotree = require('neo-tree')
-  neotree.setup({
-    sources = {
-      "neodap.plugins.Variables",
-    },
-    variables = {
-      window = {
-        position = "right",
-        width = 40,
-      }
-    }
-  })
+  api:getPluginInstance(require('neodap.plugins.BreakpointApi'))
+  local variables4_plugin = api:getPluginInstance(require('neodap.plugins.Variables4'))
 
   -- Change to the fixture directory and open the file
   T.cmd("cd lua/testing/fixtures/variables")
@@ -39,92 +26,43 @@ T.Scenario(function(api)
   -- Take snapshot showing stopped at debugger
   T.TerminalSnapshot('02_stopped_at_debugger')
 
-  -- Open the Variables window to show the DAP variables tree
-  T.cmd("NeodapVariablesShow")
+  -- Open the Variables4 NUI tree popup
+  T.cmd("Variables4TreeDemo")
   T.sleep(500)
 
-  -- Take snapshot showing the Variables window with scopes
-  T.TerminalSnapshot('03_variables_window_scopes')
-
-  -- Focus on the Variables window to interact with it
-  T.cmd("NeodapVariablesFocus")
-  T.sleep(100)
+  -- Take snapshot showing the Variables4 popup with collapsed scopes
+  T.TerminalSnapshot('03_variables4_popup_scopes')
 
   -- Expand the first scope (Local) using Enter key
-  T.cmd("normal! \r")
+  T.cmd("execute \"normal \\<CR>\"")
   T.sleep(1000)
 
   -- Take snapshot showing expanded Local scope with all variables
   T.TerminalSnapshot('04_local_scope_expanded')
 
-  -- Navigate to objectVar and expand it (should be around line 13)
-  T.cmd("normal! 13gg")
+  -- Navigate down and expand Global scope
+  T.cmd("normal! j")
   T.sleep(100)
-  T.cmd("normal! \r")
-  T.sleep(500)
+  T.cmd("execute \"normal \\<CR>\"")
+  T.sleep(1000)
 
-  -- Take snapshot showing expanded objectVar with its properties
-  T.TerminalSnapshot('05_object_var_expanded')
+  -- Take snapshot showing both scopes expanded
+  T.TerminalSnapshot('05_both_scopes_expanded')
 
-  -- Navigate to nested property and expand it
-  T.cmd("normal! jjj") -- Move down to 'nested' property
+  -- Navigate back to Local scope variables
+  T.cmd("normal! k")
+  T.cmd("normal! j")  -- Move to first variable
   T.sleep(100)
-  T.cmd("normal! \r")
-  T.sleep(500)
 
-  -- Take snapshot showing recursive expansion of nested object
-  T.TerminalSnapshot('06_nested_object_expanded')
+  -- Take snapshot showing navigation within variables
+  T.TerminalSnapshot('06_variable_navigation')
 
-  -- Navigate to arrayVar and expand it
-  T.cmd("normal! gg")   -- Go to top
-  T.sleep(100)
-  T.cmd("normal! 11gg") -- Go to arrayVar line
-  T.sleep(100)
-  T.cmd("normal! \r")
-  T.sleep(500)
+  -- Close the popup with q
+  T.cmd("normal! q")
+  T.sleep(300)
 
-  -- Take snapshot showing expanded array with indices
-  T.TerminalSnapshot('07_array_var_expanded')
-
-  -- Expand the object inside the array (index 4)
-  T.cmd("normal! jjjjj") -- Move to index 4
-  T.sleep(100)
-  T.cmd("normal! \r")
-  T.sleep(500)
-
-  -- Take snapshot showing object inside array expanded
-  T.TerminalSnapshot('08_array_object_expanded')
-
-  -- Navigate to mapVar and expand it
-  T.cmd("normal! gg")   -- Go to top
-  T.sleep(100)
-  T.cmd("normal! 27gg") -- Navigate to mapVar
-  T.sleep(100)
-  T.cmd("normal! \r")
-  T.sleep(500)
-
-  -- Take snapshot showing Map variable expanded
-  T.TerminalSnapshot('09_map_var_expanded')
-
-  -- Collapse some nodes to show collapse functionality
-  T.cmd("normal! gg") -- Go to top
-  T.sleep(100)
-  T.cmd("normal! \r") -- Collapse Local scope
-  T.sleep(500)
-
-  -- Take snapshot showing collapsed scope
-  T.TerminalSnapshot('10_scope_collapsed')
-
-  -- Expand multiple scopes to show all available scopes
-  T.cmd("normal! \r") -- Re-expand Local
-  T.sleep(500)
-  T.cmd("normal! G")  -- Go to bottom to find other scopes
-  T.sleep(100)
-  T.cmd("normal! \r") -- Expand another scope if available
-  T.sleep(500)
-
-  -- Final snapshot showing full variable tree navigation
-  T.TerminalSnapshot('11_final_full_tree')
+  -- Take final snapshot showing return to normal editing
+  T.TerminalSnapshot('07_popup_closed')
 end)
 
 

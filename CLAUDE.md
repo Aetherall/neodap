@@ -4,12 +4,12 @@
 
 `neodap` is a **Neovim Debug Adapter Protocol (DAP) client SDK**. Its fundamental purpose is to provide a flexible and extensible foundation for building custom debugging experiences within Neovim. Unlike monolithic DAP clients, `neodap` is designed as a library that other plugins use to interact with debuggers.
 
-**Core Philosophy: Integrate, Don't Re-implement.** The codebase favors deep integration with existing tools (like `neo-tree`) over building new management layers. When developing, your goal should be to write the *minimum* code necessary to bridge `neodap`'s functionality with other tools, delegating tasks like UI management, state, and caching whenever possible.
+**Core Philosophy: Integrate, Don't Re-implement.** The codebase favors deep integration with existing UI libraries over building new management layers. When developing, your goal should be to write the *minimum* code necessary to bridge `neodap`'s functionality with other tools, delegating tasks like UI management, state, and caching whenever possible.
 
 **Example:** The Variables plugin demonstrates this philosophy perfectly:
-- ✅ Uses Neo-tree as a source instead of building a custom tree widget
-- ✅ Leverages Neo-tree's existing expand/collapse functionality
-- ✅ Benefits from Neo-tree's maintained keybindings and UI patterns
+- ✅ Uses NUI components for tree widgets instead of building custom UI
+- ✅ Leverages existing expand/collapse functionality from UI libraries
+- ✅ Benefits from established keybinding and interaction patterns
 - ✅ Only implements the DAP-specific logic for fetching variables
 - ❌ Avoids duplicating tree navigation, rendering, or state management code
 
@@ -271,36 +271,31 @@ end)
 
   Visual verification extends beyond single buffers. When testing plugins that create windows or sidebars:
 
-  5.1. Neo-tree Integration Testing
+  5.1. NUI Tree Integration Testing
 
   ```lua
   T.Scenario(function(api)
     -- Load the UI plugin
-    api:getPluginInstance(require('neodap.plugins.Variables'))
+    api:getPluginInstance(require('neodap.plugins.Variables4'))
     
     -- Launch and hit breakpoint first
     T.cmd("edit lua/testing/fixtures/variables/complex.js")
     T.cmd("NeodapLaunchClosest Variables [variables]")
     T.sleep(1500)
     
-    -- Open the UI window
-    T.cmd("NeodapVariablesShow")
+    -- Open the UI popup
+    T.cmd("Variables4TreeDemo")
     T.sleep(300)  -- Let UI render
-    T.TerminalSnapshot('variables_window_open')
+    T.TerminalSnapshot('variables_popup_open')
     
-    -- Navigate to UI window (adjust direction as needed)
-    T.cmd("wincmd h")  -- h=left, l=right, j=down, k=up
-    T.TerminalSnapshot('variables_window_focused')
-    
-    -- Interact with tree nodes
-    T.cmd("normal! j")  -- Move to first scope
-    T.cmd("normal! o")  -- Expand node
+    -- Interact with tree nodes using Enter/Space
+    T.cmd("execute \"normal \\<CR>\"")  -- Expand first scope
     T.sleep(200)  -- Let lazy loading complete
     T.TerminalSnapshot('scope_expanded')
     
-    -- Navigate deeper
-    T.cmd("normal! j")  -- Move to variable
-    T.cmd("normal! o")  -- Expand variable
+    -- Navigate and expand variables
+    T.cmd("normal! j")  -- Move to next item
+    T.cmd("execute \"normal \\<CR>\"")  -- Expand variable
     T.sleep(200)
     T.TerminalSnapshot('variable_expanded')
   end)
@@ -309,69 +304,64 @@ end)
   5.2. Multi-Window Snapshot Guidelines
 
   - Capture the entire terminal screen, not just current buffer
-  - Test window navigation commands (`wincmd`)
-  - Verify sidebar content renders correctly
+  - Test popup interactions with proper keysend commands
+  - Verify popup content renders correctly
   - Allow time for lazy-loaded content
   - Use appropriate fixtures with complex data
 
   5.3. Common UI Testing Patterns
 
   ```lua
-  -- Opening sidebars
-  T.cmd("NeodapVariablesToggle")  -- Toggle visibility
-  T.cmd("NeodapVariablesFocus")   -- Focus without closing
+  -- Opening popups
+  T.cmd("Variables4TreeDemo")  -- Open variables popup
   
-  -- Window navigation
-  T.cmd("wincmd w")  -- Cycle through windows
-  T.cmd("wincmd p")  -- Previous window
-  
-  -- Tree interaction (Neo-tree)
-  T.cmd("normal! o")   -- Toggle node expand/collapse
-  T.cmd("normal! za")  -- Alternative toggle
-  T.cmd("normal! <cr>") -- Activate node
+  -- Tree interaction (NUI Tree)
+  T.cmd("execute \"normal \\<CR>\"")  -- Toggle node expand/collapse
+  T.cmd("execute \"normal \\<Space>\"")  -- Alternative toggle
+  T.cmd("normal! j")  -- Navigate down
+  T.cmd("normal! k")  -- Navigate up
+  T.cmd("normal! q")  -- Close popup
   ```
 
-  5.4. Neo-tree Integration Specifics
+  5.4. NUI Tree Integration Specifics
 
-  **Critical Discovery:** Neo-tree buffers are non-modifiable, which affects how you interact with them in tests.
+  **Critical Discovery:** NUI Tree popups require proper keypress handling in tests.
 
-  **Problem:** Standard vim commands fail in Neo-tree buffers:
+  **Problem:** Direct normal commands may not work in popup contexts:
   ```lua
-  -- ❌ FAILS with "Cannot make changes, 'modifiable' is off"
+  -- ❌ May not work reliably in popup buffers  
   T.cmd("normal! o")
   ```
 
   **Solution:** Use execute to send keystrokes properly:
   ```lua
-  -- ✅ WORKS - Neo-tree receives the keypress correctly
+  -- ✅ WORKS - NUI popup receives the keypress correctly
   T.cmd("execute \"normal \\<CR>\"")  -- Send Enter key
   T.cmd("execute \"normal \\<Space>\"")  -- Send Space key
   ```
 
   **Key Insights:**
-  - Neo-tree uses command mappings, not direct buffer modifications
-  - Keys are mapped to command names (e.g., "o" → "toggle_node")
-  - The plugin must define its own commands in the source definition
+  - NUI Tree uses buffer mappings for interaction
+  - Keys are mapped to functions (e.g., Enter → expand/collapse)
+  - The plugin defines custom keymaps in popup:map() calls
   - Async data loading requires appropriate sleep times after expansion
 
   **Example: Variables Plugin Integration**
   ```lua
-  -- In the plugin's source definition
-  commands = {
-    toggle_node = function(state)
-      -- Neo-tree's base toggle_node handles visual expansion
-      commands.toggle_node(state, function()
-        -- Custom callback for async data loading
-        local node = state.tree:get_node()
-        if node and not node.loaded and node.has_children then
-          plugin:LoadVariablesData(state, node.id, function()
-            node.loaded = true
-            renderer.redraw(state)
-          end)
-        end
-      end)
-    end,
-  }
+  -- In the plugin's popup setup
+  popup:map("n", "<CR>", function()
+    local node = tree:get_node()
+    if node and node.type == "scope" and not node._variables_loaded then
+      -- Async loading with proper NUI Tree API
+      NvimAsync.defer(function()
+        local variables = node._scope:variables()
+        tree:set_nodes(var_children, node:get_id())
+        tree:render()
+      end)()
+    end
+    node:expand()
+    tree:render()
+  end)
   ```
 
   6. Common Pitfalls and Solutions

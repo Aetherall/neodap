@@ -274,7 +274,7 @@ function M.prepareNodeLine(node, opts)
   -- Expand indicator
   if node:has_children() then
     local indicator = node:is_expanded() and "▾ " or "▸ "
-    line:append(indicator, "NeoTreeExpander")
+    line:append(indicator, "Comment")
   else
     line:append("  ")
   end
@@ -289,10 +289,10 @@ function M.prepareNodeLine(node, opts)
     -- Remove any suffix like ": testVariables" from "Local: testVariables"
     local baseScopeName = scopeName:match("^(%w+)") or scopeName
     icon = M.SCOPE_ICONS[baseScopeName] or M.SCOPE_ICONS["Block"]
-    highlight = "NeoTreeDirectoryIcon"
+    highlight = "Directory"
   elseif node.type == "variable" then
     icon = M.getIcon(node.varType, node.is_expandable)
-    highlight = node.is_expandable and "NeoTreeDirectoryIcon" or "NeoTreeFileIcon"
+    highlight = node.is_expandable and "Directory" or "Normal"
   else
     icon = "󰀫"
     highlight = "Normal"

@@ -4,7 +4,7 @@
 
 `neodap` is a **Neovim Debug Adapter Protocol (DAP) client SDK**. Its fundamental purpose is to provide a flexible and extensible foundation for building custom debugging experiences within Neovim. Unlike monolithic DAP clients, `neodap` is designed as a library that other plugins use to interact with debuggers.
 
-**Core Philosophy: Integrate, Don't Re-implement.** The codebase favors deep integration with existing tools (like `neo-tree`) over building new management layers. When developing, your goal should be to write the *minimum* code necessary to bridge `neodap`'s functionality with other tools, delegating tasks like UI management, state, and caching whenever possible.
+**Core Philosophy: Integrate, Don't Re-implement.** The codebase favors deep integration with existing UI libraries over building new management layers. When developing, your goal should be to write the *minimum* code necessary to bridge `neodap`'s functionality with other tools, delegating tasks like UI management, state, and caching whenever possible.
 
 ### 2. Directory Structure
 

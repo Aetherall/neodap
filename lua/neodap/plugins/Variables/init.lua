@@ -1092,15 +1092,15 @@ function VariablesTreeNui:prepareNodeLine(api_object, geometry)
     local scope_base_name = api_object.ref.name:match("^(%w+)") or api_object.ref.name
     local scope_icon = VisualImprovements.SCOPE_ICONS[scope_base_name] or VisualImprovements.SCOPE_ICONS["Block"]
     icon = scope_icon
-    highlight = "NeoTreeDirectoryIcon"
+    highlight = "Directory"
   elseif self:isNodeExpandable(api_object) then
     -- Expandable variable
     icon = VisualImprovements.getIcon(api_object.ref and api_object.ref.type or "unknown", true)
-    highlight = "NeoTreeDirectoryIcon"
+    highlight = "Directory"
   else
     -- Leaf variable
     icon = VisualImprovements.getIcon(api_object.ref and api_object.ref.type or "unknown", false)
-    highlight = "NeoTreeFileIcon"
+    highlight = "Normal"
   end
   
   line:append(icon .. " ", highlight)

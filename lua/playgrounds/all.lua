@@ -47,13 +47,6 @@ local function go()
     api:getPluginInstance(require("neodap.plugins.LaunchJsonSupport"))
     -- api:getPluginInstance(require("neodap.plugins.ScopeViewer"))
 
-    -- local neotree = require('neo-tree')
-
-    -- neotree.setup({
-    --     sources = {
-    --         "neodap.plugins.Variables",
-    --     },
-    -- })
 
     local currentStopped = nil
 

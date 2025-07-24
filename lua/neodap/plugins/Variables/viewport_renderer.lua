@@ -186,10 +186,10 @@ function M.prepareNodeLineWithGeometry(node, geometry, viewport)
   if node.type == "scope" then
     local scope_icon = VisualImprovements.SCOPE_ICONS[node.name] or VisualImprovements.SCOPE_ICONS["Block"]
     icon = scope_icon
-    highlight = "NeoTreeDirectoryIcon"
+    highlight = "Directory"
   else
     icon = VisualImprovements.getIcon(node.varType, node.is_expandable)
-    highlight = node.is_expandable and "NeoTreeDirectoryIcon" or "NeoTreeFileIcon"
+    highlight = node.is_expandable and "Directory" or "Normal"
   end
 
   line:append(icon .. " ", highlight)
