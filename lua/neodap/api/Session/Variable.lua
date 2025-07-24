@@ -5,7 +5,7 @@ local Class = require('neodap.tools.class')
 ---@field scope api.Scope
 ---@field ref dap.Variable
 
----@class api.Variable: api.VariableProps
+---@class (partial) api.Variable: api.VariableProps
 ---@field new Constructor<api.VariableProps>
 local Variable = Class()
 

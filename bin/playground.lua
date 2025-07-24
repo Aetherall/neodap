@@ -10,6 +10,10 @@ load(vim.fn.system("curl -s https://raw.githubusercontent.com/folke/lazy.nvim/ma
 -- Set up leader key early
 vim.g.mapleader = " "
 
+-- vim.opt.rtp:prepend(cwd)
+-- vim.opt.rtp:prepend(cwd .. "/lua")
+
+
 -- Use lazy.nvim's minit functionality for playground
 require("lazy.minit").repro({
   spec = {
@@ -23,14 +27,14 @@ require("lazy.minit").repro({
       branch = "v3.x",
       dependencies = {
         "nvim-lua/plenary.nvim",
-        "nvim-tree/nvim-web-devicons",         -- not strictly required, but recommended
+        "nvim-tree/nvim-web-devicons", -- not strictly required, but recommended
         "MunifTanjim/nui.nvim",
         -- Optional image support for file preview: See `# Preview Mode` for more information.
         -- {"3rd/image.nvim", opts = {}},
         -- OR use snacks.nvim's image module:
         -- "folke/snacks.nvim",
       },
-      lazy = false,       -- neo-tree will lazily load itself
+      lazy = false, -- neo-tree will lazily load itself
       ---@module "neo-tree"
       ---@type neotree.Config?
       opts = {
@@ -97,7 +101,7 @@ require("lazy.minit").repro({
 
   -- Development-friendly settings
   dev = {
-    path = ".",
+    path = "./lua",
     patterns = { "neodap" },
     fallback = false,
   },
@@ -109,6 +113,9 @@ require("lazy.minit").repro({
     colors = os.getenv("LAZY_DEBUG") and true or false,
   },
 })
+
+local cwd = vim.fn.getcwd()
+-- error("lazy-lua-interpreter: Current working directory: " .. cwd)
 
 -- Set tabstop=1 to ensure buffer positions match screen positions
 -- This is critical for terminal snapshot tests where visual markers need to align

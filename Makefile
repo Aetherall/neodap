@@ -106,7 +106,7 @@ play-all:
 
 # Run lazy.nvim interpreter with piped code, string arguments, or files
 run:
-	@./bin/interpreter.lua "$(filter-out $@,$(MAKECMDGOALS))"
+	@./bin/run.lua "$(filter-out $@,$(MAKECMDGOALS))"
 
 # Clean up all numbered log files
 clean-logs:

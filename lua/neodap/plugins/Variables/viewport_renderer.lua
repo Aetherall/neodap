@@ -30,26 +30,8 @@ function M.renderNodeWithGeometry(node, geometry, viewport)
     })
   end
 
-  -- Apply geometric rendering based on relationship
-  local relationship = geometry.relationship
-  local depth_offset = geometry.depth_offset
-
-  if relationship == "focus" then
-    return "▾ " .. base_display .. " ← HERE"
-  elseif relationship == "ancestor" then
-    local level_indicator = string.rep("↑ ", math.abs(depth_offset))
-    return level_indicator .. base_display .. " (up " .. math.abs(depth_offset) .. ")"
-  elseif relationship == "sibling" then
-    return "├─ " .. base_display
-  elseif relationship == "child" then
-    return "  " .. base_display
-  elseif relationship == "descendant" then
-    local indent = string.rep("  ", depth_offset)
-    return indent .. base_display
-  else
-    -- Default rendering for distant nodes
-    return base_display
-  end
+  -- Return just the base display - geometric indicators are added in prepareNodeLineWithGeometry
+  return base_display
 end
 
 ---Create breadcrumb display based on current viewport focus
@@ -129,37 +111,32 @@ function M.sortNodesForDisplay(rendered_nodes)
     })
   end
 
-  -- Sort by geometric relationship and depth
-  table.sort(sorted_list, function(a, b)
-    local a_geo, b_geo = a.geometry, b.geometry
+  -- Sort by path order and depth
+  -- table.sort(sorted_list, function(a, b)
+  --   -- First, sort by path depth
+  --   if #a.path ~= #b.path then
+  --     return #a.path < #b.path
+  --   end
 
-    -- Primary sort: relationship priority
-    local relationship_priority = {
-      ancestor = 1,
-      focus = 2,
-      sibling = 3,
-      child = 4,
-      descendant = 5,
-      distant = 6
-    }
+  --   -- Then by path components
+  --   for i = 1, #a.path do
+  --     if a.path[i] ~= b.path[i] then
+  --       -- Try to maintain scope order
+  --       if i == 1 then
+  --         -- For scopes, maintain their natural order
+  --         local a_scope_order = a.node.name == "Local" and 1 or (a.node.name == "Global" and 2 or 3)
+  --         local b_scope_order = b.node.name == "Local" and 1 or (b.node.name == "Global" and 2 or 3)
+  --         if a_scope_order ~= b_scope_order then
+  --           return a_scope_order < b_scope_order
+  --         end
+  --       end
+  --       return a.path[i] < b.path[i]
+  --     end
+  --   end
 
-    local a_priority = relationship_priority[a_geo.relationship] or 6
-    local b_priority = relationship_priority[b_geo.relationship] or 6
-
-    if a_priority ~= b_priority then
-      return a_priority < b_priority
-    end
-
-    -- Secondary sort: by path depth and name
-    if #a.path ~= #b.path then
-      return #a.path < #b.path
-    end
-
-    -- Tertiary sort: alphabetical by node name
-    local a_name = a.node.name or ""
-    local b_name = b.node.name or ""
-    return a_name < b_name
-  end)
+  --   -- Finally by name
+  --   return (a.node.name or "") < (b.node.name or "")
+  -- end)
 
   return sorted_list
 end
@@ -175,116 +152,157 @@ end
 ---@return NuiLine Prepared line for NUI rendering
 function M.prepareNodeLineWithGeometry(node, geometry, viewport)
   local line = NuiLine()
+
+  -- Calculate proper indentation based on depth
+  local path = geometry.path or {}
+  local depth = math.max(0, #path - 1)
+  local indent = string.rep("  ", depth)
+  line:append(indent)
+
+  -- Add relationship indicators based on geometry
   local relationship = geometry.relationship
 
-  -- Add relationship indicators
-  if relationship == "ancestor" then
-    line:append("↑ ", "Comment")
-  elseif relationship == "focus" then
-    line:append("▾ ", "Special")
-  elseif relationship == "sibling" then
-    line:append("├─ ", "NonText")
-  elseif relationship == "child" then
-    line:append("  ", "Normal")
+  if relationship == "focus" then
+    -- Focus node - show expanded indicator
+    if node.is_expandable then
+      line:append("▾ ", "Special")
+    else
+      line:append("  ")
+    end
+  elseif depth > 0 then
+    -- Non-root nodes - show tree connectors
+    if node.is_expandable then
+      line:append("▸ ", "NonText")
+    else
+      line:append("  ")
+    end
+  else
+    -- Root level nodes (scopes)
+    line:append("  ")
   end
 
-  -- Use existing visual improvements for the main content
-  local visual_line = VisualImprovements.prepareNodeLine(node, {
-    useTreeGuides = false -- Disable tree guides in viewport mode
-  })
+  -- Add icon
+  local icon, highlight
+  if node.type == "scope" then
+    local scope_icon = VisualImprovements.SCOPE_ICONS[node.name] or VisualImprovements.SCOPE_ICONS["Block"]
+    icon = scope_icon
+    highlight = "NeoTreeDirectoryIcon"
+  else
+    icon = VisualImprovements.getIcon(node.varType, node.is_expandable)
+    highlight = node.is_expandable and "NeoTreeDirectoryIcon" or "NeoTreeFileIcon"
+  end
 
-  -- Append the formatted content
-  if visual_line and visual_line._segments then
-    for _, segment in ipairs(visual_line._segments) do
-      if segment.text and segment.highlight then
-        line:append(segment.text, segment.highlight)
-      elseif segment.text then
-        line:append(segment.text)
+  line:append(icon .. " ", highlight)
+
+  -- Add the node text
+  if node.type == "variable" then
+    -- For variables, parse the display text for highlighting
+    local text = node.text or VisualImprovements.formatVariableDisplay(node.variable or node.dap_data)
+    local colonPos = text:find(": ")
+
+    if colonPos then
+      -- Property name
+      local propName = text:sub(1, colonPos - 1)
+      local value = text:sub(colonPos + 2)
+
+      -- Special highlighting for internal properties
+      if propName:match("^%[%[") then
+        line:append(propName, "Comment")
+      else
+        line:append(propName, "Identifier")
+      end
+
+      line:append(": ", "Delimiter")
+
+      -- Value with appropriate highlighting
+      if value:match("^'.*'$") or value:match('^".*"$') then
+        line:append(value, "String")
+      elseif value == "true" or value == "false" then
+        line:append(value, "Boolean")
+      elseif value == "null" or value == "undefined" then
+        line:append(value, "Keyword")
+      elseif tonumber('0' .. value) then
+        line:append(value, "Number")
+      else
+        line:append(value, "Normal")
+      end
+    else
+      -- No value, just the name
+      if text:match("^%[%[") then
+        line:append(text, "Comment")
+      else
+        line:append(text)
       end
     end
   else
-    -- Fallback to simple text
-    local display = M.renderNodeWithGeometry(node, geometry, viewport)
-    line:append(display)
+    -- Scope nodes
+    line:append(node.name or node.text)
   end
 
-  -- Add focus indicator for current focus
+  -- Add focus indicator
   if relationship == "focus" then
-    line:append(" ← HERE", "WarningMsg")
+    line:append(" ← HERE", "Special")
   end
 
   return line
 end
 
----Create breadcrumb header lines for NUI display
----@param viewport Viewport Current viewport state
----@param window_width? number Width for separator line
----@return {text: string, line: NuiLine}[] Header lines
-function M.createBreadcrumbHeader(viewport, window_width)
-  window_width = window_width or 60
-
-  local breadcrumb_text = M.createBreadcrumbDisplay(viewport)
-  local separator_text = M.createSeparatorLine(window_width)
-
-  -- Create styled breadcrumb line
-  local breadcrumb_line = NuiLine()
-  breadcrumb_line:append("📍 ", "Special")
-  breadcrumb_line:append("Variables", "Title")
-
-  if #viewport.focus_path > 0 then
-    for i, segment in ipairs(viewport.focus_path) do
-      breadcrumb_line:append(" > ", "Comment")
-      if i == #viewport.focus_path then
-        -- Highlight current segment
-        breadcrumb_line:append(segment, "Special")
-      else
-        breadcrumb_line:append(segment, "Normal")
-      end
-    end
-  end
-
-  -- Create separator line
-  local separator_line = NuiLine()
-  separator_line:append(separator_text, "Comment")
-
-  return {
-    { text = breadcrumb_text, line = breadcrumb_line },
-    { text = separator_text,  line = separator_line }
-  }
-end
-
 -- ================================
--- VIEWPORT STYLE RENDERING
+-- VIEWPORT STYLE FUNCTIONS
 -- ================================
 
----Apply style-specific rendering modifications
----@param rendered_nodes table<string, any> Rendered nodes
+---Apply viewport style modifications to rendered nodes
+---@param rendered_nodes table<string, {node: table, display: string, geometry: NodeGeometry}>
 ---@param viewport Viewport Current viewport state
----@return table<string, any> Style-modified nodes
+---@return table<string, {node: table, display: string, geometry: NodeGeometry}>
 function M.applyViewportStyle(rendered_nodes, viewport)
+  -- Style modifiers based on viewport style setting
   if viewport.style == "minimal" then
-    -- In minimal mode, reduce visual clutter
-    for node_id, node_data in pairs(rendered_nodes) do
-      if node_data.geometry.relationship == "distant" then
-        rendered_nodes[node_id] = nil -- Remove distant nodes
-      end
+    -- Remove extra decorations
+    for _, node_data in pairs(rendered_nodes) do
+      node_data.display = node_data.display:gsub(" ← HERE", "")
     end
   elseif viewport.style == "highlight" then
-    -- In highlight mode, emphasize focus path
-    for node_id, node_data in pairs(rendered_nodes) do
+    -- Add emphasis to focus path
+    for _, node_data in pairs(rendered_nodes) do
       if node_data.geometry.on_focus_path then
-        node_data.display = "★ " .. node_data.display
+        node_data.display = "➜ " .. node_data.display
       end
     end
   elseif viewport.style == "full" then
-    -- Full mode shows everything without geometric indicators
-    for node_id, node_data in pairs(rendered_nodes) do
-      local base_display = node_data.node.name or node_data.node.text or "unknown"
-      node_data.display = base_display
+    -- Add full path information
+    for _, node_data in pairs(rendered_nodes) do
+      if #node_data.path > 0 then
+        node_data.display = node_data.display .. " [" .. table.concat(node_data.path, ".") .. "]"
+      end
     end
   end
 
   return rendered_nodes
+end
+
+-- ================================
+-- BREADCRUMB HEADER FUNCTIONS
+-- ================================
+
+---Create breadcrumb header lines for viewport
+---@param viewport Viewport Current viewport state
+---@param width number Width of the window
+---@return NuiLine[] Header lines
+function M.createBreadcrumbHeader(viewport, width)
+  local lines = {}
+
+  -- Create breadcrumb line
+  local breadcrumb_line = NuiLine()
+  breadcrumb_line:append(M.createBreadcrumbDisplay(viewport), "Title")
+  table.insert(lines, breadcrumb_line)
+
+  -- Create separator line
+  local separator_line = NuiLine()
+  separator_line:append(M.createSeparatorLine(width), "NonText")
+  table.insert(lines, separator_line)
+
+  return lines
 end
 
 return M

@@ -35,24 +35,25 @@ local function go()
     -- local FrameHighlight = require("neodap.plugins.FrameHighlight")
     -- -- local CallStackViewer = require("neodap.plugins.CallStackViewer")
 
-    api:getPluginInstance(require("neodap.plugins.JumpToStoppedFrame"))
+    -- api:getPluginInstance(require("neodap.plugins.JumpToStoppedFrame"))
     api:getPluginInstance(require("neodap.plugins.BreakpointVirtualText"))
     api:getPluginInstance(require("neodap.plugins.BreakpointApi"))
     -- api:getPluginInstance(require("neodap.plugins.FrameVariables"))
     local stack = api:getPluginInstance(require("neodap.plugins.StackNavigation"))
     local brkpt = api:getPluginInstance(require("neodap.plugins.ToggleBreakpoint"))
     api:getPluginInstance(require("neodap.plugins.FrameHighlight"))
-    api:getPluginInstance(require("neodap.plugins.DebugMode"))
+    -- api:getPluginInstance(require("neodap.plugins.DebugMode"))
     api:getPluginInstance(require("neodap.plugins.Variables"))
+    api:getPluginInstance(require("neodap.plugins.LaunchJsonSupport"))
     -- api:getPluginInstance(require("neodap.plugins.ScopeViewer"))
 
-    local neotree = require('neo-tree')
+    -- local neotree = require('neo-tree')
 
-    neotree.setup({
-        sources = {
-            "neodap.plugins.Variables",
-        },
-    })
+    -- neotree.setup({
+    --     sources = {
+    --         "neodap.plugins.Variables",
+    --     },
+    -- })
 
     local currentStopped = nil
 

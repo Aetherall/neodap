@@ -22,8 +22,12 @@
       },
       "args": [
         "test",
-        "${file}"
-      ]
+        "${workspaceFolder}/lua/neodap/plugins/Variables2/specs/basic_usage.spec.lua"
+        // "${file}"
+      ],
+      "env": {
+        // "NEODAP_PANIC": "true"
+      }
     },
     // {
     //   "type": "lua-local",

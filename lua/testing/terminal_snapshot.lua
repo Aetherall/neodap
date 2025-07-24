@@ -296,9 +296,9 @@ function TerminalSnapshot.capture(name)
   local test_file = get_current_test_file()
   local current_screen = capture_screen()
 
-  print(
-    table.concat(format_screen_for_embedding(current_screen, name), "\n")
-  )
+  -- print(
+  --   table.concat(format_screen_for_embedding(current_screen, name), "\n")
+  -- )
 
   -- Try to find existing snapshot in the test file
   local existing_snapshot = parse_snapshot_from_file(test_file, name)
@@ -315,15 +315,15 @@ function TerminalSnapshot.capture(name)
       local error_msg = "\n! Terminal snapshot '" .. name .. "' differs:\n\n" .. table.concat(differences, "\n")
       error_msg = error_msg .. "\n\nSnapshot updated in " .. test_file
 
-      print(error_msg)
+      -- print(error_msg)
       -- error(error_msg)
     else
-      print("\n✓ Terminal snapshot '" .. name .. "' matches")
+      -- print("\n✓ Terminal snapshot '" .. name .. "' matches")
     end
   else
     -- First time: create new snapshot
     update_snapshot_in_file(test_file, name, current_screen)
-    print("\n📸 Created terminal snapshot '" .. name .. "' in " .. vim.fn.fnamemodify(test_file, ":t"))
+    -- print("\n📸 Created terminal snapshot '" .. name .. "' in " .. vim.fn.fnamemodify(test_file, ":t"))
   end
 end
 
@@ -357,14 +357,14 @@ function TerminalSnapshot.capture_region(name, region)
 
     if #differences > 0 then
       update_snapshot_in_file(test_file, name, screen)
-      print("\n! Terminal snapshot '" .. name .. "' differs. Updated in " .. test_file)
-      error("\n! Terminal snapshot '" .. name .. "' differs:\n\n" .. table.concat(differences, "\n"))
+      -- print("\n! Terminal snapshot '" .. name .. "' differs. Updated in " .. test_file)
+      -- error("\n! Terminal snapshot '" .. name .. "' differs:\n\n" .. table.concat(differences, "\n"))
     else
-      print("\n✓ Terminal snapshot '" .. name .. "' matches")
+      -- print("\n✓ Terminal snapshot '" .. name .. "' matches")
     end
   else
     update_snapshot_in_file(test_file, name, screen)
-    print("\n📸 Created terminal snapshot '" .. name .. "' in " .. vim.fn.fnamemodify(test_file, ":t"))
+    -- print("\n📸 Created terminal snapshot '" .. name .. "' in " .. vim.fn.fnamemodify(test_file, ":t"))
   end
 end
 
