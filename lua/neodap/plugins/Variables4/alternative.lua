@@ -407,21 +407,10 @@ function Variables4Plugin:DemonstrateTreeRendering()
 
             if variables then
               -- Create child nodes for the variables
-              local var_children = {}
               for _, variable in ipairs(variables) do
-                local var_node = variable:asNode()
-                -- Create a proper NUI Tree node with the variable data
-                local tree_var_node = NuiTree.Node({
-                  id = var_node.id,
-                  text = var_node.text,
-                  type = "variable",
-                  _variable = variable,
-                }, {})
-                table.insert(var_children, tree_var_node)
+                tree:add_node(variable:asNode(), node:get_id())
               end
-              
-              -- Use NUI Tree API to add children dynamically
-              tree:set_nodes(var_children, node:get_id())
+
               node._variables_loaded = true
 
               print("Loaded " .. #variables .. " variables")
@@ -454,22 +443,10 @@ function Variables4Plugin:DemonstrateTreeRendering()
           local variables = node._scope:variables()
 
           if variables then
-            -- Create child nodes for the variables
-            local var_children = {}
             for _, variable in ipairs(variables) do
-              local var_node = variable:asNode()
-              -- Create a proper NUI Tree node with the variable data
-              local tree_var_node = NuiTree.Node({
-                id = var_node.id,
-                text = var_node.text,
-                type = "variable",
-                _variable = variable,
-              }, {})
-              table.insert(var_children, tree_var_node)
+              tree:add_node(variable:asNode(), node:get_id())
             end
-            
-            -- Use NUI Tree API to add children dynamically
-            tree:set_nodes(var_children, node:get_id())
+
             node._variables_loaded = true
 
             print("Loaded " .. #variables .. " variables")
