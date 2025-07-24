@@ -1,6 +1,6 @@
 # Variables4 Plugin - AsNode() Caching Strategy
 
-Variables4 demonstrates the **asNode() caching approach** - a middle-ground strategy between full transformation and on-demand conversion.
+Variables4 demonstrates an elegant approach to integrating neodap debug API objects with NUI tree components using an **asNode() caching strategy**. This implementation provides a complete interactive debugging UI with dynamic scope expansion and proper async handling.
 
 ## Core Strategy
 
@@ -60,13 +60,12 @@ end
 - Node contains `_variable` or `_scope` reference back to original object
 - Enables bidirectional access between API objects and nodes
 
-## Usage Examples
+## Usage Commands
 
-### **Basic Usage**
-```lua
-:Variables4Demo   -- Demonstrate caching behavior
-:Variables4Status -- Show current cache state
-```
+- `:Variables4Demo` - Demonstrates asNode() caching with console output
+- `:Variables4Status` - Shows plugin status and current frame info  
+- `:Variables4TreeDemo` - **Opens interactive NUI tree popup (main feature)**
+- `:Variables4TreeInteract` - Shows interaction help for open popup
 
 ### **In Code**
 ```lua

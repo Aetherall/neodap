@@ -76,7 +76,7 @@ local function go()
     end)
 
     vim.keymap.set("n", "<leader>db", function()
-        toggleBreakpoint:Toggle()
+        brkpt:Toggle()
     end, { noremap = true, silent = true, desc = "Toggle Breakpoint" })
 
     vim.keymap.set("n", "<leader>dc", function()
