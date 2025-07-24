@@ -46,6 +46,130 @@ function Variables4Plugin:initialize()
 end
 
 -- ========================================
+-- VALUE FORMATTING AND VISUAL ENHANCEMENTS
+-- ========================================
+
+-- DAP type to icon mapping for visual clarity
+local TYPE_ICONS = {
+  -- JavaScript primitives
+  string = "󰉿",     -- String icon
+  number = "󰎠",     -- Number icon  
+  boolean = "◐",    -- Boolean icon
+  undefined = "󰟢",  -- Undefined icon
+  ['nil'] = "∅",    -- Null icon
+  null = "∅",       -- Null icon (alternative)
+  
+  -- Complex types
+  object = "󰅩",     -- Object icon
+  array = "󰅪",      -- Array icon
+  ['function'] = "󰊕", -- Function icon
+  
+  -- Special types
+  date = "󰃭",       -- Calendar icon
+  regexp = "󰑑",     -- Regex icon
+  map = "󰘣",        -- Map icon
+  set = "󰘦",        -- Set icon
+  
+  -- Default fallback
+  default = "󰀬",    -- Generic icon
+}
+
+-- DAP type to treesitter highlight mapping
+local TYPE_HIGHLIGHTS = {
+  -- JavaScript primitives (match treesitter highlights)
+  string = "String",           -- @string
+  number = "Number",           -- @number  
+  boolean = "Boolean",         -- @boolean
+  undefined = "Constant",      -- @constant.builtin
+  ['nil'] = "Constant",        -- @constant.builtin
+  null = "Constant",           -- @constant.builtin
+  
+  -- Complex types
+  object = "Structure",        -- @structure / Type
+  array = "Structure",         -- @structure
+  ['function'] = "Function",   -- @function
+  
+  -- Special types  
+  date = "Special",           -- @special
+  regexp = "String",          -- @string.regex
+  map = "Type",              -- @type
+  set = "Type",              -- @type
+  
+  -- Default
+  default = "Identifier",     -- @variable
+}
+
+-- Format variable value with smart truncation and inlining
+local function formatVariableValue(ref)
+  if not ref then return "undefined" end
+  
+  local value = ref.value or ""
+  local var_type = ref.type or "default"
+  
+  -- Handle multiline values by inlining
+  if type(value) == "string" then
+    -- Replace newlines and multiple spaces with single spaces
+    value = value:gsub("[\r\n]+", " "):gsub("%s+", " ")
+    
+    -- Smart truncation based on type
+    local max_length = 60
+    if var_type == "function" then
+      max_length = 40  -- Functions get shorter display
+    elseif var_type == "string" then
+      max_length = 50  -- Strings get moderate length
+    end
+    
+    if #value > max_length then
+      value = value:sub(1, max_length - 3) .. "..."
+    end
+  end
+  
+  -- Type-specific formatting
+  if var_type == "string" then
+    return string.format('"%s"', value)
+  elseif var_type == "function" and value:match("^function") then
+    -- Extract function signature only
+    local signature = value:match("^function%s*([^{]*)")
+    if signature then
+      return "ƒ " .. signature:gsub("%s+", " "):sub(1, 30) .. (signature:len() > 30 and "..." or "")
+    end
+  elseif var_type == "object" and ref.variablesReference and ref.variablesReference > 0 then
+    -- Show object preview instead of [object Object]
+    return value:match("^%{.*%}$") and value or ("{" .. (value or "Object") .. "}")
+  end
+  
+  return value
+end
+
+-- Get icon for DAP type
+local function getTypeIcon(ref)
+  if not ref or not ref.type then return TYPE_ICONS.default end
+  
+  local var_type = ref.type:lower()
+  
+  -- Special case for arrays (JavaScript arrays have type "object" but show array-like values)
+  if var_type == "object" and ref.value and ref.value:match("^%[.*%]$") then
+    return TYPE_ICONS.array
+  end
+  
+  return TYPE_ICONS[var_type] or TYPE_ICONS.default
+end
+
+-- Get treesitter highlight group for DAP type  
+local function getTypeHighlight(ref)
+  if not ref or not ref.type then return TYPE_HIGHLIGHTS.default end
+  
+  local var_type = ref.type:lower()
+  
+  -- Special case for arrays
+  if var_type == "object" and ref.value and ref.value:match("^%[.*%]$") then
+    return TYPE_HIGHLIGHTS.array
+  end
+  
+  return TYPE_HIGHLIGHTS[var_type] or TYPE_HIGHLIGHTS.default
+end
+
+-- ========================================
 -- AS-NODE METHOD EXTENSIONS
 -- ========================================
 
@@ -76,12 +200,18 @@ function Variable:asNode()
     error("Variable:asNode() called on variable with no name in ref")
   end
 
+  -- Get icon and formatted value using our enhancement functions
+  local icon = getTypeIcon(self.ref)
+  local formatted_value = formatVariableValue(self.ref)
+  local highlight = getTypeHighlight(self.ref)
+
   self._node = NuiTree.Node({
     id = string.format("var:%s", self.ref.name),
-    text = string.format("%s: %s", self.ref.name, self.ref.value or self.ref.type or "undefined"),
+    text = string.format("%s %s: %s", icon, self.ref.name, formatted_value),
     type = "variable",
     expandable = self.ref.variablesReference and self.ref.variablesReference > 0,
     _variable = self, -- Store reference to original variable for access to methods
+    _highlight = highlight, -- Store highlight group for tree rendering
   }, {})
 
   return self._node
@@ -109,12 +239,16 @@ end
 function BaseScope:asNode()
   if self._node then return self._node end
 
+  -- Use consistent folder icon and scope-specific highlighting
+  local scope_text = "📁 " .. self.ref.name
+  
   self._node = NuiTree.Node({
     id = string.format("scope:%s", self.ref.name),
-    text = "📁 " .. self.ref.name,
+    text = scope_text,
     type = "scope",
     expandable = true,
     _scope = self, -- Store reference to original scope for access to methods
+    _highlight = "Directory", -- Use Directory highlight for scopes
   }, {})
 
   return self._node
@@ -490,7 +624,12 @@ function Variables4Plugin:DemonstrateTreeRendering()
       -- Add the actual text
       table.insert(line, node.text)
 
-      return table.concat(line)
+      -- Create a line object with highlight information
+      local line_text = table.concat(line)
+      
+      -- For now, return plain text - NUI Tree highlighting needs different approach
+      -- TODO: Implement custom highlight rendering after tree creation
+      return line_text
     end,
   })
 
