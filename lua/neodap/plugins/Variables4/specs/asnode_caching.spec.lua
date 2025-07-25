@@ -37,6 +37,7 @@ end)
 
 
 
+
 --[[ TERMINAL SNAPSHOT: variables4_session_ready
 Size: 24x80
 Cursor: [7, 0] (line 7, col 0)
@@ -73,6 +74,7 @@ Mode: n
 
 
 
+
 --[[ TERMINAL SNAPSHOT: variables4_asnode_demonstration
 Size: 24x80
 Cursor: [7, 0] (line 7, col 0)
@@ -103,6 +105,7 @@ Mode: n
 23| lua/testing/fixtures/variables/complex.js                     7,1            Top
 24| 
 ]]
+
 
 
 

@@ -40,6 +40,7 @@ end)
 
 
 
+
 --[[ TERMINAL SNAPSHOT: tree_rendering_session_ready
 Size: 24x80
 Cursor: [7, 0] (line 7, col 0)
@@ -75,6 +76,7 @@ Mode: n
 
 
 
+
 --[[ TERMINAL SNAPSHOT: tree_rendering_demo
 Size: 24x80
 Cursor: [1, 0] (line 1, col 0)
@@ -83,8 +85,8 @@ Mode: n
  1| // Test fixture for Variables plugin - various variable types
  2| 
  3| functio╭──────────────────── Variables4 Debug Tree ─────────────────────╮
- 4|     // │▶ 📁  Local: testVariables                                       │
- 5|     let│▶ 📁  Global                                                     │
+ 4|     // │▶ 📁  <93><81> Local: testVariables                              │
+ 5|     let│▶ 📁  <93><81> Global                                            │
  6|     let│                                                                │
  7|     let│                                                                │
  8|     let│                                                                │
@@ -110,6 +112,7 @@ Mode: n
 
 
 
+
 --[[ TERMINAL SNAPSHOT: tree_rendering_interaction
 Size: 24x80
 Cursor: [1, 0] (line 1, col 0)
@@ -118,8 +121,8 @@ Mode: n
  1| // Test fixture for Variables plugin - various variable types
  2| 
  3| functio╭──────────────────── Variables4 Debug Tree ─────────────────────╮
- 4|     // │▶ 📁  Local: testVariables                                       │
- 5|     let│▶ 📁  Global                                                     │
+ 4|     // │▶ 📁  <93><81> Local: testVariables                              │
+ 5|     let│▶ 📁  <93><81> Global                                            │
  6|     let│                                                                │
  7|     let│                                                                │
  8|     let│                                                                │

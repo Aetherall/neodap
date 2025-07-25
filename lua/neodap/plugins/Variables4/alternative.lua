@@ -52,78 +52,78 @@ end
 -- DAP type to icon mapping for visual clarity
 local TYPE_ICONS = {
   -- JavaScript primitives
-  string = "󰉿",     -- String icon
-  number = "󰎠",     -- Number icon  
-  boolean = "◐",    -- Boolean icon
-  undefined = "󰟢",  -- Undefined icon
-  ['nil'] = "∅",    -- Null icon
-  null = "∅",       -- Null icon (alternative)
-  
+  string = "󰉿", -- String icon
+  number = "󰎠", -- Number icon
+  boolean = "◐", -- Boolean icon
+  undefined = "󰟢", -- Undefined icon
+  ['nil'] = "∅", -- Null icon
+  null = "∅", -- Null icon (alternative)
+
   -- Complex types
-  object = "󰅩",     -- Object icon
-  array = "󰅪",      -- Array icon
+  object = "󰅩", -- Object icon
+  array = "󰅪", -- Array icon
   ['function'] = "󰊕", -- Function icon
-  
+
   -- Special types
-  date = "󰃭",       -- Calendar icon
-  regexp = "󰑑",     -- Regex icon
-  map = "󰘣",        -- Map icon
-  set = "󰘦",        -- Set icon
-  
+  date = "󰃭", -- Calendar icon
+  regexp = "󰑑", -- Regex icon
+  map = "󰘣", -- Map icon
+  set = "󰘦", -- Set icon
+
   -- Default fallback
-  default = "󰀬",    -- Generic icon
+  default = "󰀬", -- Generic icon
 }
 
 -- DAP type to treesitter highlight mapping
 local TYPE_HIGHLIGHTS = {
   -- JavaScript primitives (match treesitter highlights)
-  string = "String",           -- @string
-  number = "Number",           -- @number  
-  boolean = "Boolean",         -- @boolean
-  undefined = "Constant",      -- @constant.builtin
-  ['nil'] = "Constant",        -- @constant.builtin
-  null = "Constant",           -- @constant.builtin
-  
+  string = "String",      -- @string
+  number = "Number",      -- @number
+  boolean = "Boolean",    -- @boolean
+  undefined = "Constant", --kk @constant.builtin
+  ['nil'] = "Constant",   -- @constant.builtin
+  null = "Constant",      -- @constant.builtin
+
   -- Complex types
-  object = "Structure",        -- @structure / Type
-  array = "Structure",         -- @structure
-  ['function'] = "Function",   -- @function
-  
-  -- Special types  
-  date = "Special",           -- @special
-  regexp = "String",          -- @string.regex
-  map = "Type",              -- @type
-  set = "Type",              -- @type
-  
+  object = "Structure",      -- @structure / Type
+  array = "Structure",       -- @structure
+  ['function'] = "Function", -- @function
+
+  -- Special types
+  date = "Special",  -- @special
+  regexp = "String", -- @string.regex
+  map = "Type",      -- @type
+  set = "Type",      -- @type
+
   -- Default
-  default = "Identifier",     -- @variable
+  default = "Identifier", -- @variable
 }
 
 -- Format variable value with smart truncation and inlining
 local function formatVariableValue(ref)
   if not ref then return "undefined" end
-  
+
   local value = ref.value or ""
   local var_type = ref.type or "default"
-  
+
   -- Handle multiline values by inlining
   if type(value) == "string" then
     -- Replace newlines and multiple spaces with single spaces
     value = value:gsub("[\r\n]+", " "):gsub("%s+", " ")
-    
+
     -- Smart truncation based on type
     local max_length = 60
     if var_type == "function" then
-      max_length = 40  -- Functions get shorter display
+      max_length = 40 -- Functions get shorter display
     elseif var_type == "string" then
-      max_length = 50  -- Strings get moderate length
+      max_length = 50 -- Strings get moderate length
     end
-    
+
     if #value > max_length then
       value = value:sub(1, max_length - 3) .. "..."
     end
   end
-  
+
   -- Type-specific formatting
   if var_type == "string" then
     return string.format('"%s"', value)
@@ -137,35 +137,35 @@ local function formatVariableValue(ref)
     -- Show object preview instead of [object Object]
     return value:match("^%{.*%}$") and value or ("{" .. (value or "Object") .. "}")
   end
-  
+
   return value
 end
 
 -- Get icon for DAP type
 local function getTypeIcon(ref)
   if not ref or not ref.type then return TYPE_ICONS.default end
-  
+
   local var_type = ref.type:lower()
-  
+
   -- Special case for arrays (JavaScript arrays have type "object" but show array-like values)
   if var_type == "object" and ref.value and ref.value:match("^%[.*%]$") then
     return TYPE_ICONS.array
   end
-  
+
   return TYPE_ICONS[var_type] or TYPE_ICONS.default
 end
 
--- Get treesitter highlight group for DAP type  
+-- Get treesitter highlight group for DAP type
 local function getTypeHighlight(ref)
   if not ref or not ref.type then return TYPE_HIGHLIGHTS.default end
-  
+
   local var_type = ref.type:lower()
-  
+
   -- Special case for arrays
   if var_type == "object" and ref.value and ref.value:match("^%[.*%]$") then
     return TYPE_HIGHLIGHTS.array
   end
-  
+
   return TYPE_HIGHLIGHTS[var_type] or TYPE_HIGHLIGHTS.default
 end
 
@@ -195,7 +195,7 @@ function Variable:asNode()
   if not self.ref then
     error("Variable:asNode() called on variable with no ref property")
   end
-  
+
   if not self.ref.name then
     error("Variable:asNode() called on variable with no name in ref")
   end
@@ -210,7 +210,7 @@ function Variable:asNode()
     text = string.format("%s %s: %s", icon, self.ref.name, formatted_value),
     type = "variable",
     expandable = self.ref.variablesReference and self.ref.variablesReference > 0,
-    _variable = self, -- Store reference to original variable for access to methods
+    _variable = self,       -- Store reference to original variable for access to methods
     _highlight = highlight, -- Store highlight group for tree rendering
   }, {})
 
@@ -222,17 +222,17 @@ function Variable:variables()
   if not self.ref then
     error("Variable:variables() called on variable with no ref property")
   end
-  
+
   if not (self.ref.variablesReference and self.ref.variablesReference > 0) then
     return nil
   end
-  
+
   -- Get the frame from our scope
   local frame = self.scope and self.scope.frame
   if not frame then
     error("Variable:variables() called on variable with no frame reference")
   end
-  
+
   return frame:variables(self.ref.variablesReference)
 end
 
@@ -241,13 +241,13 @@ function BaseScope:asNode()
 
   -- Use consistent folder icon and scope-specific highlighting
   local scope_text = "📁 " .. self.ref.name
-  
+
   self._node = NuiTree.Node({
     id = string.format("scope:%s", self.ref.name),
     text = scope_text,
     type = "scope",
     expandable = true,
-    _scope = self, -- Store reference to original scope for access to methods
+    _scope = self,            -- Store reference to original scope for access to methods
     _highlight = "Directory", -- Use Directory highlight for scopes
   }, {})
 
@@ -470,7 +470,7 @@ function Variables4Plugin:ShowStatus()
 end
 
 -- ========================================
--- UNIFIED EXPANSION LOGIC  
+-- UNIFIED EXPANSION LOGIC
 -- ========================================
 
 -- Unified function to expand any expandable node (scope or variable)
@@ -478,37 +478,37 @@ function Variables4Plugin:expandNode(tree, node)
   if node._children_loaded then
     return -- Already loaded
   end
-  
+
   -- Get the underlying data object (scope or variable)
   local data_object = node._scope or node._variable
   if not data_object then
     return -- No data object found
   end
-  
+
   -- Both scopes and variables should have a variables() method now
   if not data_object.variables then
     self.logger:warn("Data object has no variables() method: " .. (node.text or "unknown"))
     return
   end
-  
+
   -- Load children asynchronously
   NvimAsync.defer(function()
     local children = data_object:variables()
-    
+
     if children and #children > 0 then
       -- Create child nodes and add them to the tree
       for _, child in ipairs(children) do
         local variable_instance
-        
+
         if child.ref then
           -- This is already a wrapped Variable API object
           variable_instance = child
         else
           -- This is a raw DAP variable object - wrap it
-          local parent_scope = data_object.scope or data_object  -- Variable has scope, Scope is itself
+          local parent_scope = data_object.scope or data_object -- Variable has scope, Scope is itself
           variable_instance = Variable.instanciate(parent_scope, child)
         end
-        
+
         -- Ensure child has asNode method (in case it's a new Variable instance)
         if not variable_instance.asNode then
           -- Apply asNode method to new Variable instances
@@ -517,17 +517,17 @@ function Variables4Plugin:expandNode(tree, node)
             variable_instance.variables = Variable.variables
           end
         end
-        
+
         local child_node = variable_instance:asNode()
         -- Ensure child nodes have proper references for further expansion
         child_node._variable = variable_instance
         tree:add_node(child_node, node:get_id())
       end
-      
+
       node._children_loaded = true
-      
+
       self.logger:debug("Loaded " .. #children .. " children for: " .. (node.text or "unknown"))
-      
+
       -- Re-render the tree
       tree:render()
     else
@@ -626,7 +626,7 @@ function Variables4Plugin:DemonstrateTreeRendering()
 
       -- Create a line object with highlight information
       local line_text = table.concat(line)
-      
+
       -- For now, return plain text - NUI Tree highlighting needs different approach
       -- TODO: Implement custom highlight rendering after tree creation
       return line_text
@@ -748,33 +748,35 @@ function Variables4Plugin:TestHierarchicalExpansion()
   print("")
 
   local scopes = self.current_frame:scopes()
-  
+
   for _, scope in ipairs(scopes) do
     print("📁 Scope: " .. scope.ref.name)
-    
+
     -- Test scope expansion
     local variables = scope:variables()
     if variables and #variables > 0 then
       print("  ✓ Scope has " .. #variables .. " variables")
-      
+
       -- Test first few variables for hierarchical expansion
       for i, variable in ipairs(variables) do
         if i > 2 then break end -- Just test first 2
-        
+
         print("  📄 Variable: " .. variable.ref.name .. " = " .. (variable.ref.value or variable.ref.type))
         print("    ✓ Has variables() method: " .. tostring(variable.variables ~= nil))
-        print("    ✓ Is expandable: " .. tostring(variable.ref.variablesReference and variable.ref.variablesReference > 0))
-        
+        print("    ✓ Is expandable: " ..
+          tostring(variable.ref.variablesReference and variable.ref.variablesReference > 0))
+
         if variable.ref.variablesReference and variable.ref.variablesReference > 0 then
           print("    → Testing variable expansion...")
           local child_vars = variable:variables()
           if child_vars and #child_vars > 0 then
             print("      ✓ Variable expanded to " .. #child_vars .. " children!")
             print("      ✓ HIERARCHICAL EXPANSION WORKING!")
-            
+
             -- Show first child as proof
             if child_vars[1] then
-              print("        Example child: " .. child_vars[1].ref.name .. " = " .. (child_vars[1].ref.value or child_vars[1].ref.type))
+              print("        Example child: " ..
+                child_vars[1].ref.name .. " = " .. (child_vars[1].ref.value or child_vars[1].ref.type))
             end
           else
             print("      ✗ Variable expansion returned no children")
@@ -789,7 +791,7 @@ function Variables4Plugin:TestHierarchicalExpansion()
     end
     print("")
   end
-  
+
   print("✓ Hierarchical expansion test completed!")
   print("✓ Both scopes and variables can now expand using unified logic")
   print("✓ Try :Variables4TreeDemo to see interactive hierarchical expansion")

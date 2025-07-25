@@ -43,7 +43,7 @@ local function go()
     local brkpt = api:getPluginInstance(require("neodap.plugins.ToggleBreakpoint"))
     api:getPluginInstance(require("neodap.plugins.FrameHighlight"))
     -- api:getPluginInstance(require("neodap.plugins.DebugMode"))
-    api:getPluginInstance(require("neodap.plugins.Variables"))
+    api:getPluginInstance(require("neodap.plugins.Variables4.alternative"))
     api:getPluginInstance(require("neodap.plugins.LaunchJsonSupport"))
     -- api:getPluginInstance(require("neodap.plugins.ScopeViewer"))
 
@@ -117,7 +117,7 @@ local function go()
         session:onSourceLoaded(function(source)
             -- Only process file sources
             if source:isFile() then
-                if source:filename() == "recurse.js" then
+                if source:filename() == "loop.js" then
                     -- Use ToggleBreakpoint plugin to add breakpoint
                     local Location = require('neodap.api.Location')
                     local location = Location.fromSource(source, { line = 3, column = 1 })
@@ -134,11 +134,13 @@ local function go()
 
 
     ---@async
-    nio.run(function()
+    local NvimAsync = require("neodap.tools.async")
+    NvimAsync.run(function()
+        print("Starting session...")
         session:start({
             configuration = {
                 type = "pwa-node",
-                program = vim.fn.getcwd() .. "/spec/fixtures/recurse.js",
+                program = vim.fn.getcwd() .. "/lua/testing/fixtures/loop/loop.js",
                 cwd = vim.fn.getcwd(),
             },
             request = "launch",

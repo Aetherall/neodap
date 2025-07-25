@@ -76,6 +76,8 @@ end)
 
 
 
+
+
 --[[ TERMINAL SNAPSHOT: interactive_session_ready
 Size: 24x80
 Cursor: [7, 0] (line 7, col 0)
@@ -107,6 +109,7 @@ Mode: n
 24| 
 ]]
 
+
 --[[ TERMINAL SNAPSHOT: interactive_popup_opened
 Size: 24x80
 Cursor: [1, 0] (line 1, col 0)
@@ -115,8 +118,8 @@ Mode: n
  1| // Test fixture for Variables plugin - various variable types
  2| 
  3| functio╭──────────────────── Variables4 Debug Tree ─────────────────────╮
- 4|     // │▶ 📁  Local: testVariables                                       │
- 5|     let│▶ 📁  Global                                                     │
+ 4|     // │▶ 📁  <93><81> Local: testVariables                              │
+ 5|     let│▶ 📁  <93><81> Global                                            │
  6|     let│                                                                │
  7|     let│                                                                │
  8|     let│                                                                │
@@ -151,6 +154,8 @@ Mode: n
 
 
 
+
+
 --[[ TERMINAL SNAPSHOT: interactive_local_expanded
 Size: 24x80
 Cursor: [1, 0] (line 1, col 0)
@@ -159,7 +164,7 @@ Mode: n
  1| // Test fixture for Variables plugin - various variable types
  2| 
  3| functio╭──────────────────── Variables4 Debug Tree ─────────────────────╮
- 4|     // │▼ 📁  Local: testVariables                                       │
+ 4|     // │▼ 📁  <93><81> Local: testVariables                              │
  5|     let│  ▶ 󰅪 arrayVar: (5) [1, 2, 3, 'four', {…}]                      │
  6|     let│    ◐ booleanVar: true                                          │
  7|     let│    󰅩 dateVar: Mon Jan 01 2024 01:00:00 GMT+0100 (Central Europe│
@@ -195,6 +200,8 @@ Mode: n
 
 
 
+
+
 --[[ TERMINAL SNAPSHOT: interactive_variable_interaction
 Size: 24x80
 Cursor: [3, 0] (line 3, col 0)
@@ -203,7 +210,7 @@ Mode: n
  1| // Test fixture for Variables plugin - various variable types
  2| 
  3| functio╭──────────────────── Variables4 Debug Tree ─────────────────────╮
- 4|     // │▼ 📁  Local: testVariables                                       │
+ 4|     // │▼ 📁  <93><81> Local: testVariables                              │
  5|     let│  ▶ 󰅪 arrayVar: (5) [1, 2, 3, 'four', {…}]                      │
  6|     let│    ◐ booleanVar: true                                          │
  7|     let│    󰅩 dateVar: Mon Jan 01 2024 01:00:00 GMT+0100 (Central Europe│
@@ -237,6 +244,8 @@ Mode: n
 
 
 
+
+
 --[[ TERMINAL SNAPSHOT: interactive_global_expanded
 Size: 24x80
 Cursor: [2, 0] (line 2, col 0)
@@ -245,7 +254,7 @@ Mode: n
  1| // Test fixture for Variables plugin - various variable types
  2| 
  3| functio╭──────────────────── Variables4 Debug Tree ─────────────────────╮
- 4|     // │▼ 📁  Local: testVariables                                       │
+ 4|     // │▼ 📁  <93><81> Local: testVariables                              │
  5|     let│  ▼ 󰅪 arrayVar: (5) [1, 2, 3, 'four', {…}]                      │
  6|     let│      󰎠 0: 1                                                    │
  7|     let│      󰎠 1: 2                                                    │
@@ -267,6 +276,8 @@ Mode: n
 23| lua/testing/fixtures/variables/complex.js                     7,1            Top
 24|                                                               2,1           Top
 ]]
+
+
 
 
 
