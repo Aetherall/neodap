@@ -11,7 +11,7 @@ local NvimAsync = require('neodap.tools.async')
 
 ---@class Variables4Plugin
 ---@field api Api
----@field current_frame? Frame
+---@field current_frame? api.Frame
 ---@field logger Logger
 local Variables4Plugin = Class()
 
@@ -109,7 +109,7 @@ local TRUNCATION_LENGTHS = {
 
 -- Unified type detection - returns icon, highlight, and whether it's an array
 local function getTypeInfo(ref)
-  if not ref or not ref.type then 
+  if not ref or not ref.type then
     return TYPE_ICONS.default, TYPE_HIGHLIGHTS.default, false
   end
 
@@ -122,7 +122,7 @@ local function getTypeInfo(ref)
 
   local icon = TYPE_ICONS[var_type] or TYPE_ICONS.default
   local highlight = TYPE_HIGHLIGHTS[var_type] or TYPE_HIGHLIGHTS.default
-  
+
   return icon, highlight, false
 end
 
@@ -261,28 +261,11 @@ for _, ScopeClass in ipairs(scope_classes) do
   end
 end
 
-function ArgumentsScope:asNode()
-  return BaseScope.asNode(self)
-end
-
-function LocalsScope:asNode()
-  return BaseScope.asNode(self)
-end
-
-function GlobalsScope:asNode()
-  return BaseScope.asNode(self)
-end
-
-function ReturnValueScope:asNode()
-  return BaseScope.asNode(self)
-end
-
-function RegistersScope:asNode()
-  return BaseScope.asNode(self)
-end
-
-function GenericScope:asNode()
-  return BaseScope.asNode(self)
+for _, ScopeClass in ipairs(scope_classes) do
+  -- Add method if not present (same fix as Variables3/Variables4)
+  if not ScopeClass.asNode and BaseScope.asNode then
+    ScopeClass.asNode = BaseScope.asNode
+  end
 end
 
 -- ========================================
@@ -331,136 +314,102 @@ end
 -- ========================================
 
 function Variables4Plugin:setupCommands()
-  vim.api.nvim_create_user_command("Variables4Demo", function()
-    self:DemonstrateAsNodeStrategy()
-  end, { desc = "Demonstrate Variables4 asNode() caching strategy" })
+  -- Core functionality - open the variables tree popup
+  vim.api.nvim_create_user_command("Variables4Tree", function()
+    self:OpenVariablesTree()
+  end, { desc = "Open Variables4 tree popup" })
 
-  vim.api.nvim_create_user_command("Variables4Status", function()
-    self:ShowStatus()
-  end, { desc = "Show Variables4 status" })
+  -- Frame management commands
+  vim.api.nvim_create_user_command("Variables4UpdateFrame", function()
+    self:UpdateFrameCommand()
+  end, { desc = "Update Variables4 current frame to top of stack" })
 
-  vim.api.nvim_create_user_command("Variables4TreeDemo", function()
-    self:DemonstrateTreeRendering()
-  end, { desc = "Demonstrate NUI tree rendering with Variables4 nodes" })
-
-  vim.api.nvim_create_user_command("Variables4TreeInteract", function()
-    self:InteractWithTree()
-  end, { desc = "Show tree interaction capabilities" })
-
-  vim.api.nvim_create_user_command("Variables4TestHierarchy", function()
-    self:TestHierarchicalExpansion()
-  end, { desc = "Test hierarchical variable expansion" })
-
-  vim.api.nvim_create_user_command("Variables4QuickDemo", function()
-    print("Variables4: Quick Demo")
-    print("===============================")
-    print("✅ Hierarchical expansion implemented!")
-    print("✅ Both scopes AND variables can now expand")
-    print("✅ Unified expansion logic eliminates duplication")
-    print("✅ Raw DAP variables properly wrapped as API objects")
-    print("")
-    print("Try: :Variables4TreeDemo to see interactive hierarchical tree")
-    print("Example: arrayVar expands to show [0,1,2,3,4] and nested objects")
-  end, { desc = "Quick demo of Variables4 capabilities" })
+  vim.api.nvim_create_user_command("Variables4ClearFrame", function()
+    self:ClearCurrentFrame()
+  end, { desc = "Clear Variables4 current frame" })
 end
 
 -- ========================================
--- DEMONSTRATION
+-- HELPER METHODS
 -- ========================================
 
-function Variables4Plugin:DemonstrateAsNodeStrategy()
+function Variables4Plugin:requireActiveFrame(context_message)
   if not self.current_frame then
-    print("No debug session active - start debugging to see asNode() strategy")
+    print("No debug session active - " .. context_message)
+    return false
+  end
+  return true
+end
+
+function Variables4Plugin:getCurrentScopesAndVariables()
+  if not self:requireActiveFrame("cannot access variables") then
+    return nil
+  end
+
+  local frame = self.current_frame
+  if not frame then
+    print("No current frame available")
+    return nil
+  end
+
+  local scopes = frame:scopes()
+  if not scopes or #scopes == 0 then
+    print("No scopes available")
+    return nil
+  end
+
+  return scopes
+end
+
+-- Helper for node toggle logic (eliminates duplication between Enter/Space handlers)
+function Variables4Plugin:toggleTreeNode(tree)
+  local node = tree:get_node()
+  if node then
+    if node:is_expanded() then
+      -- Collapse the node
+      node:collapse()
+      tree:render()
+    else
+      -- Expand the node - use unified expansion logic
+      if node.expandable and not node._children_loaded then
+        self:expandNode(tree, node)
+      end
+      node:expand()
+      tree:render()
+    end
+  end
+end
+
+-- ========================================
+-- COMMAND IMPLEMENTATIONS
+-- ========================================
+
+function Variables4Plugin:UpdateFrameCommand()
+  if not self:requireActiveFrame("cannot update frame") then
     return
   end
 
-  print("Variables4: AsNode() Caching Strategy")
-  print("===================================")
-  print("")
+  local frame = self.current_frame
 
-  local scopes = self.current_frame:scopes()
-
-  for _, scope in ipairs(scopes) do
-    print("Scope: " .. scope.ref.name)
-    print("  ✓ Type: " .. type(scope))
-    print("  ✓ Has asNode method: " .. tostring(scope.asNode ~= nil))
-    print("  ✓ Has cached node: " .. tostring(scope._cached_node ~= nil))
-    print("  ✓ Original variables method: " .. tostring(scope.variables ~= nil))
-
-    -- Test asNode() method
-    if scope.asNode then
-      print("  → Calling scope:asNode() for first time...")
-      local node1 = scope:asNode()
-      print("    ✓ Node created: " .. tostring(node1))
-      print("    ✓ Node ID: " .. tostring(node1:get_id()))
-      print("    ✓ Node text: " .. tostring(node1.text))
-
-      print("  → Calling scope:asNode() again (should be cached)...")
-      local node2 = scope:asNode()
-      print("    ✓ Same instance: " .. tostring(node1 == node2))
-      print("    ✓ Cache working: " .. tostring(scope._cached_node == node2))
-    end
-    print("")
-
-    -- Show first few variables with asNode()
-    local variables = scope:variables()
-    if variables and #variables > 0 then
-      print("  Variables (showing first 3):")
-      for i, variable in ipairs(variables) do
-        if i > 3 then break end
-
-        print("    " .. variable.ref.name)
-        print("      ✓ Has asNode method: " .. tostring(variable.asNode ~= nil))
-        print("      ✓ Has cached node: " .. tostring(variable._cached_node ~= nil))
-
-        if variable.asNode then
-          print("      → Calling variable:asNode() for first time...")
-          local var_node1 = variable:asNode()
-          print("        ✓ Node ID: " .. tostring(var_node1:get_id()))
-          print("        ✓ Node text: " .. tostring(var_node1.text))
-
-          print("      → Calling variable:asNode() again (should be cached)...")
-          local var_node2 = variable:asNode()
-          print("        ✓ Same instance: " .. tostring(var_node1 == var_node2))
-          print("        ✓ Cache working: " .. tostring(variable._cached_node == var_node2))
-        end
-      end
-      if #variables > 3 then
-        print("    ... and " .. (#variables - 3) .. " more variables")
-      end
-      print("")
-    end
+  if not frame then
+    print("No current frame available")
+    return
   end
 
-  print("✓ AsNode() caching strategy demonstrated!")
-  print("✓ Each Variable/Scope creates exactly one cached NuiTree.Node")
-  print("✓ Subsequent calls return the same cached instance")
-  print("✓ Non-intrusive - original API methods remain unchanged")
-end
-
-function Variables4Plugin:ShowStatus()
-  print("Variables4 Plugin Status:")
-  print("========================")
-  print("Strategy: asNode() caching method")
-  print("Current frame: " .. (self.current_frame and "Yes" or "No"))
-  print("")
-
-  if self.current_frame then
-    local scopes = self.current_frame:scopes()
-    print("Available scopes: " .. #scopes)
-
-    for _, scope in ipairs(scopes) do
-      local has_method = scope.asNode ~= nil
-      local has_cache = scope._cached_node ~= nil
-      print("  - " ..
-        scope.ref.name .. " (asNode: " .. tostring(has_method) .. ", cached: " .. tostring(has_cache) .. ")")
+  -- Get the current thread's stack and update to top frame
+  local stack = frame.stack
+  if stack then
+    local top_frame = stack:top()
+    if top_frame then
+      self:UpdateCurrentFrame(top_frame)
+      print("✓ Variables4 frame updated to stack top")
+      print("Frame: " .. (top_frame.ref.name or "unknown"))
+    else
+      print("No frames available in current stack")
     end
+  else
+    print("No stack available for current thread")
   end
-
-  print("")
-  print("✓ Variables have asNode() method")
-  print("✓ Scopes have asNode() method")
-  print("✓ Caching strategy active")
 end
 
 -- ========================================
@@ -470,7 +419,7 @@ end
 -- Helper function to ensure a child is wrapped as a proper Variable instance
 function Variables4Plugin:ensureVariableWrapper(child, data_object)
   local variable_instance
-  
+
   if child.ref then
     -- This is already a wrapped Variable API object
     variable_instance = child
@@ -479,7 +428,7 @@ function Variables4Plugin:ensureVariableWrapper(child, data_object)
     local parent_scope = data_object.scope or data_object -- Variable has scope, Scope is itself
     variable_instance = Variable.instanciate(parent_scope, child)
   end
-  
+
   -- Ensure child has asNode method (in case it's a new Variable instance)
   if not variable_instance.asNode then
     -- Apply asNode method to new Variable instances
@@ -488,7 +437,7 @@ function Variables4Plugin:ensureVariableWrapper(child, data_object)
       variable_instance.variables = Variable.variables
     end
   end
-  
+
   return variable_instance
 end
 
@@ -538,18 +487,12 @@ function Variables4Plugin:expandNode(tree, node)
 end
 
 -- ========================================
--- TREE RENDERING DEMONSTRATION
+-- TREE INTERFACE
 -- ========================================
 
-function Variables4Plugin:DemonstrateTreeRendering()
-  if not self.current_frame then
-    print("No debug session active - start debugging to see tree rendering")
-    return
-  end
-
-  print("Opening Variables4 NUI Tree Popup...")
-
-  local scopes = self.current_frame:scopes()
+function Variables4Plugin:OpenVariablesTree()
+  local scopes = self:getCurrentScopesAndVariables()
+  if not scopes then return end
 
   -- Create tree nodes from our cached nodes
   local tree_nodes = {}
@@ -559,15 +502,15 @@ function Variables4Plugin:DemonstrateTreeRendering()
 
     -- Create scope node WITHOUT pre-loaded children
     -- Children will be loaded dynamically when expanded
-    local scope_tree_node = NuiTree.Node({
-      id = scope_node.id,
-      text = scope_node.text,
-      type = "scope",
-      expandable = true, -- Mark as expandable even without children
-      _scope = scope,    -- Store reference to original scope
-    }, {})               -- Start with empty children array
+    -- local scope_tree_node = NuiTree.Node({
+    --   id = scope_node.id,
+    --   text = scope_node.text,
+    --   type = "scope",
+    --   expandable = true, -- Mark as expandable even without children
+    --   _scope = scope,    -- Store reference to original scope
+    -- }, {})               -- Start with empty children array
 
-    table.insert(tree_nodes, scope_tree_node)
+    table.insert(tree_nodes, scope_node)
   end
 
   -- Create NUI Popup with Tree
@@ -597,9 +540,9 @@ function Variables4Plugin:DemonstrateTreeRendering()
   -- Mount the popup first
   popup:mount()
 
-  -- Create the actual NUI Tree after mounting  
+  -- Create the actual NUI Tree after mounting
   local NuiLine = require("nui.line")
-  
+
   local tree = NuiTree({
     bufnr = popup.bufnr,
     nodes = tree_nodes,
@@ -612,9 +555,9 @@ function Variables4Plugin:DemonstrateTreeRendering()
       -- Add expand/collapse indicator with subtle highlight
       if node:has_children() or node.expandable then
         if node:is_expanded() then
-          line:append("▼ ", "Comment")  -- Subtle color for indicators
+          line:append("▼ ", "Comment") -- Subtle color for indicators
         else
-          line:append("▶ ", "Comment")  -- Subtle color for indicators
+          line:append("▶ ", "Comment") -- Subtle color for indicators
         end
       else
         line:append("  ")
@@ -622,27 +565,27 @@ function Variables4Plugin:DemonstrateTreeRendering()
 
       -- Parse the node text to extract icon, name, and value for highlighting
       local text = node.text or ""
-      
+
       if node.type == "scope" then
         -- Scope nodes: highlight the folder icon and name
-        line:append("📁 ", "Directory")  -- Folder icon
-        line:append(text:sub(3), "Directory")  -- Scope name (removing the icon)
+        line:append("📁 ", "Directory") -- Folder icon
+        line:append(text:sub(3), "Directory") -- Scope name (removing the icon)
       else
         -- Variable nodes: parse "icon name: value" format
         local icon_pos = text:find(" ")
         local colon_pos = text:find(": ")
-        
+
         if icon_pos and colon_pos and icon_pos < colon_pos then
           local icon = text:sub(1, icon_pos - 1)
           local name = text:sub(icon_pos + 1, colon_pos - 1)
           local value = text:sub(colon_pos + 2)
-          
+
           -- Add icon with subtle highlight
           line:append(icon .. " ", "Comment")
-          
+
           -- Add variable name with normal highlight
           line:append(name .. ": ", "Identifier")
-          
+
           -- Add value with type-specific highlight
           local highlight = node._highlight or "Normal"
           line:append(value, highlight)
@@ -662,43 +605,13 @@ function Variables4Plugin:DemonstrateTreeRendering()
   -- Set up keymaps for tree interaction
   local map_options = { noremap = true, silent = true }
 
-  -- Expand/collapse with Enter or Space
+  -- Expand/collapse with Enter or Space (uses unified toggle logic)
   popup:map("n", "<CR>", function()
-    local node = tree:get_node()
-    if node then
-      if node:is_expanded() then
-        -- Collapse the node
-        node:collapse()
-        tree:render()
-      else
-        -- Expand the node - use unified expansion logic
-        if node.expandable and not node._children_loaded then
-          self:expandNode(tree, node)
-        end
-
-        node:expand()
-        tree:render()
-      end
-    end
+    self:toggleTreeNode(tree)
   end, map_options)
 
   popup:map("n", "<Space>", function()
-    local node = tree:get_node()
-    if node then
-      if node:is_expanded() then
-        -- Collapse the node
-        node:collapse()
-        tree:render()
-      else
-        -- Expand the node - use unified expansion logic
-        if node.expandable and not node._children_loaded then
-          self:expandNode(tree, node)
-        end
-
-        node:expand()
-        tree:render()
-      end
-    end
+    self:toggleTreeNode(tree)
   end, map_options)
 
   -- Navigation - using standard vim movement
@@ -727,98 +640,10 @@ function Variables4Plugin:DemonstrateTreeRendering()
     print("  q/Esc: Close popup")
   end, map_options)
 
-  -- Store references for cleanup
-  self._demo_popup = popup
-  self._demo_tree = tree
-  self._demo_nodes = tree_nodes
-
-  print("✓ Variables4 Tree Popup opened!")
-  print("✓ Use Enter/Space to expand/collapse, j/k to navigate, q to quit")
+  -- Tree popup is now open and interactive
 end
 
-function Variables4Plugin:InteractWithTree()
-  if not self._demo_popup then
-    print("No popup open - run :Variables4TreeDemo first to open the interactive tree popup")
-    return
-  end
-
-  print("Variables4: Tree Interaction Info")
-  print("=================================")
-  print("")
-  print("The Variables4 tree popup is currently open with interactive controls:")
-  print("  📁 Scopes and variables are displayed in a hierarchical tree")
-  print("  🔧 Each node is created using Variables4 asNode() caching")
-  print("  🎮 Use Enter/Space to expand/collapse nodes")
-  print("  ⬆️⬇️ Use j/k to navigate up/down")
-  print("  ❌ Use q/Esc to close the popup")
-  print("  ❓ Use ? for help")
-  print("")
-  print("✓ Tree popup is fully interactive!")
-  print("✓ Original Variables/Scopes remain accessible via _scope/_variable references")
-  print("✓ Cached nodes provide efficient UI updates")
-end
-
-function Variables4Plugin:TestHierarchicalExpansion()
-  if not self.current_frame then
-    print("No debug session active - start debugging first")
-    return
-  end
-
-  print("Variables4: Testing Hierarchical Expansion")
-  print("==========================================")
-  print("")
-  print("Testing that both scopes AND variables can expand:")
-  print("")
-
-  local scopes = self.current_frame:scopes()
-
-  for _, scope in ipairs(scopes) do
-    print("📁 Scope: " .. scope.ref.name)
-
-    -- Test scope expansion
-    local variables = scope:variables()
-    if variables and #variables > 0 then
-      print("  ✓ Scope has " .. #variables .. " variables")
-
-      -- Test first few variables for hierarchical expansion
-      for i, variable in ipairs(variables) do
-        if i > 2 then break end -- Just test first 2
-
-        print("  📄 Variable: " .. variable.ref.name .. " = " .. (variable.ref.value or variable.ref.type))
-        print("    ✓ Has variables() method: " .. tostring(variable.variables ~= nil))
-        print("    ✓ Is expandable: " ..
-          tostring(variable.ref.variablesReference and variable.ref.variablesReference > 0))
-
-        if variable.ref.variablesReference and variable.ref.variablesReference > 0 then
-          print("    → Testing variable expansion...")
-          local child_vars = variable:variables()
-          if child_vars and #child_vars > 0 then
-            print("      ✓ Variable expanded to " .. #child_vars .. " children!")
-            print("      ✓ HIERARCHICAL EXPANSION WORKING!")
-
-            -- Show first child as proof
-            if child_vars[1] then
-              print("        Example child: " ..
-                child_vars[1].ref.name .. " = " .. (child_vars[1].ref.value or child_vars[1].ref.type))
-            end
-          else
-            print("      ✗ Variable expansion returned no children")
-          end
-        else
-          print("    ○ Variable is not expandable (no nested properties)")
-        end
-        print("")
-      end
-    else
-      print("  ○ Scope has no variables")
-    end
-    print("")
-  end
-
-  print("✓ Hierarchical expansion test completed!")
-  print("✓ Both scopes and variables can now expand using unified logic")
-  print("✓ Try :Variables4TreeDemo to see interactive hierarchical expansion")
-end
+-- All demonstration methods removed - functionality is now tested via snapshot tests
 
 -- ========================================
 -- MODULE EXPORTS
