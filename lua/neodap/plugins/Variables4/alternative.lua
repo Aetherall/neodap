@@ -99,12 +99,12 @@ local TYPE_HIGHLIGHTS = {
   default = "Identifier", -- @variable
 }
 
--- Constants for formatting
+-- Constants for formatting (reduced to prevent line wrapping)
 local TRUNCATION_LENGTHS = {
-  default = 60,
-  ['function'] = 40,
-  string = 50,
-  signature = 30,
+  default = 40,      -- Reduced from 60
+  ['function'] = 25, -- Reduced from 40
+  string = 35,       -- Reduced from 50
+  signature = 20,    -- Reduced from 30
 }
 
 -- Unified type detection - returns icon, highlight, and whether it's an array
@@ -135,8 +135,14 @@ local function formatVariableValue(ref)
 
   -- Handle multiline values by inlining
   if type(value) == "string" then
-    -- Replace newlines and multiple spaces with single spaces
-    value = value:gsub("[\r\n]+", " "):gsub("%s+", " ")
+    -- Replace actual newlines and carriage returns
+    value = value:gsub("[\r\n]+", " ")
+    -- Replace literal \n, \r, \t characters (escaped sequences)
+    value = value:gsub("\\[nrt]", " ")
+    -- Replace multiple spaces with single spaces
+    value = value:gsub("%s+", " ")
+    -- Trim leading/trailing whitespace
+    value = value:match("^%s*(.-)%s*$") or ""
 
     -- Smart truncation based on type
     local max_length = TRUNCATION_LENGTHS[var_type] or TRUNCATION_LENGTHS.default
@@ -195,12 +201,31 @@ function Variable:asNode()
     error("Variable:asNode() called on variable with no name in ref")
   end
 
+  -- Debug: Check for presentationHint to understand DAP structure
+  if self.ref.presentationHint and self.ref.presentationHint.lazy then
+    -- print("DEBUG: Found lazy variable: " .. self.ref.name .. " with hint: " .. vim.inspect(self.ref.presentationHint))
+  end
+
   -- Get icon, highlight, and formatted value using our enhancement functions
   local icon, highlight, _ = getTypeInfo(self.ref)
   local formatted_value = formatVariableValue(self.ref)
 
+  -- Generate hierarchical ID to handle recursive references
+  -- Include parent context to ensure uniqueness
+  local node_id
+  if self._parent_var_ref then
+    -- This is a nested variable: use parent's variablesReference as context (PRIORITY)
+    node_id = string.format("var:%s:%s", self._parent_var_ref, self.ref.name)
+  elseif self.scope and self.scope.ref and self.scope.ref.name then
+    -- This is a scope-level variable: use scope name as context
+    node_id = string.format("var:%s:%s", self.scope.ref.name, self.ref.name)
+  else
+    -- Fallback to simple ID (shouldn't happen in normal cases)
+    node_id = string.format("var:%s", self.ref.name)
+  end
+
   self._node = NuiTree.Node({
-    id = string.format("var:%s", self.ref.name),
+    id = node_id,
     text = string.format("%s %s: %s", icon, self.ref.name, formatted_value),
     type = "variable",
     expandable = self.ref.variablesReference and self.ref.variablesReference > 0,
@@ -372,10 +397,12 @@ function Variables4Plugin:toggleTreeNode(tree)
     else
       -- Expand the node - use unified expansion logic
       if node.expandable and not node._children_loaded then
-        self:expandNode(tree, node)
+        self:ExpandNode(tree, node)
+      else
+        -- For already loaded nodes, just expand and render
+        node:expand()
+        tree:render()
       end
-      node:expand()
-      tree:render()
     end
   end
 end
@@ -417,7 +444,7 @@ end
 -- ========================================
 
 -- Helper function to ensure a child is wrapped as a proper Variable instance
-function Variables4Plugin:ensureVariableWrapper(child, data_object)
+function Variables4Plugin:ensureVariableWrapper(child, data_object, parent_node)
   local variable_instance
 
   if child.ref then
@@ -427,6 +454,11 @@ function Variables4Plugin:ensureVariableWrapper(child, data_object)
     -- This is a raw DAP variable object - wrap it
     local parent_scope = data_object.scope or data_object -- Variable has scope, Scope is itself
     variable_instance = Variable.instanciate(parent_scope, child)
+  end
+
+  -- Set parent context for hierarchical ID generation
+  if parent_node and parent_node._variable and parent_node._variable.ref.variablesReference then
+    variable_instance._parent_var_ref = parent_node._variable.ref.variablesReference
   end
 
   -- Ensure child has asNode method (in case it's a new Variable instance)
@@ -442,7 +474,7 @@ function Variables4Plugin:ensureVariableWrapper(child, data_object)
 end
 
 -- Unified function to expand any expandable node (scope or variable)
-function Variables4Plugin:expandNode(tree, node)
+function Variables4Plugin:ExpandNode(tree, node)
   if node._children_loaded then
     return -- Already loaded
   end
@@ -460,13 +492,23 @@ function Variables4Plugin:expandNode(tree, node)
   end
 
   -- Load children asynchronously
-  NvimAsync.defer(function()
+  NvimAsync.run(function()
+    -- Check for lazy variables that need resolution instead of expansion
+    if node._variable and node._variable.ref and node._variable.ref.presentationHint then
+      local hint = node._variable.ref.presentationHint
+      if hint.lazy then
+        -- This is a lazy variable - resolve it instead of expanding children
+        self:resolveLazyVariable(tree, node)
+        return
+      end
+    end
+
     local children = data_object:variables()
 
     if children and #children > 0 then
       -- Create child nodes and add them to the tree
       for _, child in ipairs(children) do
-        local variable_instance = self:ensureVariableWrapper(child, data_object)
+        local variable_instance = self:ensureVariableWrapper(child, data_object, node)
         local child_node = variable_instance:asNode()
         child_node._variable = variable_instance
         tree:add_node(child_node, node:get_id())
@@ -476,6 +518,9 @@ function Variables4Plugin:expandNode(tree, node)
 
       self.logger:debug("Loaded " .. #children .. " children for: " .. (node.text or "unknown"))
 
+      -- Expand the node now that children are loaded
+      node:expand()
+
       -- Re-render the tree
       tree:render()
     else
@@ -483,7 +528,90 @@ function Variables4Plugin:expandNode(tree, node)
       node._children_loaded = true
       self.logger:debug("No children found for: " .. (node.text or "unknown"))
     end
-  end)()
+  end)
+end
+
+-- ========================================
+-- LAZY VARIABLE RESOLUTION
+-- ========================================
+
+-- Resolve a lazy variable by evaluating it and replacing the node
+---@param tree NuiTree
+---@param node NuiTreeNode
+function Variables4Plugin:resolveLazyVariable(tree, node)
+  if not node._variable or not node._variable.ref then
+    return
+  end
+
+  local variable = node._variable
+  local variable_name = variable.ref.name
+
+  -- Get the frame for evaluation context
+  local frame = variable.scope and variable.scope.frame
+  if not frame or not frame.ref then
+    self.logger:warn("No frame available for lazy variable evaluation: " .. variable_name)
+    return
+  end
+
+  -- Use the DAP evaluate request to resolve the lazy variable
+  -- This will trigger the getter and return the actual value
+  NvimAsync.defer(function()
+    print("Resolving lazy variable: " .. variable_name)
+    variable:resolve()
+    print("Resolved lazy variable1: " .. variable_name)
+    variable._node = nil;
+    node._lazy_resolved = true -- Reset lazy resolution state
+    local newnode = variable:asNode()
+    print("Resolved lazy variable: " .. variable_name, vim.inspect(newnode))
+    vim.tbl_extend("force", node, newnode)
+    -- tree:render()
+    -- -- Call evaluate on the variable name in the current frame context
+    -- local result = frame:evaluate(variable_name)
+
+    -- if result then
+    --   -- Create a new Variable instance from the evaluated result
+    --   local resolved_variable = Variable.instanciate(variable.scope, result)
+
+    --   -- Apply the asNode method
+    --   resolved_variable.asNode = Variable.asNode
+    --   if not resolved_variable.variables then
+    --     resolved_variable.variables = Variable.variables
+    --   end
+
+    --   -- Create the new resolved node
+    --   local resolved_node = resolved_variable:asNode()
+    --   resolved_node._variable = resolved_variable
+
+    --   -- Replace the original node with the resolved one
+    --   -- We need to update the tree structure
+    --   local parent_id = node:get_parent_id()
+
+    --   -- Remove the old lazy node
+    --   tree:remove_node(node:get_id())
+
+    --   -- Add the resolved node in its place
+    --   if parent_id then
+    --     tree:add_node(resolved_node, parent_id)
+    --   else
+    --     -- This is a root node, we need to update the tree structure differently
+    --     -- For now, just re-render with the resolved node
+    --     tree:add_node(resolved_node)
+    --   end
+
+    -- Mark as resolved so we don't re-resolve it
+    -- node._lazy_resolved = true
+
+    -- self.logger:debug("Resolved lazy variable: " .. variable_name)
+
+    --     -- Re-render the tree
+    --     tree:render()
+    --   else
+    --     self.logger:warn("Failed to resolve lazy variable: " .. variable_name)
+    --     -- Mark as loaded to prevent re-attempts
+    --     node._children_loaded = true
+    --   end
+    -- end)()
+  end)
 end
 
 -- ========================================
@@ -534,6 +662,9 @@ function Variables4Plugin:OpenVariablesTree()
     buf_options = {
       modifiable = false,
       readonly = true,
+    },
+    win_options = {
+      wrap = false, -- Prevent line wrapping
     },
   })
 

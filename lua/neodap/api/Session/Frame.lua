@@ -73,6 +73,20 @@ function Frame:variables(variablesReference)
   return response.variables
 end
 
+function Frame:evaluate(expression)
+  local response = self.stack.thread.session.ref.calls:evaluate({
+    expression = expression,
+    frameId = self.ref.id,
+    context = "variables"
+  }):wait()
+
+  if not response or not response.result then
+    return nil
+  end
+
+  return response.result
+end
+
 function Frame:location()
   if not self._source then
     return nil -- No source information available
