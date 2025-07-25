@@ -99,6 +99,33 @@ local TYPE_HIGHLIGHTS = {
   default = "Identifier", -- @variable
 }
 
+-- Constants for formatting
+local TRUNCATION_LENGTHS = {
+  default = 60,
+  ['function'] = 40,
+  string = 50,
+  signature = 30,
+}
+
+-- Unified type detection - returns icon, highlight, and whether it's an array
+local function getTypeInfo(ref)
+  if not ref or not ref.type then 
+    return TYPE_ICONS.default, TYPE_HIGHLIGHTS.default, false
+  end
+
+  local var_type = ref.type:lower()
+  local is_array = var_type == "object" and ref.value and ref.value:match("^%[.*%]$")
+
+  if is_array then
+    return TYPE_ICONS.array, TYPE_HIGHLIGHTS.array, true
+  end
+
+  local icon = TYPE_ICONS[var_type] or TYPE_ICONS.default
+  local highlight = TYPE_HIGHLIGHTS[var_type] or TYPE_HIGHLIGHTS.default
+  
+  return icon, highlight, false
+end
+
 -- Format variable value with smart truncation and inlining
 local function formatVariableValue(ref)
   if not ref then return "undefined" end
@@ -112,12 +139,7 @@ local function formatVariableValue(ref)
     value = value:gsub("[\r\n]+", " "):gsub("%s+", " ")
 
     -- Smart truncation based on type
-    local max_length = 60
-    if var_type == "function" then
-      max_length = 40 -- Functions get shorter display
-    elseif var_type == "string" then
-      max_length = 50 -- Strings get moderate length
-    end
+    local max_length = TRUNCATION_LENGTHS[var_type] or TRUNCATION_LENGTHS.default
 
     if #value > max_length then
       value = value:sub(1, max_length - 3) .. "..."
@@ -131,7 +153,8 @@ local function formatVariableValue(ref)
     -- Extract function signature only
     local signature = value:match("^function%s*([^{]*)")
     if signature then
-      return "ƒ " .. signature:gsub("%s+", " "):sub(1, 30) .. (signature:len() > 30 and "..." or "")
+      local max_sig = TRUNCATION_LENGTHS.signature
+      return "ƒ " .. signature:gsub("%s+", " "):sub(1, max_sig) .. (signature:len() > max_sig and "..." or "")
     end
   elseif var_type == "object" and ref.variablesReference and ref.variablesReference > 0 then
     -- Show object preview instead of [object Object]
@@ -139,34 +162,6 @@ local function formatVariableValue(ref)
   end
 
   return value
-end
-
--- Get icon for DAP type
-local function getTypeIcon(ref)
-  if not ref or not ref.type then return TYPE_ICONS.default end
-
-  local var_type = ref.type:lower()
-
-  -- Special case for arrays (JavaScript arrays have type "object" but show array-like values)
-  if var_type == "object" and ref.value and ref.value:match("^%[.*%]$") then
-    return TYPE_ICONS.array
-  end
-
-  return TYPE_ICONS[var_type] or TYPE_ICONS.default
-end
-
--- Get treesitter highlight group for DAP type
-local function getTypeHighlight(ref)
-  if not ref or not ref.type then return TYPE_HIGHLIGHTS.default end
-
-  local var_type = ref.type:lower()
-
-  -- Special case for arrays
-  if var_type == "object" and ref.value and ref.value:match("^%[.*%]$") then
-    return TYPE_HIGHLIGHTS.array
-  end
-
-  return TYPE_HIGHLIGHTS[var_type] or TYPE_HIGHLIGHTS.default
 end
 
 -- ========================================
@@ -200,10 +195,9 @@ function Variable:asNode()
     error("Variable:asNode() called on variable with no name in ref")
   end
 
-  -- Get icon and formatted value using our enhancement functions
-  local icon = getTypeIcon(self.ref)
+  -- Get icon, highlight, and formatted value using our enhancement functions
+  local icon, highlight, _ = getTypeInfo(self.ref)
   local formatted_value = formatVariableValue(self.ref)
-  local highlight = getTypeHighlight(self.ref)
 
   self._node = NuiTree.Node({
     id = string.format("var:%s", self.ref.name),
@@ -473,6 +467,31 @@ end
 -- UNIFIED EXPANSION LOGIC
 -- ========================================
 
+-- Helper function to ensure a child is wrapped as a proper Variable instance
+function Variables4Plugin:ensureVariableWrapper(child, data_object)
+  local variable_instance
+  
+  if child.ref then
+    -- This is already a wrapped Variable API object
+    variable_instance = child
+  else
+    -- This is a raw DAP variable object - wrap it
+    local parent_scope = data_object.scope or data_object -- Variable has scope, Scope is itself
+    variable_instance = Variable.instanciate(parent_scope, child)
+  end
+  
+  -- Ensure child has asNode method (in case it's a new Variable instance)
+  if not variable_instance.asNode then
+    -- Apply asNode method to new Variable instances
+    variable_instance.asNode = Variable.asNode
+    if not variable_instance.variables then
+      variable_instance.variables = Variable.variables
+    end
+  end
+  
+  return variable_instance
+end
+
 -- Unified function to expand any expandable node (scope or variable)
 function Variables4Plugin:expandNode(tree, node)
   if node._children_loaded then
@@ -498,28 +517,8 @@ function Variables4Plugin:expandNode(tree, node)
     if children and #children > 0 then
       -- Create child nodes and add them to the tree
       for _, child in ipairs(children) do
-        local variable_instance
-
-        if child.ref then
-          -- This is already a wrapped Variable API object
-          variable_instance = child
-        else
-          -- This is a raw DAP variable object - wrap it
-          local parent_scope = data_object.scope or data_object -- Variable has scope, Scope is itself
-          variable_instance = Variable.instanciate(parent_scope, child)
-        end
-
-        -- Ensure child has asNode method (in case it's a new Variable instance)
-        if not variable_instance.asNode then
-          -- Apply asNode method to new Variable instances
-          variable_instance.asNode = Variable.asNode
-          if not variable_instance.variables then
-            variable_instance.variables = Variable.variables
-          end
-        end
-
+        local variable_instance = self:ensureVariableWrapper(child, data_object)
         local child_node = variable_instance:asNode()
-        -- Ensure child nodes have proper references for further expansion
         child_node._variable = variable_instance
         tree:add_node(child_node, node:get_id())
       end
@@ -598,38 +597,62 @@ function Variables4Plugin:DemonstrateTreeRendering()
   -- Mount the popup first
   popup:mount()
 
-  -- Create the actual NUI Tree after mounting
+  -- Create the actual NUI Tree after mounting  
+  local NuiLine = require("nui.line")
+  
   local tree = NuiTree({
     bufnr = popup.bufnr,
     nodes = tree_nodes,
     prepare_node = function(node)
-      local line = {}
+      local line = NuiLine()
 
       -- Add indentation based on depth
-      for _ = 1, node:get_depth() - 1 do
-        table.insert(line, "  ")
-      end
+      line:append(string.rep("  ", node:get_depth() - 1))
 
-      -- Add expand/collapse indicator
+      -- Add expand/collapse indicator with subtle highlight
       if node:has_children() or node.expandable then
         if node:is_expanded() then
-          table.insert(line, "▼ ")
+          line:append("▼ ", "Comment")  -- Subtle color for indicators
         else
-          table.insert(line, "▶ ")
+          line:append("▶ ", "Comment")  -- Subtle color for indicators
         end
       else
-        table.insert(line, "  ")
+        line:append("  ")
       end
 
-      -- Add the actual text
-      table.insert(line, node.text)
+      -- Parse the node text to extract icon, name, and value for highlighting
+      local text = node.text or ""
+      
+      if node.type == "scope" then
+        -- Scope nodes: highlight the folder icon and name
+        line:append("📁 ", "Directory")  -- Folder icon
+        line:append(text:sub(3), "Directory")  -- Scope name (removing the icon)
+      else
+        -- Variable nodes: parse "icon name: value" format
+        local icon_pos = text:find(" ")
+        local colon_pos = text:find(": ")
+        
+        if icon_pos and colon_pos and icon_pos < colon_pos then
+          local icon = text:sub(1, icon_pos - 1)
+          local name = text:sub(icon_pos + 1, colon_pos - 1)
+          local value = text:sub(colon_pos + 2)
+          
+          -- Add icon with subtle highlight
+          line:append(icon .. " ", "Comment")
+          
+          -- Add variable name with normal highlight
+          line:append(name .. ": ", "Identifier")
+          
+          -- Add value with type-specific highlight
+          local highlight = node._highlight or "Normal"
+          line:append(value, highlight)
+        else
+          -- Fallback: just append the text normally
+          line:append(text)
+        end
+      end
 
-      -- Create a line object with highlight information
-      local line_text = table.concat(line)
-
-      -- For now, return plain text - NUI Tree highlighting needs different approach
-      -- TODO: Implement custom highlight rendering after tree creation
-      return line_text
+      return line
     end,
   })
 

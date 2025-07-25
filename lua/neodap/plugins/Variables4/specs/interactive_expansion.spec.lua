@@ -78,6 +78,8 @@ end)
 
 
 
+
+
 --[[ TERMINAL SNAPSHOT: interactive_session_ready
 Size: 24x80
 Cursor: [7, 0] (line 7, col 0)
@@ -156,6 +158,8 @@ Mode: n
 
 
 
+
+
 --[[ TERMINAL SNAPSHOT: interactive_local_expanded
 Size: 24x80
 Cursor: [1, 0] (line 1, col 0)
@@ -186,6 +190,8 @@ Mode: n
 23| lua/testing/fixtures/variables/complex.js                     7,1            Top
 24|                                                               1,1           Top
 ]]
+
+
 
 
 
@@ -246,6 +252,8 @@ Mode: n
 
 
 
+
+
 --[[ TERMINAL SNAPSHOT: interactive_global_expanded
 Size: 24x80
 Cursor: [2, 0] (line 2, col 0)
@@ -276,6 +284,8 @@ Mode: n
 23| lua/testing/fixtures/variables/complex.js                     7,1            Top
 24|                                                               2,1           Top
 ]]
+
+
 
 
 
