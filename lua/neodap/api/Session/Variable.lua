@@ -21,28 +21,49 @@ function Variable.instanciate(scope, variable)
 end
 
 function Variable:resolve()
-  if not self.ref.variablesReference then
+  -- Check if this is a lazy variable that needs resolution
+  if not (self.ref.presentationHint and self.ref.presentationHint.lazy) then
     return nil
   end
 
+  -- Lazy variables must have a variablesReference to fetch the actual value
+  if not self.ref.variablesReference or self.ref.variablesReference == 0 then
+    return nil
+  end
 
-  --- Resolve the lazy variable
+  -- For lazy variables, we fetch the children which should contain a single variable
+  -- with the actual resolved value
   local variables = self.scope.frame:variables(self.ref.variablesReference)
-
-  --- The DAP should return a single variable object
+  
   if not variables or #variables ~= 1 then
+    -- DAP spec says lazy variables should return exactly one child
     return nil
   end
 
   local resolved = variables[1]
-
+  
   if not resolved then
     return nil
   end
 
-  print("DEBUG: Variable resolved: " .. self.ref.evaluateName .. " -> " .. vim.inspect(resolved))
-
-  vim.tbl_extend("force", self.ref, resolved)
+  -- Update this variable's properties with the resolved variable's data
+  -- The resolved variable typically has no name, just value and type
+  self.ref.value = resolved.value or self.ref.value
+  self.ref.type = resolved.type or self.ref.type
+  self.ref.variablesReference = resolved.variablesReference or 0
+  
+  -- Copy over any new presentation hints from the resolved variable
+  if resolved.presentationHint then
+    self.ref.presentationHint = vim.tbl_extend("force", self.ref.presentationHint or {}, resolved.presentationHint)
+  end
+  
+  -- Clear the lazy flag since we've resolved it
+  if self.ref.presentationHint then
+    self.ref.presentationHint.lazy = false
+  end
+  
+  -- Return the resolved variable data
+  return resolved
 end
 
 function Variable:toString()

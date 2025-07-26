@@ -62,10 +62,9 @@ end
 
 ## Usage Commands
 
-- `:Variables4Demo` - Demonstrates asNode() caching with console output
-- `:Variables4Status` - Shows plugin status and current frame info  
-- `:Variables4TreeDemo` - **Opens interactive NUI tree popup (main feature)**
-- `:Variables4TreeInteract` - Shows interaction help for open popup
+- `:Variables4Tree` - **Opens interactive NUI tree popup with debug variables**
+- `:Variables4UpdateFrame` - Updates current frame to top of stack
+- `:Variables4ClearFrame` - Clears the current frame reference
 
 ### **In Code**
 ```lua
@@ -134,7 +133,7 @@ Variables4 includes a fully functional interactive debugging interface:
 
 ```lua
 -- Opens a NUI popup with tree view of debug scopes and variables
-:Variables4TreeDemo
+:Variables4Tree
 ```
 
 **Features:**
@@ -143,6 +142,7 @@ Variables4 includes a fully functional interactive debugging interface:
 - **Async-safe operations**: Proper handling of `scope:variables()` calls
 - **Rich variable display**: Shows names, values, and expandable indicators
 - **Clean popup management**: q/Esc to close, ? for help
+- **Lazy variable resolution**: Automatically resolves lazy variables when toggled
 
 ### **Critical Technical Solutions**
 
@@ -152,10 +152,10 @@ Variables4 includes a fully functional interactive debugging interface:
 local variables = node._scope:variables()
 
 -- ✅ CORRECT - wraps async call properly  
-NvimAsync.defer(function()
+NvimAsync.run(function()
   local variables = node._scope:variables()
   -- ... handle variables
-end)()
+end)
 ```
 
 #### **2. NUI Tree Dynamic Children API**
@@ -175,6 +175,15 @@ for _, ScopeClass in ipairs(scope_classes) do
     ScopeClass.variables = BaseScope.variables
   end
 end
+```
+
+#### **4. Lazy Variable Resolution**
+Variables4 now supports DAP lazy variables through the standard protocol:
+```lua
+-- When a variable has presentationHint.lazy = true
+-- Variables4 automatically calls variable:resolve() on toggle
+-- This fetches the single child variable containing the actual value
+-- The UI updates seamlessly without extra nodes
 ```
 
 ## Testing Results
@@ -198,12 +207,13 @@ The visual verification tests demonstrate successful implementation:
 ```
 lua/neodap/plugins/Variables4/
 ├── README.md              # This documentation
-├── init.lua              # Dynamic method extension approach
-├── alternative.lua       # Static method definition approach (recommended)
+├── init.lua              # Main implementation with asNode() caching
 └── specs/
-    ├── asnode_caching.spec.lua      # Tests caching strategy
-    ├── tree_rendering.spec.lua      # Tests NUI tree rendering  
-    └── interactive_expansion.spec.lua # Tests dynamic scope expansion
+    ├── asnode_caching.spec.lua        # Tests caching strategy
+    ├── tree_rendering.spec.lua        # Tests NUI tree rendering  
+    ├── interactive_expansion.spec.lua # Tests dynamic scope expansion
+    ├── recursive_reference_test.spec.lua # Tests recursive variable handling
+    └── complete_tree_demo.spec.lua    # Complete demo of tree functionality
 ```
 
 ## Conclusion

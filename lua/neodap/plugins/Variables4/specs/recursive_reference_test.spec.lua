@@ -6,7 +6,7 @@ local T = require("testing.testing")(describe, it)
 
 T.Scenario(function(api)
   -- Load the Variables4 plugin
-  local variables4_plugin = api:getPluginInstance(require('neodap.plugins.Variables4.alternative'))
+  local variables4_plugin = api:getPluginInstance(require('neodap.plugins.Variables4'))
 
   -- Load supporting plugins
   api:getPluginInstance(require('neodap.plugins.LaunchJsonSupport'))
