@@ -635,63 +635,96 @@ local NavigationIntent = {
   HIERARCHICAL_DOWN = "hierarchical_down", -- l key: drill into children
 }
 
--- Perform navigation based on intent, handling viewport and tree state automatically
+-- Navigation Target Resolution: Different strategies for finding navigation targets
+local NavigationTargetResolver = {
+  [NavigationIntent.LINEAR_FORWARD] = function(self, tree, current_node)
+    return self:getNextVisibleNode(tree, current_node) or self:findNextLogicalSibling(tree, current_node), false
+  end,
+  
+  [NavigationIntent.LINEAR_BACKWARD] = function(self, tree, current_node)
+    return self:getPreviousVisibleNode(tree, current_node) or current_node:get_parent_id(), false
+  end,
+  
+  [NavigationIntent.HIERARCHICAL_UP] = function(self, tree, current_node)
+    return current_node:get_parent_id() or self:getViewportParent(tree), true -- collapse target
+  end,
+  
+  [NavigationIntent.HIERARCHICAL_DOWN] = function(self, tree, current_node)
+    -- Special case: drill-down has its own complex logic
+    return nil, nil -- Handled separately
+  end,
+}
+
+-- Unified navigation using target resolution strategy
 function Variables4Plugin:navigate(tree, popup, intent)
   local current_node = tree:get_node()
   if not current_node then return end
   
-  if intent == NavigationIntent.LINEAR_FORWARD then
-    local target = self:getNextVisibleNode(tree, current_node) or self:findNextLogicalSibling(tree, current_node)
-    if target then self:reconcileViewportAndNavigate(tree, popup, target, false) end
-    
-  elseif intent == NavigationIntent.LINEAR_BACKWARD then
-    local target = self:getPreviousVisibleNode(tree, current_node) or current_node:get_parent_id()
-    if target then self:reconcileViewportAndNavigate(tree, popup, target, false) end
-    
-  elseif intent == NavigationIntent.HIERARCHICAL_UP then
-    local target = current_node:get_parent_id() or self:getViewportParent(tree)
-    if target then self:reconcileViewportAndNavigate(tree, popup, target, true) end
-    
-  elseif intent == NavigationIntent.HIERARCHICAL_DOWN then
+  -- Special case for hierarchical down (complex expansion logic)
+  if intent == NavigationIntent.HIERARCHICAL_DOWN then
     self:drillIntoNode(tree, popup, current_node)
+    return
+  end
+  
+  -- Resolve target using strategy pattern
+  local resolver = NavigationTargetResolver[intent]
+  if resolver then
+    local target, should_collapse = resolver(self, tree, current_node)
+    if target then
+      self:reconcileViewportAndNavigate(tree, popup, target, should_collapse)
+    end
   end
 end
 
--- Core viewport reconciliation: ensure target is visible and navigate to it
+-- Tree Operation Transaction: Atomic pattern for all tree state changes
+local TreeTransaction = {
+  -- Execute a tree operation atomically with proper viewport/UI reconciliation
+  execute = function(self, tree, popup, operations)
+    local changes = { viewport_adjusted = false }
+    
+    -- Phase 1: Prepare viewport if target needs to be visible
+    if operations.target_node_id and not self:isNodeVisible(tree, operations.target_node_id) then
+      if self:adjustViewportForNode(tree, operations.target_node_id) then
+        changes.viewport_adjusted = true
+      end
+    end
+    
+    -- Phase 2: Apply node state changes
+    if operations.collapse_target and operations.target_node_id then
+      local target_node = tree.nodes.by_id[operations.target_node_id]
+      if target_node then
+        if target_node:is_expanded() then
+          target_node:collapse()
+        end
+        self:collapseAllChildren(tree, target_node)
+      end
+    end
+    
+    -- Phase 3: Render all changes
+    tree:render()
+    
+    -- Phase 4: Update UI state
+    if changes.viewport_adjusted then
+      self:updatePopupTitle(tree, popup)
+    end
+    
+    -- Phase 5: Finalize cursor position
+    if operations.target_node_id then
+      self:setCursorToNode(tree, operations.target_node_id)
+    end
+    
+    return true
+  end
+}
+
+-- Simplified viewport reconciliation using transaction pattern
 function Variables4Plugin:reconcileViewportAndNavigate(tree, popup, target_node_id, should_collapse_target)
   if not target_node_id then return false end
   
-  -- Adjust viewport if needed
-  local viewport_adjusted = false
-  if not self:isNodeVisible(tree, target_node_id) then
-    if self:adjustViewportForNode(tree, target_node_id) then
-      viewport_adjusted = true
-    end
-  end
-  
-  -- Collapse target node if requested (for h key behavior)
-  if should_collapse_target then
-    local target_node = tree.nodes.by_id[target_node_id]
-    if target_node then
-      if target_node:is_expanded() then
-        target_node:collapse()
-      end
-      self:collapseAllChildren(tree, target_node)
-    end
-  end
-  
-  -- Render changes
-  tree:render()
-  
-  -- Update title if viewport changed
-  if viewport_adjusted then
-    self:updatePopupTitle(tree, popup)
-  end
-  
-  -- Move cursor to target
-  self:setCursorToNode(tree, target_node_id)
-  
-  return true
+  return TreeTransaction.execute(self, tree, popup, {
+    target_node_id = target_node_id,
+    collapse_target = should_collapse_target,
+  })
 end
 
 -- Find next logical sibling when linear navigation reaches boundary
@@ -717,30 +750,63 @@ function Variables4Plugin:findNextLogicalSibling(tree, current_node)
   return nil
 end
 
--- Drill into a node (l key behavior) - handles expansion, lazy loading, and navigation
-function Variables4Plugin:drillIntoNode(tree, popup, node)
-  -- Check for lazy variable resolution first
-  if node._variable and node._variable.ref and node._variable.ref.presentationHint then
-    local hint = node._variable.ref.presentationHint
-    if hint.lazy and not node._lazy_resolved then
-      self:resolveLazyVariable(tree, node, popup)
-      return
+-- Node State Machine: Defines the lifecycle and valid transitions of tree nodes
+local NodeStateMachine = {
+  -- Determine current state of a node
+  getState = function(node)
+    if node._variable and node._variable.ref and node._variable.ref.presentationHint then
+      local hint = node._variable.ref.presentationHint
+      if hint.lazy and not node._lazy_resolved then
+        return "lazy_unresolved"
+      end
     end
-  end
-
-  -- Expand and navigate to first child
-  if not node:is_expanded() and node.expandable then
-    if not node._children_loaded then
+    
+    if not node.expandable then
+      return "leaf"
+    elseif not node._children_loaded then
+      return "expandable_unloaded"
+    elseif not node:is_expanded() then
+      return "expandable_collapsed"
+    else
+      return "expanded"
+    end
+  end,
+  
+  -- Define valid transitions and actions for each state
+  transitions = {
+    lazy_unresolved = function(self, tree, popup, node)
+      self:resolveLazyVariable(tree, node, popup)
+    end,
+    
+    expandable_unloaded = function(self, tree, popup, node)
       self:ExpandNodeWithCallback(tree, node, popup, function()
         self:moveToFirstChild(tree, node)
       end)
-    else
+    end,
+    
+    expandable_collapsed = function(self, tree, popup, node)
       node:expand()
       tree:render()
       self:moveToFirstChild(tree, node)
-    end
-  elseif node:is_expanded() and node:has_children() then
-    self:moveToFirstChild(tree, node)
+    end,
+    
+    expanded = function(self, tree, popup, node)
+      self:moveToFirstChild(tree, node)
+    end,
+    
+    leaf = function(self, tree, popup, node)
+      -- No action for leaf nodes
+    end,
+  }
+}
+
+-- Drill into a node using state machine transitions
+function Variables4Plugin:drillIntoNode(tree, popup, node)
+  local state = NodeStateMachine.getState(node)
+  local transition = NodeStateMachine.transitions[state]
+  
+  if transition then
+    transition(self, tree, popup, node)
   end
 end
 
@@ -880,9 +946,7 @@ end
 -- Simple cursor positioning: just put cursor at column 4 for most items
 -- This covers the common case of "▶ 📁  Name" where name starts at column 4
 
-function Variables4Plugin:navigateToFirstChild(tree, popup)
-  self:navigate(tree, popup, NavigationIntent.HIERARCHICAL_DOWN)
-end
+-- Note: navigateToFirstChild wrapper removed - using navigate() directly
 
 -- Helper to move cursor to first child of a node with drill-down behavior
 function Variables4Plugin:moveToFirstChild(tree, node)
@@ -1000,22 +1064,7 @@ function Variables4Plugin:collapseAllChildren(tree, node)
   end
 end
 
-function Variables4Plugin:navigateToParent(tree, popup)
-  self:navigate(tree, popup, NavigationIntent.HIERARCHICAL_UP)
-end
-
--- Note: Removed checkAndResolveLazyAfterNavigation helper
--- j/k navigation is now pure linear movement without auto-drill behavior
--- Lazy resolution and focus updates only happen on intentional l/h navigation
-
--- Simplified navigation methods using the unified intent-based system
-function Variables4Plugin:navigateDown(tree, popup)
-  self:navigate(tree, popup, NavigationIntent.LINEAR_FORWARD)
-end
-
-function Variables4Plugin:navigateUp(tree, popup)
-  self:navigate(tree, popup, NavigationIntent.LINEAR_BACKWARD)
-end
+-- Note: Navigation wrapper methods removed - keybindings call navigate() directly
 
 
 -- ========================================
@@ -1294,11 +1343,11 @@ end
 function Variables4Plugin:setupTreeKeybindings(popup, tree)
   local map_options = { noremap = true, silent = true }
 
-  -- Navigation
-  popup:map("n", "h", function() self:navigateToParent(tree, popup) end, map_options)
-  popup:map("n", "j", function() self:navigateDown(tree, popup) end, map_options)
-  popup:map("n", "k", function() self:navigateUp(tree, popup) end, map_options)
-  popup:map("n", "l", function() self:navigateToFirstChild(tree, popup) end, map_options)
+  -- Navigation using unified intent-based system
+  popup:map("n", "h", function() self:navigate(tree, popup, NavigationIntent.HIERARCHICAL_UP) end, map_options)
+  popup:map("n", "j", function() self:navigate(tree, popup, NavigationIntent.LINEAR_FORWARD) end, map_options)
+  popup:map("n", "k", function() self:navigate(tree, popup, NavigationIntent.LINEAR_BACKWARD) end, map_options)
+  popup:map("n", "l", function() self:navigate(tree, popup, NavigationIntent.HIERARCHICAL_DOWN) end, map_options)
 
   -- Controls
   popup:map("n", "q", function() popup:unmount() end, map_options)
