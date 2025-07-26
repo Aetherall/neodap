@@ -381,83 +381,50 @@ end
 -- ========================================
 
 
--- Crystallized viewport path display
-function Variables4Plugin:getViewportPathString(tree)
-  -- Quick check: if showing all roots, no path needed
+-- Refined popup title update with simplified path generation
+function Variables4Plugin:updatePopupTitle(tree, popup)
+  if not (popup and popup.border and popup.border.text) then return end
+
+  -- Quick path: if showing all roots, use default title
   if vim.deep_equal(tree.nodes.root_ids, self.true_root_ids) then
-    return nil
+    popup.border.text.top = " Variables4 Debug Tree "
+    popup:update_layout()
+    return
   end
 
-  -- Get the first root node to determine the viewport level
-  local first_root_id = tree.nodes.root_ids and tree.nodes.root_ids[1]
-  if not first_root_id then return nil end
-
-  local first_root = tree.nodes.by_id[first_root_id]
-  if not first_root then return nil end
-
-  -- Build path from true root to current viewport
+  -- Build viewport path from first root to its ancestors
   local path_parts = {}
-  local current = first_root
-
+  local current = tree.nodes.root_ids[1] and tree.nodes.by_id[tree.nodes.root_ids[1]]
+  
   while current do
     -- Extract simple name from node text
     local name = "?"
     if current.text then
-      -- For variables: "icon name: value" format, extract name
       local colon_pos = current.text:find(": ")
       if colon_pos then
-        local name_part = current.text:sub(1, colon_pos - 1)
-        local space_pos = name_part:find(" ")
-        name = space_pos and name_part:sub(space_pos + 1) or name_part
+        -- Variable format: "icon name: value" → extract name
+        local before_colon = current.text:sub(1, colon_pos - 1)
+        name = before_colon:match(" ([^ ]+)$") or before_colon
       else
-        -- For scopes: "📁 ScopeName" format, extract name
+        -- Scope format: "📁 ScopeName" → extract name
         name = current.text:match("📁%s*(.+)") or current.text
       end
     end
-
+    
     table.insert(path_parts, 1, name)
-
-    -- Move to parent
     local parent_id = current:get_parent_id()
-    if not parent_id then
-      break
-    end
+    if not parent_id then break end
     current = tree.nodes.by_id[parent_id]
   end
-
-  -- Remove the last element (which is the current viewport level)
+  
+  -- Remove current level and build title
   table.remove(path_parts)
-
-  if #path_parts > 0 then
-    return table.concat(path_parts, " → ")
-  else
-    return nil
-  end
-end
-
--- Update popup title to show current viewport path
-function Variables4Plugin:updatePopupTitle(tree, popup)
-  if not popup or not popup.border or not popup.border.text then
-    return
-  end
-
-  local viewport_path = self:getViewportPathString(tree)
-  if viewport_path then
-    popup.border.text.top = " Variables4: " .. viewport_path .. " "
-  else
-    popup.border.text.top = " Variables4 Debug Tree "
-  end
+  local title = #path_parts > 0 
+    and " Variables4: " .. table.concat(path_parts, " → ") .. " "
+    or " Variables4 Debug Tree "
+    
+  popup.border.text.top = title
   popup:update_layout()
-end
-
--- Crystallized viewport manipulation
-function Variables4Plugin:setViewportRoots(tree, popup, new_roots, reason)
-  tree.nodes.root_ids = new_roots
-  tree:render()
-  self:updatePopupTitle(tree, popup)
-  if reason then
-    self.logger:debug("Viewport changed: " .. reason)
-  end
 end
 
 -- Focus on a specific node by setting viewport to show it and its siblings
@@ -474,27 +441,16 @@ function Variables4Plugin:focusOnNode(tree, popup, node_id)
     new_roots = { node_id }
   end
 
-  self:setViewportRoots(tree, popup, new_roots, "focused on " .. (node.text or "unknown"))
+  -- Inlined setViewportRoots logic
+  tree.nodes.root_ids = new_roots
+  tree:render()
+  self:updatePopupTitle(tree, popup)
+  self.logger:debug("Viewport changed: focused on " .. (node.text or "unknown"))
 end
 
 -- ========================================
 -- PATH AND VIEWPORT MANAGEMENT
 -- ========================================
-
--- Get the full path from root to a node as an array of node IDs
-function Variables4Plugin:getNodePath(tree, node_id)
-  local path = {}
-  local current_id = node_id
-
-  while current_id do
-    table.insert(path, 1, current_id) -- Insert at beginning to build path from root
-    local node = tree.nodes.by_id[current_id]
-    if not node then break end
-    current_id = node:get_parent_id()
-  end
-
-  return path
-end
 
 -- Check if a node is currently visible in the tree (crystallized inline)
 function Variables4Plugin:isNodeVisible(tree, node_id)
@@ -512,49 +468,40 @@ function Variables4Plugin:isNodeVisible(tree, node_id)
   return isVisible(node_id, tree.nodes.root_ids)
 end
 
--- Adjust viewport to ensure a node is visible by setting appropriate root_ids
+-- Refined viewport adjustment with simplified logic
 function Variables4Plugin:adjustViewportForNode(tree, target_node_id)
-  -- If node is already visible, no adjustment needed
-  if self:isNodeVisible(tree, target_node_id) then
-    return false -- No adjustment made
-  end
-
-  -- Get the path to the target node
-  local path = self:getNodePath(tree, target_node_id)
-  if #path == 0 then return false end
-
-  -- Find the appropriate level to show: the parent of the target and its siblings
+  if self:isNodeVisible(tree, target_node_id) then return false end
+  
   local target_node = tree.nodes.by_id[target_node_id]
   if not target_node then return false end
 
   local parent_id = target_node:get_parent_id()
-  if parent_id then
-    -- Set root to show parent and its siblings
-    local grandparent_node = tree.nodes.by_id[parent_id]
-    local grandparent_id = grandparent_node and grandparent_node:get_parent_id()
-
-    if grandparent_id then
-      -- Show all children of grandparent (parent and its siblings)
-      local grandparent = tree.nodes.by_id[grandparent_id]
-      if grandparent and grandparent:has_children() then
-        tree.nodes.root_ids = grandparent:get_child_ids()
-        self.logger:debug("Viewport adjusted to show parent level and siblings")
-        return true
-      end
-    else
-      -- Parent is at root level, show all root nodes
-      tree.nodes.root_ids = self.true_root_ids or tree.nodes.root_ids
-      self.logger:debug("Viewport adjusted to root level")
-      return true
-    end
-  else
-    -- Target is at root level, ensure all roots are visible
+  
+  -- No parent: show all roots
+  if not parent_id then
     tree.nodes.root_ids = self.true_root_ids or tree.nodes.root_ids
     self.logger:debug("Viewport adjusted to show all roots")
     return true
   end
-
-  return false
+  
+  -- Has parent: find appropriate level to show
+  local parent_node = tree.nodes.by_id[parent_id]
+  local grandparent_id = parent_node and parent_node:get_parent_id()
+  
+  if grandparent_id then
+    -- Show parent and its siblings (children of grandparent)
+    local grandparent = tree.nodes.by_id[grandparent_id]
+    if grandparent and grandparent:has_children() then
+      tree.nodes.root_ids = grandparent:get_child_ids()
+      self.logger:debug("Viewport adjusted to show parent level and siblings")
+      return true
+    end
+  end
+  
+  -- Fallback: show all roots
+  tree.nodes.root_ids = self.true_root_ids or tree.nodes.root_ids
+  self.logger:debug("Viewport adjusted to root level")
+  return true
 end
 
 -- Navigation Intent: The semantic meaning behind a navigation action
@@ -904,77 +851,61 @@ function Variables4Plugin:moveToFirstChild(tree, node)
   end
 end
 
--- Enhanced ExpandNode with callback support for complete l-key behavior
+-- Refined node expansion with simplified procedure
 function Variables4Plugin:ExpandNodeWithCallback(tree, node, popup, callback)
-  if node._children_loaded then
-    return -- Already loaded
-  end
-
-  -- Get the underlying data object (scope or variable)
+  if node._children_loaded then return end
+  
   local data_object = node._scope or node._variable
-  if not data_object then
-    return -- No data object found
-  end
-
-  -- Both scopes and variables should have a variables() method now
-  if not data_object.variables then
+  if not data_object or not data_object.variables then
+    if not data_object then return end
     self.logger:warn("Data object has no variables() method: " .. (node.text or "unknown"))
     return
   end
 
-  -- Load children asynchronously
   NvimAsync.run(function()
     local children = data_object:variables()
+    
+    -- Build existing child name set for duplicate detection
+    local existing_names = {}
+    if node:has_children() then
+      for _, child_id in ipairs(node:get_child_ids()) do
+        local child = tree.nodes.by_id[child_id]
+        if child and child._variable and child._variable.ref then
+          existing_names[child._variable.ref.name] = true
+        end
+      end
+    end
 
+    local added_count = 0
     if children and #children > 0 then
-      -- Check if node already has children to prevent duplication
-      local existing_child_ids = node:has_children() and node:get_child_ids() or {}
-      local existing_child_names = {}
-
-      -- Build set of existing child names to detect duplicates
-      for _, child_id in ipairs(existing_child_ids) do
-        local existing_child = tree.nodes.by_id[child_id]
-        if existing_child and existing_child._variable and existing_child._variable.ref then
-          existing_child_names[existing_child._variable.ref.name] = true
-        end
-      end
-
-      -- Create child nodes and add them to the tree, skipping duplicates
-      local new_children_added = 0
       for _, child in ipairs(children) do
-        local variable_instance = self:ensureVariableWrapper(child, data_object, node)
+        -- Prepare variable instance
+        local instance = child.ref and child or Variable.instanciate(data_object.scope or data_object, child)
+        local parent_ref = node._variable and node._variable.ref.variablesReference
+        if parent_ref then instance._parent_var_ref = parent_ref end
+        instance.asNode = instance.asNode or Variable.asNode
+        instance.variables = instance.variables or Variable.variables
 
-        -- Skip if this child already exists (prevents self-evaluation duplication)
-        if not existing_child_names[variable_instance.ref.name] then
-          local child_node = variable_instance:asNode()
-          child_node._variable = variable_instance
+        -- Add if not duplicate
+        if not existing_names[instance.ref.name] then
+          local child_node = instance:asNode()
+          child_node._variable = instance
           tree:add_node(child_node, node:get_id())
-          new_children_added = new_children_added + 1
-        else
-          self.logger:debug("Skipping duplicate child: " .. variable_instance.ref.name)
+          added_count = added_count + 1
         end
       end
+    end
 
-      node._children_loaded = true
-
-      self.logger:debug("Loaded " ..
-        new_children_added ..
-        " new children (skipped " .. (#children - new_children_added) .. " duplicates) for: " .. (node.text or "unknown"))
-
-      -- Expand the node now that children are loaded
+    node._children_loaded = true
+    
+    if added_count > 0 then
+      self.logger:debug(string.format("Loaded %d children (skipped %d duplicates) for: %s", 
+        added_count, #children - added_count, node.text or "unknown"))
       node:expand()
-
-      -- Re-render the tree
       tree:render()
-
-      -- Execute callback (e.g., move to first child)
-      if callback then
-        callback()
-      end
+      if callback then callback() end
     else
-      -- Mark as loaded even if no children, to avoid repeated attempts
-      node._children_loaded = true
-      self.logger:debug("No children found for: " .. (node.text or "unknown"))
+      self.logger:debug("No new children for: " .. (node.text or "unknown"))
     end
   end)
 end
@@ -1032,95 +963,46 @@ function Variables4Plugin:UpdateFrameCommand()
 end
 
 -- ========================================
--- UNIFIED EXPANSION LOGIC
--- ========================================
-
--- Crystallized variable wrapper: simplified conditional logic
-function Variables4Plugin:ensureVariableWrapper(child, data_object, parent_node)
-  -- Wrap if needed
-  local instance = child.ref and child or Variable.instanciate(data_object.scope or data_object, child)
-
-  -- Set parent context if available
-  local parent_ref = parent_node and parent_node._variable and parent_node._variable.ref.variablesReference
-  if parent_ref then
-    instance._parent_var_ref = parent_ref
-  end
-
-  -- Ensure methods exist (for new instances)
-  instance.asNode = instance.asNode or Variable.asNode
-  instance.variables = instance.variables or Variable.variables
-
-  return instance
-end
-
--- ========================================
 -- LAZY VARIABLE RESOLUTION
 -- ========================================
 
--- Resolve a lazy variable by evaluating it and replacing the node
----@param tree NuiTree
----@param node NuiTreeNode
----@param popup any
+-- Refined lazy variable resolution
 function Variables4Plugin:resolveLazyVariable(tree, node, popup)
-  if not node._variable or not node._variable.ref then
-    return
-  end
-
   local variable = node._variable
-  local variable_name = variable.ref.name
-
-  -- Get the frame for evaluation context
+  if not (variable and variable.ref) then return end
+  
   local frame = variable.scope and variable.scope.frame
-  if not frame or not frame.ref then
-    self.logger:warn("No frame available for lazy variable evaluation: " .. variable_name)
+  if not (frame and frame.ref) then
+    self.logger:warn("No frame available for lazy variable: " .. variable.ref.name)
     return
   end
 
-  -- Use the Variable's resolve method to get the actual value
   NvimAsync.run(function()
-    self.logger:debug("Resolving lazy variable: " .. variable_name)
-
-    -- Call the resolve method which updates the variable's ref in-place
     local resolved = variable:resolve()
-
+    
     if resolved then
-      self.logger:debug("Lazy variable resolved successfully: " .. variable_name)
-
-      -- After resolution, we need to update the node's display
-      -- Clear the cached node so asNode() creates a new one with updated values
+      -- Update node with resolved values
       variable._node = nil
-
-      -- Create a new node with the resolved values
       local resolved_node = variable:asNode()
-
-      -- Update the existing node's properties to reflect the resolved state
       node.text = resolved_node.text
       node.expandable = resolved_node.expandable
       node._highlight = resolved_node._highlight
-
-      -- Mark as resolved so we don't re-resolve it
       node._lazy_resolved = true
-
-      -- If the resolved variable is expandable, mark children as not loaded
+      
       if node.expandable then
         node._children_loaded = false
-      end
-
-      self.logger:debug("Resolved lazy variable: " .. variable_name .. " -> " .. (variable.ref.value or ""))
-
-      -- Crystallized: after resolution, expand or drill into node if expandable
-      if node.expandable then
         if not node._children_loaded then
           self:ExpandNodeWithCallback(tree, node, popup, function() self:moveToFirstChild(tree, node) end)
         elseif node:has_children() then
           self:moveToFirstChild(tree, node)
         end
       end
+      
+      self.logger:debug("Resolved: " .. variable.ref.name .. " -> " .. (variable.ref.value or ""))
     else
-      self.logger:debug("Failed to resolve lazy variable: " .. variable_name)
+      self.logger:debug("Failed to resolve: " .. variable.ref.name)
     end
 
-    -- Re-render the tree to show the updated values
     tree:render()
   end)
 end
