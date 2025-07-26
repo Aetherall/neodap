@@ -43,7 +43,7 @@ local function go()
     local brkpt = api:getPluginInstance(require("neodap.plugins.ToggleBreakpoint"))
     api:getPluginInstance(require("neodap.plugins.FrameHighlight"))
     -- api:getPluginInstance(require("neodap.plugins.DebugMode"))
-    api:getPluginInstance(require("neodap.plugins.Variables4.alternative"))
+    api:getPluginInstance(require("neodap.plugins.Variables4"))
     api:getPluginInstance(require("neodap.plugins.LaunchJsonSupport"))
     -- api:getPluginInstance(require("neodap.plugins.ScopeViewer"))
 
@@ -110,7 +110,7 @@ local function go()
 
     -- Add keybinding for frame variables
     vim.keymap.set("n", "<leader>dv", function()
-        vim.cmd("NeodapVariablesFloat")
+        vim.cmd("Variables4Tree")
     end, { noremap = true, silent = true, desc = "Show Frame Variables" })
 
     api:onSession(function(session)

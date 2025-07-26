@@ -13,6 +13,9 @@ local NvimAsync = require('neodap.tools.async')
 ---@field api Api
 ---@field current_frame? api.Frame
 ---@field logger Logger
+---@field focus_mode_active boolean
+---@field focus_node_id? string
+---@field original_scopes? any[]
 local Variables4Plugin = Class()
 
 Variables4Plugin.name = "Variables4"
@@ -33,6 +36,11 @@ end
 
 function Variables4Plugin:initialize()
   self.logger:info("Initializing Variables4 plugin - asNode() caching strategy")
+
+  -- Initialize focus mode state
+  self.focus_mode_active = false
+  self.focus_node_id = nil
+  self.original_scopes = nil
 
   -- Set up event handlers
   self:setupEventHandlers()
@@ -391,6 +399,193 @@ function Variables4Plugin:getCurrentScopesAndVariables()
   return scopes
 end
 
+-- ========================================
+-- FOCUS MODE HELPER METHODS
+-- ========================================
+
+-- Find the n-2 parent of the current node (or appropriate ancestor)
+function Variables4Plugin:findNMinus2Parent(tree, current_node)
+  if not current_node then
+    return nil
+  end
+
+  -- Walk up the parent chain to find n-2 parent
+  local target_node = current_node
+  local levels_up = 0
+  local max_levels = 2 -- n-2 means go up 2 levels
+
+  while target_node and levels_up < max_levels do
+    local parent_id = target_node:get_parent_id()
+    if not parent_id then
+      break -- Reached root
+    end
+    
+    local parent_node = tree.nodes.by_id[parent_id]
+    if not parent_node then
+      break -- Parent not found
+    end
+    
+    target_node = parent_node
+    levels_up = levels_up + 1
+  end
+
+  -- If we couldn't go up 2 levels, use whatever we found
+  -- This handles cases where we're close to the root
+  return target_node
+end
+
+-- Get a human-readable breadcrumb path for the focus node
+function Variables4Plugin:getFocusBreadcrumb(tree, focus_node)
+  if not focus_node then
+    return "Full Tree"
+  end
+
+  local breadcrumb_parts = {}
+  local current = focus_node
+
+  -- Build breadcrumb by walking up the tree
+  while current do
+    -- Extract the display name from the node text
+    local display_name = "unknown"
+    if current.text then
+      -- For variables: "icon name: value" format, extract name
+      local colon_pos = current.text:find(": ")
+      if colon_pos then
+        local name_part = current.text:sub(1, colon_pos - 1)
+        local space_pos = name_part:find(" ")
+        if space_pos then
+          display_name = name_part:sub(space_pos + 1)
+        else
+          display_name = name_part
+        end
+      else
+        -- For scopes: "📁 ScopeName" format, extract name
+        if current.text:sub(1, 2) == "📁" then
+          display_name = current.text:sub(3):gsub("^%s+", "") -- Remove leading spaces
+        else
+          display_name = current.text
+        end
+      end
+    end
+
+    table.insert(breadcrumb_parts, 1, display_name) -- Insert at beginning
+
+    -- Move to parent
+    local parent_id = current:get_parent_id()
+    if not parent_id then
+      break
+    end
+    current = tree.nodes.by_id[parent_id]
+  end
+
+  return "Focus: " .. table.concat(breadcrumb_parts, ".")
+end
+
+-- Store original tree state for focus mode restoration  
+function Variables4Plugin:storeOriginalTreeState(tree)
+  return {
+    root_ids = vim.deepcopy(tree.nodes.root_ids)
+  }
+end
+
+-- Restore original tree state from stored data
+function Variables4Plugin:restoreOriginalTreeState(tree, stored_state)
+  tree.nodes.root_ids = stored_state.root_ids
+end
+
+-- Enter focus mode: change tree root to n-2 parent while preserving all node state
+function Variables4Plugin:enterFocusMode(tree, popup)
+  local current_node = tree:get_node()
+  if not current_node then
+    print("No node selected for focus mode")
+    return false
+  end
+
+  -- Find the n-2 parent (or appropriate ancestor)
+  local focus_node = self:findNMinus2Parent(tree, current_node)
+  if not focus_node then
+    print("Cannot determine focus node")
+    return false
+  end
+
+  -- Don't focus if we're already at root level
+  if focus_node:get_id() == current_node:get_id() then
+    print("Already at top level - cannot focus further")
+    return false
+  end
+
+  -- Store current state for restoration (only if not already in focus mode)
+  local was_already_focused = self.focus_mode_active
+  if not self.focus_mode_active then
+    self.original_tree_state = self:storeOriginalTreeState(tree)
+    self.focus_mode_active = true
+  end
+  
+  -- Update focus node ID
+  self.focus_node_id = current_node:get_id()
+
+  -- Change tree root to focus node (preserves all node state and children)
+  tree.nodes.root_ids = { focus_node:get_id() }
+
+  -- Update popup title with breadcrumb
+  if popup and popup.border and popup.border.text then
+    local breadcrumb = self:getFocusBreadcrumb(tree, focus_node)
+    popup.border.text.top = " " .. breadcrumb .. " "
+    popup:update_layout() -- Refresh the popup to show new title
+  end
+
+  -- Re-render the tree
+  tree:render()
+
+  local action = was_already_focused and "Re-focused" or "Focused"
+  print(action .. " on: " .. (focus_node.text or "unknown"))
+  self.logger:debug(action .. " focus mode with root: " .. (focus_node.text or "unknown"))
+  return true
+end
+
+-- Exit focus mode: restore original tree root nodes
+function Variables4Plugin:exitFocusMode(tree, popup)
+  if not self.focus_mode_active then
+    print("Not in focus mode - nothing to reset")
+    return false
+  end
+
+  -- Restore original tree state
+  if self.original_tree_state then
+    self:restoreOriginalTreeState(tree, self.original_tree_state)
+  else
+    print("Cannot restore tree - no original state saved")
+    return false
+  end
+
+  -- Restore popup title
+  if popup and popup.border and popup.border.text then
+    popup.border.text.top = " Variables4 Debug Tree "
+    popup:update_layout()
+  end
+
+  -- Clear focus mode state
+  self.focus_mode_active = false
+  self.focus_node_id = nil
+  self.original_tree_state = nil
+
+  -- Re-render the tree
+  tree:render()
+
+  print("Reset to full tree view")
+  self.logger:debug("Exited focus mode - restored original tree")
+  return true
+end
+
+-- Toggle focus mode on/off
+function Variables4Plugin:toggleFocusMode(tree, popup)
+  if self.focus_mode_active then
+    return self:exitFocusMode(tree, popup)
+  else
+    return self:enterFocusMode(tree, popup)
+  end
+end
+
 -- Helper for node toggle logic (eliminates duplication between Enter/Space handlers)
 function Variables4Plugin:toggleTreeNode(tree)
   local node = tree:get_node()
@@ -661,58 +856,74 @@ function Variables4Plugin:OpenVariablesTree()
   local tree = NuiTree({
     bufnr = popup.bufnr,
     nodes = tree_nodes,
-    prepare_node = function(node)
-      local line = NuiLine()
-
-      -- Add indentation based on depth
-      line:append(string.rep("  ", node:get_depth() - 1))
-
-      -- Add expand/collapse indicator with subtle highlight
-      if node:has_children() or node.expandable then
-        if node:is_expanded() then
-          line:append("▼ ", "Comment") -- Subtle color for indicators
-        else
-          line:append("▶ ", "Comment") -- Subtle color for indicators
-        end
-      else
-        line:append("  ")
-      end
-
-      -- Parse the node text to extract icon, name, and value for highlighting
-      local text = node.text or ""
-
-      if node.type == "scope" then
-        -- Scope nodes: highlight the folder icon and name
-        line:append("📁 ", "Directory") -- Folder icon
-        line:append(text:sub(3), "Directory") -- Scope name (removing the icon)
-      else
-        -- Variable nodes: parse "icon name: value" format
-        local icon_pos = text:find(" ")
-        local colon_pos = text:find(": ")
-
-        if icon_pos and colon_pos and icon_pos < colon_pos then
-          local icon = text:sub(1, icon_pos - 1)
-          local name = text:sub(icon_pos + 1, colon_pos - 1)
-          local value = text:sub(colon_pos + 2)
-
-          -- Add icon with subtle highlight
-          line:append(icon .. " ", "Comment")
-
-          -- Add variable name with normal highlight
-          line:append(name .. ": ", "Identifier")
-
-          -- Add value with type-specific highlight
-          local highlight = node._highlight or "Normal"
-          line:append(value, highlight)
-        else
-          -- Fallback: just append the text normally
-          line:append(text)
-        end
-      end
-
-      return line
-    end,
   })
+
+  -- Create a custom prepare_node function that calculates relative indentation
+  local function prepare_node_with_relative_indent(node)
+    local line = NuiLine()
+
+    -- Calculate relative indentation for focus mode
+    -- Find minimum depth of current root nodes to normalize indentation
+    local min_depth = math.huge
+    for _, root_id in ipairs(tree.nodes.root_ids) do
+      local root_node = tree.nodes.by_id[root_id]
+      if root_node then
+        min_depth = math.min(min_depth, root_node:get_depth())
+      end
+    end
+    
+    -- Use relative depth so focused subtrees start at left edge
+    local relative_depth = math.max(0, node:get_depth() - min_depth)
+    line:append(string.rep("  ", relative_depth))
+
+    -- Add expand/collapse indicator with subtle highlight
+    if node:has_children() or node.expandable then
+      if node:is_expanded() then
+        line:append("▼ ", "Comment") -- Subtle color for indicators
+      else
+        line:append("▶ ", "Comment") -- Subtle color for indicators
+      end
+    else
+      line:append("  ")
+    end
+
+    -- Parse the node text to extract icon, name, and value for highlighting
+    local text = node.text or ""
+
+    if node.type == "scope" then
+      -- Scope nodes: highlight the folder icon and name
+      line:append("📁 ", "Directory") -- Folder icon
+      line:append(text:sub(3), "Directory") -- Scope name (removing the icon)
+    else
+      -- Variable nodes: parse "icon name: value" format
+      local icon_pos = text:find(" ")
+      local colon_pos = text:find(": ")
+
+      if icon_pos and colon_pos and icon_pos < colon_pos then
+        local icon = text:sub(1, icon_pos - 1)
+        local name = text:sub(icon_pos + 1, colon_pos - 1)
+        local value = text:sub(colon_pos + 2)
+
+        -- Add icon with subtle highlight
+        line:append(icon .. " ", "Comment")
+
+        -- Add variable name with normal highlight
+        line:append(name .. ": ", "Identifier")
+
+        -- Add value with type-specific highlight
+        local highlight = node._highlight or "Normal"
+        line:append(value, highlight)
+      else
+        -- Fallback: just append the text normally
+        line:append(text)
+      end
+    end
+
+    return line
+  end
+
+  -- Override the tree's prepare_node function
+  tree._.prepare_node = prepare_node_with_relative_indent
 
   -- Render the tree
   tree:render()
@@ -747,11 +958,22 @@ function Variables4Plugin:OpenVariablesTree()
     popup:unmount()
   end, map_options)
 
+  -- Focus mode controls
+  popup:map("n", "f", function()
+    self:enterFocusMode(tree, popup)
+  end, map_options)
+
+  popup:map("n", "r", function()
+    self:exitFocusMode(tree, popup)
+  end, map_options)
+
   -- Show help
   popup:map("n", "?", function()
     print("Variables4 Tree Controls:")
     print("  Enter/Space: Expand/collapse node")
     print("  j/k: Navigate up/down")
+    print("  f: Focus on n-2 parent of current selection")
+    print("  r: Reset to full tree view")
     print("  q/Esc: Close popup")
   end, map_options)
 

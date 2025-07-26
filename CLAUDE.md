@@ -1,5 +1,7 @@
 ## Neodap Codebase Guide
 
+- [nui source](./.cache/tests/data/nvim/lazy/nui.nvim/lua/nui/tree)
+
 ### 1. Overarching Purpose & Core Philosophy
 
 `neodap` is a **Neovim Debug Adapter Protocol (DAP) client SDK**. Its fundamental purpose is to provide a flexible and extensible foundation for building custom debugging experiences within Neovim. Unlike monolithic DAP clients, `neodap` is designed as a library that other plugins use to interact with debuggers.
