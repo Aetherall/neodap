@@ -41,6 +41,7 @@ function Variables4Plugin:initialize()
   self.focus_mode_active = false
   self.focus_node_id = nil
   self.original_scopes = nil
+  self.focus_history = {} -- Track focus drill-down history for smart defocusing
 
   -- Set up event handlers
   self:setupEventHandlers()
@@ -568,6 +569,7 @@ function Variables4Plugin:exitFocusMode(tree, popup)
   self.focus_mode_active = false
   self.focus_node_id = nil
   self.original_tree_state = nil
+  self.focus_history = {} -- Clear focus history
 
   -- Re-render the tree
   tree:render()
@@ -586,8 +588,324 @@ function Variables4Plugin:toggleFocusMode(tree, popup)
   end
 end
 
+-- Auto-focus on expanded node during focus mode navigation
+function Variables4Plugin:autoFocusOnExpansion(tree, expanded_node, popup)
+  if not self.focus_mode_active or not expanded_node then
+    return
+  end
+
+  -- Don't auto-focus if the expanded node has no children
+  if not expanded_node:has_children() then
+    return
+  end
+
+  -- Track the current focus in history before drilling down
+  local current_focus_id = self.focus_node_id or tree.nodes.root_ids[1]
+  if current_focus_id then
+    table.insert(self.focus_history, current_focus_id)
+  end
+
+  -- Update focus node ID to the expanded node
+  self.focus_node_id = expanded_node:get_id()
+
+  -- Change tree root to the expanded node (seamless drill-down)
+  tree.nodes.root_ids = { expanded_node:get_id() }
+
+  -- Update popup title with breadcrumb
+  if popup and popup.border and popup.border.text then
+    local breadcrumb = self:getFocusBreadcrumb(tree, expanded_node)
+    popup.border.text.top = " " .. breadcrumb .. " "
+    popup:update_layout() -- Refresh the popup to show new title
+  end
+
+  -- Re-render the tree
+  tree:render()
+
+  self.logger:debug("Auto-focused on expanded node: " .. (expanded_node.text or "unknown") .. 
+                   " (history depth: " .. #self.focus_history .. ")")
+end
+
+-- Auto-defocus when collapsing or moving to parent in focus mode
+function Variables4Plugin:autoDefocusOnCollapse(tree, collapsed_node, popup)
+  if not self.focus_mode_active then
+    return
+  end
+
+  -- Use focus history to defocus intelligently
+  if #self.focus_history > 0 then
+    -- Pop the previous focus level from history
+    local previous_focus_id = table.remove(self.focus_history)
+    local previous_focus_node = tree.nodes.by_id[previous_focus_id]
+    
+    if previous_focus_node then
+      -- Defocus to the previous level in history
+      self.focus_node_id = previous_focus_id
+      tree.nodes.root_ids = { previous_focus_id }
+
+      -- Update popup title with breadcrumb
+      if popup and popup.border and popup.border.text then
+        local breadcrumb = self:getFocusBreadcrumb(tree, previous_focus_node)
+        popup.border.text.top = " " .. breadcrumb .. " "
+        popup:update_layout()
+      end
+
+      -- Re-render the tree
+      tree:render()
+
+      self.logger:debug("Auto-defocused to previous focus level: " .. (previous_focus_node.text or "unknown") .. 
+                       " (history depth: " .. #self.focus_history .. ")")
+      return
+    end
+  end
+
+  -- Fallback: try to find parent of current focus root
+  local current_focus_id = self.focus_node_id or tree.nodes.root_ids[1]
+  local current_focus_node = tree.nodes.by_id[current_focus_id]
+  
+  if current_focus_node then
+    local parent_id = current_focus_node:get_parent_id()
+    if parent_id then
+      local parent_node = tree.nodes.by_id[parent_id]
+      if parent_node then
+        -- Defocus to parent level
+        self.focus_node_id = parent_id
+        tree.nodes.root_ids = { parent_id }
+
+        -- Update popup title with breadcrumb
+        if popup and popup.border and popup.border.text then
+          local breadcrumb = self:getFocusBreadcrumb(tree, parent_node)
+          popup.border.text.top = " " .. breadcrumb .. " "
+          popup:update_layout()
+        end
+
+        -- Re-render the tree
+        tree:render()
+
+        self.logger:debug("Auto-defocused to parent node: " .. (parent_node.text or "unknown"))
+        return
+      end
+    end
+  end
+
+  -- Last resort: exit focus mode entirely
+  self:exitFocusMode(tree, popup)
+end
+
+-- ========================================
+-- TREE NAVIGATION HELPERS
+-- ========================================
+
+-- Get all visible nodes in display order (depth-first traversal)
+function Variables4Plugin:getVisibleNodes(tree)
+  local visible_nodes = {}
+  
+  -- Helper function to traverse nodes recursively
+  local function traverse(node_id)
+    local node = tree.nodes.by_id[node_id]
+    if not node then return end
+    
+    table.insert(visible_nodes, node_id)
+    
+    -- If node is expanded, traverse its children
+    if node:is_expanded() and node:has_children() then
+      local child_ids = node:get_child_ids()
+      for _, child_id in ipairs(child_ids) do
+        traverse(child_id)
+      end
+    end
+  end
+  
+  -- Start with root nodes
+  for _, root_id in ipairs(tree.nodes.root_ids) do
+    traverse(root_id)
+  end
+  
+  return visible_nodes
+end
+
+-- Get the next visible node after the current one
+function Variables4Plugin:getNextVisibleNode(tree, current_node)
+  local visible_nodes = self:getVisibleNodes(tree)
+  local current_id = current_node:get_id()
+  
+  for i, node_id in ipairs(visible_nodes) do
+    if node_id == current_id and i < #visible_nodes then
+      return visible_nodes[i + 1]
+    end
+  end
+  
+  return nil -- Already at last node
+end
+
+-- Get the previous visible node before the current one
+function Variables4Plugin:getPreviousVisibleNode(tree, current_node)
+  local visible_nodes = self:getVisibleNodes(tree)
+  local current_id = current_node:get_id()
+  
+  for i, node_id in ipairs(visible_nodes) do
+    if node_id == current_id and i > 1 then
+      return visible_nodes[i - 1]
+    end
+  end
+  
+  return nil -- Already at first node
+end
+
+-- Helper to set cursor to a specific node using vim API
+function Variables4Plugin:setCursorToNode(tree, node_id)
+  local node, linenr_start, linenr_end = tree:get_node(node_id)
+  if node and linenr_start then
+    local winid = vim.api.nvim_get_current_win()
+    vim.api.nvim_win_set_cursor(winid, { linenr_start, 0 })
+  end
+end
+
+-- Navigate to the first child of current node (l key behavior)
+function Variables4Plugin:navigateToFirstChild(tree, popup)
+  local current_node = tree:get_node()
+  if not current_node then return end
+
+  -- If node is collapsed and expandable, expand it first
+  if not current_node:is_expanded() and current_node.expandable then
+    if not current_node._children_loaded then
+      -- Async expansion - set up callback to move to first child after loading
+      self:ExpandNodeWithCallback(tree, current_node, popup, function()
+        self:moveToFirstChild(tree, current_node)
+      end)
+      return
+    else
+      -- Sync expansion - expand and immediately move to first child
+      current_node:expand()
+      tree:render()
+      self:moveToFirstChild(tree, current_node)
+    end
+  elseif current_node:is_expanded() and current_node:has_children() then
+    -- Already expanded - just move to first child
+    self:moveToFirstChild(tree, current_node)
+  end
+end
+
+-- Helper to move cursor to first child of a node
+function Variables4Plugin:moveToFirstChild(tree, node)
+  if node:is_expanded() and node:has_children() then
+    local child_ids = node:get_child_ids()
+    if child_ids and #child_ids > 0 then
+      local first_child_id = child_ids[1]
+      self:setCursorToNode(tree, first_child_id)
+    end
+  end
+end
+
+-- Enhanced ExpandNode with callback support for complete l-key behavior
+function Variables4Plugin:ExpandNodeWithCallback(tree, node, popup, callback)
+  if node._children_loaded then
+    return -- Already loaded
+  end
+
+  -- Get the underlying data object (scope or variable)
+  local data_object = node._scope or node._variable
+  if not data_object then
+    return -- No data object found
+  end
+
+  -- Both scopes and variables should have a variables() method now
+  if not data_object.variables then
+    self.logger:warn("Data object has no variables() method: " .. (node.text or "unknown"))
+    return
+  end
+
+  -- Load children asynchronously
+  NvimAsync.run(function()
+    local children = data_object:variables()
+
+    if children and #children > 0 then
+      -- Create child nodes and add them to the tree
+      for _, child in ipairs(children) do
+        local variable_instance = self:ensureVariableWrapper(child, data_object, node)
+        local child_node = variable_instance:asNode()
+        child_node._variable = variable_instance
+        tree:add_node(child_node, node:get_id())
+      end
+
+      node._children_loaded = true
+
+      self.logger:debug("Loaded " .. #children .. " children for: " .. (node.text or "unknown"))
+
+      -- Expand the node now that children are loaded
+      node:expand()
+
+      -- Re-render the tree
+      tree:render()
+      
+      -- Execute callback (e.g., move to first child)
+      if callback then
+        callback()
+      end
+      
+      -- In focus mode, auto-drill down to expanded node
+      if self.focus_mode_active then
+        self:autoFocusOnExpansion(tree, node, popup)
+      end
+    else
+      -- Mark as loaded even if no children, to avoid repeated attempts
+      node._children_loaded = true
+      self.logger:debug("No children found for: " .. (node.text or "unknown"))
+    end
+  end)
+end
+
+-- Navigate to parent of current node (h key behavior)
+function Variables4Plugin:navigateToParent(tree, popup)
+  local current_node = tree:get_node()
+  if not current_node then return end
+
+  local parent_id = current_node:get_parent_id()
+  if parent_id then
+    -- If current node is expanded, collapse it
+    if current_node:is_expanded() then
+      current_node:collapse()
+      tree:render()
+      
+      -- In focus mode, trigger defocus when collapsing
+      if self.focus_mode_active then
+        self:autoDefocusOnCollapse(tree, current_node, popup)
+      end
+    else
+      -- Move to parent node
+      self:setCursorToNode(tree, parent_id)
+      
+      -- In focus mode, also trigger defocus when moving to parent
+      if self.focus_mode_active then
+        self:autoDefocusOnCollapse(tree, current_node, popup)
+      end
+    end
+  end
+end
+
+-- Navigate down through siblings or into children (j key behavior)
+function Variables4Plugin:navigateDown(tree)
+  local current_node = tree:get_node()
+  if not current_node then return end
+  
+  local next_node_id = self:getNextVisibleNode(tree, current_node)
+  if next_node_id then
+    self:setCursorToNode(tree, next_node_id)
+  end
+end
+
+-- Navigate up through siblings or to parent level (k key behavior)  
+function Variables4Plugin:navigateUp(tree)
+  local current_node = tree:get_node()
+  if not current_node then return end
+  
+  local prev_node_id = self:getPreviousVisibleNode(tree, current_node)
+  if prev_node_id then
+    self:setCursorToNode(tree, prev_node_id)
+  end
+end
+
 -- Helper for node toggle logic (eliminates duplication between Enter/Space handlers)
-function Variables4Plugin:toggleTreeNode(tree)
+function Variables4Plugin:toggleTreeNode(tree, popup)
   local node = tree:get_node()
   if node then
     -- Check if this is a lazy variable that needs resolution
@@ -595,7 +913,7 @@ function Variables4Plugin:toggleTreeNode(tree)
       local hint = node._variable.ref.presentationHint
       if hint.lazy and not node._lazy_resolved then
         -- This is an unresolved lazy variable - resolve it
-        self:resolveLazyVariable(tree, node)
+        self:resolveLazyVariable(tree, node, popup)
         return
       end
     end
@@ -604,14 +922,24 @@ function Variables4Plugin:toggleTreeNode(tree)
       -- Collapse the node
       node:collapse()
       tree:render()
+      
+      -- In focus mode, trigger defocus when collapsing
+      if self.focus_mode_active then
+        self:autoDefocusOnCollapse(tree, node, popup)
+      end
     else
       -- Expand the node - use unified expansion logic
       if node.expandable and not node._children_loaded then
-        self:ExpandNode(tree, node)
+        self:ExpandNode(tree, node, popup)
       else
         -- For already loaded nodes, just expand and render
         node:expand()
         tree:render()
+        
+        -- In focus mode, auto-drill down to expanded node
+        if self.focus_mode_active and node:has_children() then
+          self:autoFocusOnExpansion(tree, node, popup)
+        end
       end
     end
   end
@@ -684,7 +1012,7 @@ function Variables4Plugin:ensureVariableWrapper(child, data_object, parent_node)
 end
 
 -- Unified function to expand any expandable node (scope or variable)
-function Variables4Plugin:ExpandNode(tree, node)
+function Variables4Plugin:ExpandNode(tree, node, popup)
   if node._children_loaded then
     return -- Already loaded
   end
@@ -723,6 +1051,11 @@ function Variables4Plugin:ExpandNode(tree, node)
 
       -- Re-render the tree
       tree:render()
+      
+      -- In focus mode, auto-drill down to expanded node
+      if self.focus_mode_active then
+        self:autoFocusOnExpansion(tree, node, popup)
+      end
     else
       -- Mark as loaded even if no children, to avoid repeated attempts
       node._children_loaded = true
@@ -738,7 +1071,8 @@ end
 -- Resolve a lazy variable by evaluating it and replacing the node
 ---@param tree NuiTree
 ---@param node NuiTreeNode
-function Variables4Plugin:resolveLazyVariable(tree, node)
+---@param popup any
+function Variables4Plugin:resolveLazyVariable(tree, node, popup)
   if not node._variable or not node._variable.ref then
     return
   end
@@ -784,6 +1118,11 @@ function Variables4Plugin:resolveLazyVariable(tree, node)
       end
       
       self.logger:debug("Resolved lazy variable: " .. variable_name .. " -> " .. (variable.ref.value or ""))
+      
+      -- In focus mode, auto-drill down after resolution if the node becomes expandable
+      if self.focus_mode_active and node.expandable then
+        self:autoFocusOnExpansion(tree, node, popup)
+      end
     else
       self.logger:debug("Failed to resolve lazy variable: " .. variable_name)
     end
@@ -933,20 +1272,28 @@ function Variables4Plugin:OpenVariablesTree()
 
   -- Expand/collapse with Enter or Space (uses unified toggle logic)
   popup:map("n", "<CR>", function()
-    self:toggleTreeNode(tree)
+    self:toggleTreeNode(tree, popup)
   end, map_options)
 
   popup:map("n", "<Space>", function()
-    self:toggleTreeNode(tree)
+    self:toggleTreeNode(tree, popup)
   end, map_options)
 
-  -- Navigation - using standard vim movement
+  -- Tree-aware navigation with hjkl
+  popup:map("n", "h", function()
+    self:navigateToParent(tree, popup)
+  end, map_options)
+
   popup:map("n", "j", function()
-    vim.cmd("normal! j")
+    self:navigateDown(tree)
   end, map_options)
 
   popup:map("n", "k", function()
-    vim.cmd("normal! k")
+    self:navigateUp(tree)
+  end, map_options)
+
+  popup:map("n", "l", function()
+    self:navigateToFirstChild(tree, popup)
   end, map_options)
 
   -- Quit with q or Escape
@@ -970,8 +1317,11 @@ function Variables4Plugin:OpenVariablesTree()
   -- Show help
   popup:map("n", "?", function()
     print("Variables4 Tree Controls:")
-    print("  Enter/Space: Expand/collapse node")
-    print("  j/k: Navigate up/down")
+    print("  Enter/Space: Expand/collapse node (auto-drills down in focus mode)")
+    print("  h: Collapse node or move to parent")
+    print("  j: Navigate down")
+    print("  k: Navigate up") 
+    print("  l: Expand node or move to first child")
     print("  f: Focus on n-2 parent of current selection")
     print("  r: Reset to full tree view")
     print("  q/Esc: Close popup")
