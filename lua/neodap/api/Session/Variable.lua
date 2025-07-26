@@ -35,26 +35,39 @@ function Variable:resolve()
   -- with the actual resolved value
   local variables = self.scope.frame:variables(self.ref.variablesReference)
   
-  if not variables or #variables ~= 1 then
-    -- DAP spec says lazy variables should return exactly one child
+  if not variables then
     return nil
   end
 
-  local resolved = variables[1]
+  -- Handle two cases:
+  -- 1. Standard lazy variables: return exactly one child with the resolved value
+  -- 2. Chrome DevTools quirk: returns multiple children for function properties
   
-  if not resolved then
-    return nil
-  end
+  if #variables == 1 then
+    -- Standard case: single resolved value
+    local resolved = variables[1]
+    
+    if not resolved then
+      return nil
+    end
 
-  -- Update this variable's properties with the resolved variable's data
-  -- The resolved variable typically has no name, just value and type
-  self.ref.value = resolved.value or self.ref.value
-  self.ref.type = resolved.type or self.ref.type
-  self.ref.variablesReference = resolved.variablesReference or 0
-  
-  -- Copy over any new presentation hints from the resolved variable
-  if resolved.presentationHint then
-    self.ref.presentationHint = vim.tbl_extend("force", self.ref.presentationHint or {}, resolved.presentationHint)
+    -- Update this variable's properties with the resolved variable's data
+    self.ref.value = resolved.value or self.ref.value
+    self.ref.type = resolved.type or self.ref.type
+    self.ref.variablesReference = resolved.variablesReference or 0
+    
+    -- Copy over any new presentation hints from the resolved variable
+    if resolved.presentationHint then
+      self.ref.presentationHint = vim.tbl_extend("force", self.ref.presentationHint or {}, resolved.presentationHint)
+    end
+  else
+    -- Chrome DevTools case: multiple children returned
+    -- This means the lazy variable was actually just marking that children need to be fetched
+    -- The variable itself doesn't change, but now we know it has children
+    -- Keep the original variable properties but mark it as having children
+    if self.ref.variablesReference and self.ref.variablesReference > 0 then
+      -- Variable already has a reference, just mark as resolved
+    end
   end
   
   -- Clear the lazy flag since we've resolved it
@@ -62,8 +75,8 @@ function Variable:resolve()
     self.ref.presentationHint.lazy = false
   end
   
-  -- Return the resolved variable data
-  return resolved
+  -- Return success indicator (the variable data may not have changed for Chrome case)
+  return true
 end
 
 function Variable:toString()

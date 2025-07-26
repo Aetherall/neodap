@@ -765,6 +765,16 @@ function Variables4Plugin:navigateToFirstChild(tree, popup)
   local current_node = tree:get_node()
   if not current_node then return end
 
+  -- Check if this is a lazy variable that needs resolution
+  if current_node._variable and current_node._variable.ref and current_node._variable.ref.presentationHint then
+    local hint = current_node._variable.ref.presentationHint
+    if hint.lazy and not current_node._lazy_resolved then
+      -- This is an unresolved lazy variable - resolve it
+      self:resolveLazyVariable(tree, current_node, popup)
+      return
+    end
+  end
+
   -- If node is collapsed and expandable, expand it first
   if not current_node:is_expanded() and current_node.expandable then
     if not current_node._children_loaded then
@@ -904,46 +914,6 @@ function Variables4Plugin:navigateUp(tree)
   end
 end
 
--- Helper for node toggle logic (eliminates duplication between Enter/Space handlers)
-function Variables4Plugin:toggleTreeNode(tree, popup)
-  local node = tree:get_node()
-  if node then
-    -- Check if this is a lazy variable that needs resolution
-    if node._variable and node._variable.ref and node._variable.ref.presentationHint then
-      local hint = node._variable.ref.presentationHint
-      if hint.lazy and not node._lazy_resolved then
-        -- This is an unresolved lazy variable - resolve it
-        self:resolveLazyVariable(tree, node, popup)
-        return
-      end
-    end
-    
-    if node:is_expanded() then
-      -- Collapse the node
-      node:collapse()
-      tree:render()
-      
-      -- In focus mode, trigger defocus when collapsing
-      if self.focus_mode_active then
-        self:autoDefocusOnCollapse(tree, node, popup)
-      end
-    else
-      -- Expand the node - use unified expansion logic
-      if node.expandable and not node._children_loaded then
-        self:ExpandNode(tree, node, popup)
-      else
-        -- For already loaded nodes, just expand and render
-        node:expand()
-        tree:render()
-        
-        -- In focus mode, auto-drill down to expanded node
-        if self.focus_mode_active and node:has_children() then
-          self:autoFocusOnExpansion(tree, node, popup)
-        end
-      end
-    end
-  end
-end
 
 -- ========================================
 -- COMMAND IMPLEMENTATIONS
@@ -1011,58 +981,6 @@ function Variables4Plugin:ensureVariableWrapper(child, data_object, parent_node)
   return variable_instance
 end
 
--- Unified function to expand any expandable node (scope or variable)
-function Variables4Plugin:ExpandNode(tree, node, popup)
-  if node._children_loaded then
-    return -- Already loaded
-  end
-
-  -- Get the underlying data object (scope or variable)
-  local data_object = node._scope or node._variable
-  if not data_object then
-    return -- No data object found
-  end
-
-  -- Both scopes and variables should have a variables() method now
-  if not data_object.variables then
-    self.logger:warn("Data object has no variables() method: " .. (node.text or "unknown"))
-    return
-  end
-
-  -- Load children asynchronously
-  NvimAsync.run(function()
-    local children = data_object:variables()
-
-    if children and #children > 0 then
-      -- Create child nodes and add them to the tree
-      for _, child in ipairs(children) do
-        local variable_instance = self:ensureVariableWrapper(child, data_object, node)
-        local child_node = variable_instance:asNode()
-        child_node._variable = variable_instance
-        tree:add_node(child_node, node:get_id())
-      end
-
-      node._children_loaded = true
-
-      self.logger:debug("Loaded " .. #children .. " children for: " .. (node.text or "unknown"))
-
-      -- Expand the node now that children are loaded
-      node:expand()
-
-      -- Re-render the tree
-      tree:render()
-      
-      -- In focus mode, auto-drill down to expanded node
-      if self.focus_mode_active then
-        self:autoFocusOnExpansion(tree, node, popup)
-      end
-    else
-      -- Mark as loaded even if no children, to avoid repeated attempts
-      node._children_loaded = true
-      self.logger:debug("No children found for: " .. (node.text or "unknown"))
-    end
-  end)
-end
 
 -- ========================================
 -- LAZY VARIABLE RESOLUTION
@@ -1122,6 +1040,16 @@ function Variables4Plugin:resolveLazyVariable(tree, node, popup)
       -- In focus mode, auto-drill down after resolution if the node becomes expandable
       if self.focus_mode_active and node.expandable then
         self:autoFocusOnExpansion(tree, node, popup)
+      end
+      
+      -- After successful resolution, continue with expansion if the variable is expandable
+      if node.expandable and not node._children_loaded then
+        self:ExpandNodeWithCallback(tree, node, popup, function()
+          self:moveToFirstChild(tree, node)
+        end)
+      elseif node.expandable and node:has_children() then
+        -- If already has children, just move to first child
+        self:moveToFirstChild(tree, node)
       end
     else
       self.logger:debug("Failed to resolve lazy variable: " .. variable_name)
@@ -1270,16 +1198,7 @@ function Variables4Plugin:OpenVariablesTree()
   -- Set up keymaps for tree interaction
   local map_options = { noremap = true, silent = true }
 
-  -- Expand/collapse with Enter or Space (uses unified toggle logic)
-  popup:map("n", "<CR>", function()
-    self:toggleTreeNode(tree, popup)
-  end, map_options)
-
-  popup:map("n", "<Space>", function()
-    self:toggleTreeNode(tree, popup)
-  end, map_options)
-
-  -- Tree-aware navigation with hjkl
+  -- Tree-aware navigation with hjkl (primary navigation method)
   popup:map("n", "h", function()
     self:navigateToParent(tree, popup)
   end, map_options)
@@ -1316,15 +1235,16 @@ function Variables4Plugin:OpenVariablesTree()
 
   -- Show help
   popup:map("n", "?", function()
-    print("Variables4 Tree Controls:")
-    print("  Enter/Space: Expand/collapse node (auto-drills down in focus mode)")
-    print("  h: Collapse node or move to parent")
-    print("  j: Navigate down")
-    print("  k: Navigate up") 
-    print("  l: Expand node or move to first child")
-    print("  f: Focus on n-2 parent of current selection")
-    print("  r: Reset to full tree view")
+    print("Variables4 Tree Controls (hjkl navigation):")
+    print("  h: Collapse node or move to parent (triggers defocus in focus mode)")
+    print("  j: Navigate down through visible nodes") 
+    print("  k: Navigate up through visible nodes")
+    print("  l: Expand node and move to first child (triggers auto-focus in focus mode)")
+    print("  f: Enter focus mode on current selection")
+    print("  r: Exit focus mode and return to full tree")
     print("  q/Esc: Close popup")
+    print("")
+    print("Focus mode: Navigate with hjkl for seamless drill-down/up experience")
   end, map_options)
 
   -- Tree popup is now open and interactive
