@@ -443,167 +443,69 @@ function Variables4Plugin:getNodePath(tree, node)
 end
 
 
--- Simple focus mode toggle: switch between full tree and parent subtree
-function Variables4Plugin:toggleFocusMode(tree, popup)
+-- Simplified focus toggle: parent focus on f-key, return to root if no-op
+function Variables4Plugin:toggleSimpleFocus(tree, popup)
   local current_node = tree:get_node()
-  if not current_node then
-    print("No node selected for focus mode")
-    return
-  end
-
-  if self.focus_mode_active then
-    -- Exit focus mode: restore full tree
-    if self.original_root_ids then
-      tree.nodes.root_ids = self.original_root_ids
-      self.original_root_ids = nil
-    end
-    self.focus_mode_active = false
-    
-    -- Update title
-    if popup and popup.border and popup.border.text then
-      popup.border.text.top = " Variables4 Debug Tree "
-      popup:update_layout()
-    end
-    
-    print("Focus mode: OFF (showing full tree)")
-  else
-    -- Enter focus mode: show parent subtree
-    local parent_id = current_node:get_parent_id()
-    if not parent_id then
-      print("Cannot focus - already at root level")
-      return
-    end
-    
-    -- Store original state and switch to parent subtree
-    self.original_root_ids = vim.deepcopy(tree.nodes.root_ids)
-    tree.nodes.root_ids = { parent_id }
-    self.focus_mode_active = true
-    
-    -- Update title with parent info
-    if popup and popup.border and popup.border.text then
-      local parent_node = tree.nodes.by_id[parent_id]
-      if parent_node then
-        local breadcrumb = self:getNodePath(tree, parent_node)
-        popup.border.text.top = " Focus: " .. breadcrumb .. " "
-        popup:update_layout()
-      end
-    end
-    
-    print("Focus mode: ON (showing parent subtree)")
-  end
+  if not current_node then return end
   
-  -- Re-render the tree
-  tree:render()
-end
-
--- Update focus to show parent of current node when navigating in focus mode
-function Variables4Plugin:updateFocusOnNavigation(tree, popup)
   if not self.focus_mode_active then
-    return -- Only update in focus mode
-  end
-  
-  local current_node = tree:get_node()
-  if not current_node then
-    return
-  end
-  
-  -- If we've navigated to a scope node, expand focus hierarchically instead of exiting
-  if current_node.type == "scope" then
-    -- Check if we're already showing all scopes (true root)
-    local showing_all_scopes = false
-    if self.true_root_ids then
-      -- Compare current root_ids with true_root_ids
-      if #tree.nodes.root_ids == #self.true_root_ids then
-        local all_match = true
-        for i, root_id in ipairs(tree.nodes.root_ids) do
-          if root_id ~= self.true_root_ids[i] then
-            all_match = false
-            break
-          end
-        end
-        showing_all_scopes = all_match
-      end
-    end
-    
-    if showing_all_scopes then
-      -- Already showing all scopes - can't expand further
+    -- Enter focus mode: focus on parent of current node
+    local parent_id = current_node:get_parent_id()
+    if parent_id then
+      -- Store original root for restoration
+      self.original_root_ids = vim.deepcopy(tree.nodes.root_ids)
+      
+      -- Focus on parent
+      tree.nodes.root_ids = { parent_id }
+      self.focus_mode_active = true
+      
+      -- Update title
       if popup and popup.border and popup.border.text then
-        popup.border.text.top = " Focus: All Scopes View "
-        popup:update_layout()
-      end
-      print("Focus mode: Already showing all scopes")
-    else
-      -- Check if we're showing original tree (scope subtree)
-      local showing_original_tree = false
-      if self.original_root_ids then
-        if #tree.nodes.root_ids == #self.original_root_ids then
-          local all_match = true
-          for i, root_id in ipairs(tree.nodes.root_ids) do
-            if root_id ~= self.original_root_ids[i] then
-              all_match = false
-              break
-            end
-          end
-          showing_original_tree = all_match
+        local parent_node = tree.nodes.by_id[parent_id]
+        if parent_node then
+          popup.border.text.top = " Focus: " .. (parent_node.text or "unknown") .. " "
+          popup:update_layout()
         end
       end
       
-      if showing_original_tree then
-        -- Expand from scope subtree to all scopes
-        if self.true_root_ids then
-          tree.nodes.root_ids = self.true_root_ids
-        end
-        
-        if popup and popup.border and popup.border.text then
-          popup.border.text.top = " Focus: All Scopes View "
-          popup:update_layout()
-        end
-        
-        tree:render()
-        print("Focus mode: Expanded to all scopes")
-      else
-        -- Expand from focused subtree to scope subtree (original view)
-        if self.original_root_ids then
-          tree.nodes.root_ids = self.original_root_ids
-        end
-        
-        if popup and popup.border and popup.border.text then
-          popup.border.text.top = " Focus: Scope View "
-          popup:update_layout()
-        end
-        
-        tree:render()
-        print("Focus mode: Expanded to scope view")
-      end
+      tree:render()
+      self.logger:debug("Focus enabled on parent: " .. (tree.nodes.by_id[parent_id].text or "unknown"))
+    else
+      -- No parent to focus on
+      self.logger:debug("No parent to focus on - staying at root level")
     end
-    
-    return
-  end
-  
-  local parent_id = current_node:get_parent_id()
-  if not parent_id then
-    -- At root level, can't focus further
-    return
-  end
-  
-  -- Check if we need to update the focus root
-  local current_root = tree.nodes.root_ids[1]
-  if current_root ~= parent_id then
-    -- Update focus to parent of current node
-    tree.nodes.root_ids = { parent_id }
-    
-    -- Update title with new focus
-    if popup and popup.border and popup.border.text then
-      local parent_node = tree.nodes.by_id[parent_id]
-      if parent_node then
-        local breadcrumb = self:getNodePath(tree, parent_node)
-        popup.border.text.top = " Focus: " .. breadcrumb .. " "
+  else
+    -- Already in focus mode - check if we can focus on parent again
+    local parent_id = current_node:get_parent_id()
+    if parent_id and tree.nodes.root_ids[1] ~= parent_id then
+      -- Focus on parent of current focused node
+      tree.nodes.root_ids = { parent_id }
+      
+      -- Update title
+      if popup and popup.border and popup.border.text then
+        local parent_node = tree.nodes.by_id[parent_id]
+        if parent_node then
+          popup.border.text.top = " Focus: " .. (parent_node.text or "unknown") .. " "
+          popup:update_layout()
+        end
+      end
+      
+      tree:render()
+      self.logger:debug("Focus changed to parent: " .. (tree.nodes.by_id[parent_id].text or "unknown"))
+    else
+      -- No-op case: return to root
+      tree.nodes.root_ids = self.original_root_ids or self.true_root_ids
+      self.focus_mode_active = false
+      
+      -- Update title
+      if popup and popup.border and popup.border.text then
+        popup.border.text.top = " Variables4 Debug Tree "
         popup:update_layout()
       end
+      
+      tree:render()
+      self.logger:debug("Focus disabled - returned to root")
     end
-    
-    -- Re-render the tree
-    tree:render()
   end
 end
 
@@ -668,25 +570,77 @@ function Variables4Plugin:getPreviousVisibleNode(tree, current_node)
   return nil -- Already at first node
 end
 
--- Helper to set cursor to a specific node using vim API
+-- Helper to set cursor to a specific node using vim API with smart column positioning
 function Variables4Plugin:setCursorToNode(tree, node_id)
+  -- Smart but simple cursor positioning based on the line content
   local node, linenr_start, linenr_end = tree:get_node(node_id)
   if node and linenr_start then
     local winid = vim.api.nvim_get_current_win()
-    vim.api.nvim_win_set_cursor(winid, { linenr_start, 0 })
+    
+    -- Get the actual line content to find where the name starts
+    local line_content = vim.api.nvim_buf_get_lines(0, linenr_start - 1, linenr_start, false)[1] or ""
+    local name_start_col = self:findNameStartColumn(line_content)
+    
+    vim.api.nvim_win_set_cursor(winid, { linenr_start, name_start_col })
+    self.logger:debug(string.format("Set cursor to line %d, column %d (name start)", linenr_start, name_start_col))
+  else
+    -- Fallback: use column 4 as default
+    local current_line = vim.api.nvim_win_get_cursor(vim.api.nvim_get_current_win())[1]
+    vim.api.nvim_win_set_cursor(vim.api.nvim_get_current_win(), { current_line, 4 })
+    self.logger:debug("Node lookup failed, set cursor to column 4 on current line")
   end
 end
+
+-- Find where the actual name starts in a tree line
+function Variables4Plugin:findNameStartColumn(line_content)
+  -- Simple and effective approach: look for the first letter/word after icons
+  -- Based on typical lines like: "│▶ 📁  Local: testVariables"
+  
+  -- Strategy: Find where text starts after all the tree decorations
+  -- Skip tree chars (│╰─), arrows (▶▼), emojis, and spaces
+  local pos = 0
+  local len = #line_content
+  
+  -- Skip initial tree characters and arrows
+  while pos < len do
+    local char = line_content:sub(pos + 1, pos + 1)
+    local byte = string.byte(char)
+    
+    -- Skip known tree characters: │ ╰ ─ ▶ ▼
+    if char == "│" or char == "╰" or char == "─" or char == "▶" or char == "▼" or char == " " then
+      pos = pos + 1
+    -- Skip UTF-8 emoji characters (usually have high byte values)
+    elseif byte and byte > 127 then
+      pos = pos + 1
+    -- Found a regular character - this should be the start of the name
+    elseif char:match("[%w_]") then
+      return pos  -- Return 0-based position for vim cursor
+    else
+      pos = pos + 1
+    end
+  end
+  
+  -- Fallback: if we can't find a good position, use a reasonable default
+  return 6  -- Approximately where names usually start
+end
+
+-- Simple cursor positioning: just put cursor at column 4 for most items
+-- This covers the common case of "▶ 📁  Name" where name starts at column 4
 
 -- Navigate to the first child of current node (l key behavior)
 function Variables4Plugin:navigateToFirstChild(tree, popup)
   local current_node = tree:get_node()
   if not current_node then return end
 
+  -- Log the drill-down attempt for debugging cursor behavior
+  self.logger:debug("L-key drill-down from: " .. (current_node.text or "unknown"))
+
   -- Check if this is a lazy variable that needs resolution
   if current_node._variable and current_node._variable.ref and current_node._variable.ref.presentationHint then
     local hint = current_node._variable.ref.presentationHint
     if hint.lazy and not current_node._lazy_resolved then
       -- This is an unresolved lazy variable - resolve it
+      self.logger:debug("Resolving lazy variable before drill-down")
       self:resolveLazyVariable(tree, current_node, popup)
       return
     end
@@ -696,35 +650,44 @@ function Variables4Plugin:navigateToFirstChild(tree, popup)
   if not current_node:is_expanded() and current_node.expandable then
     if not current_node._children_loaded then
       -- Async expansion - set up callback to move to first child after loading
+      self.logger:debug("Async expansion + drill-down")
       self:ExpandNodeWithCallback(tree, current_node, popup, function()
         self:moveToFirstChild(tree, current_node)
-        -- Update focus after navigation
-        self:updateFocusOnNavigation(tree, popup)
+        -- No automatic focus updates - focus is manual only
       end)
       return
     else
       -- Sync expansion - expand and immediately move to first child
+      self.logger:debug("Sync expansion + drill-down")
       current_node:expand()
       tree:render()
       self:moveToFirstChild(tree, current_node)
-      -- Update focus after navigation
-      self:updateFocusOnNavigation(tree, popup)
+      -- No automatic focus updates - focus is manual only
     end
   elseif current_node:is_expanded() and current_node:has_children() then
     -- Already expanded - just move to first child
+    self.logger:debug("Node already expanded, drilling to first child")
     self:moveToFirstChild(tree, current_node)
-    -- Update focus after navigation
-    self:updateFocusOnNavigation(tree, popup)
+    -- No automatic focus updates - focus is manual only
+  else
+    -- Node is not expandable or has no children
+    self.logger:debug("Node not expandable or has no children - staying in place")
   end
 end
 
--- Helper to move cursor to first child of a node
+-- Helper to move cursor to first child of a node with drill-down behavior
 function Variables4Plugin:moveToFirstChild(tree, node)
   if node:is_expanded() and node:has_children() then
     local child_ids = node:get_child_ids()
     if child_ids and #child_ids > 0 then
       local first_child_id = child_ids[1]
       self:setCursorToNode(tree, first_child_id)
+      
+      -- Log the drill-down action for better user feedback
+      local first_child = tree.nodes.by_id[first_child_id]
+      if first_child then
+        self.logger:debug("Drilled down to: " .. (first_child.text or "unknown"))
+      end
     end
   end
 end
@@ -809,43 +772,51 @@ function Variables4Plugin:collapseAllChildren(tree, node)
 end
 
 -- Navigate to parent of current node (h key behavior)
+-- Enhanced to jump to parent WHILE collapsing children for fluid navigation
 function Variables4Plugin:navigateToParent(tree, popup)
   local current_node = tree:get_node()
   if not current_node then return end
 
   local parent_id = current_node:get_parent_id()
   if parent_id then
-    -- Always collapse current node first when navigating up
+    -- ENHANCED BEHAVIOR: Always move to parent AND collapse current node + children
+    -- This creates fluid "jump up while collapsing" behavior
+    
+    -- First, collapse current node if it's expanded
     if current_node:is_expanded() then
       current_node:collapse()
-      tree:render()
-      -- Update focus after collapse for consistency
-      self:updateFocusOnNavigation(tree, popup)
-    else
-      -- Current node is collapsed, move to parent node
-      -- But first, collapse all children of the parent to maintain clean tree state
-      local parent_node = tree.nodes.by_id[parent_id]
-      if parent_node then
-        self:collapseAllChildren(tree, parent_node)
-      end
-      
-      -- Move to parent node
-      self:setCursorToNode(tree, parent_id)
-      -- Update focus after navigation
-      self:updateFocusOnNavigation(tree, popup)
+      self.logger:debug("H-key: Collapsed current node: " .. (current_node.text or "unknown"))
     end
+    
+    -- Also collapse all children recursively for clean state
+    self:collapseAllChildren(tree, current_node)
+    
+    -- Get parent node and collapse its other children too (clean tree management)
+    local parent_node = tree.nodes.by_id[parent_id]
+    if parent_node then
+      self:collapseAllChildren(tree, parent_node)
+      self.logger:debug("H-key: Jumping to parent: " .. (parent_node.text or "unknown"))
+    end
+    
+    -- Jump to parent node (this is the key enhancement!)
+    self:setCursorToNode(tree, parent_id)
+    
+    -- Re-render to show all collapse changes
+    tree:render()
+    
+    -- No automatic focus updates - focus is manual only
+    
   else
     -- No parent - this is a scope or root level node
     -- Collapse the scope node if it's expanded
     if current_node:is_expanded() then
       current_node:collapse()
       tree:render()
-      -- Update focus after collapse for consistency
-      self:updateFocusOnNavigation(tree, popup)
-      print("Collapsed scope: " .. (current_node.text or "unknown"))
+      -- No automatic focus updates - focus is manual only
+      self.logger:debug("H-key: Collapsed scope: " .. (current_node.text or "unknown"))
     else
       -- Already collapsed scope, can't go higher
-      print("Already at collapsed scope level")
+      self.logger:debug("H-key: Already at collapsed scope level")
     end
   end
 end
@@ -1007,17 +978,15 @@ function Variables4Plugin:resolveLazyVariable(tree, node, popup)
       if node.expandable and not node._children_loaded then
         self:ExpandNodeWithCallback(tree, node, popup, function()
           self:moveToFirstChild(tree, node)
-          -- Update focus after moving to first child
-          self:updateFocusOnNavigation(tree, popup)
+          -- No automatic focus updates - focus is manual only
         end)
       elseif node.expandable and node:has_children() then
         -- If already has children, just move to first child
         self:moveToFirstChild(tree, node)
-        -- Update focus after moving to first child  
-        self:updateFocusOnNavigation(tree, popup)
+        -- No automatic focus updates - focus is manual only
       else
-        -- Variable resolved but not expandable, just update focus for current position
-        self:updateFocusOnNavigation(tree, popup)
+        -- Variable resolved but not expandable - no action needed
+        -- No automatic focus updates - focus is manual only
       end
     else
       self.logger:debug("Failed to resolve lazy variable: " .. variable_name)
@@ -1096,8 +1065,8 @@ function Variables4Plugin:OpenVariablesTree()
   -- Store the true root IDs (all scopes) for hierarchical focus navigation
   self.true_root_ids = vim.deepcopy(tree.nodes.root_ids)
 
-  -- Create a custom prepare_node function that calculates relative indentation
-  local function prepare_node_with_relative_indent(node)
+  -- Create a custom prepare_node function with beautiful UTF-8 indent indicators
+  local function prepare_node_with_utf8_indent(node)
     local line = NuiLine()
 
     -- Calculate relative indentation for focus mode
@@ -1112,7 +1081,17 @@ function Variables4Plugin:OpenVariablesTree()
     
     -- Use relative depth so focused subtrees start at left edge
     local relative_depth = math.max(0, node:get_depth() - min_depth)
-    line:append(string.rep("  ", relative_depth))
+    
+    -- Add beautiful UTF-8 rounded indent indicators
+    for i = 1, relative_depth do
+      if i == relative_depth then
+        -- Last level - use rounded corner indicator
+        line:append("╰─ ", "Comment")
+      else
+        -- Intermediate levels - use vertical line
+        line:append("│  ", "Comment") 
+      end
+    end
 
     -- Add expand/collapse indicator with subtle highlight
     if node:has_children() or node.expandable then
@@ -1163,10 +1142,17 @@ function Variables4Plugin:OpenVariablesTree()
   end
 
   -- Override the tree's prepare_node function
-  tree._.prepare_node = prepare_node_with_relative_indent
+  tree._.prepare_node = prepare_node_with_utf8_indent
 
   -- Render the tree
   tree:render()
+
+  -- Set initial cursor position to first character of first scope name  
+  local winid = vim.api.nvim_get_current_win()
+  local line_content = vim.api.nvim_buf_get_lines(0, 0, 1, false)[1] or ""
+  local name_start_col = self:findNameStartColumn(line_content)
+  vim.api.nvim_win_set_cursor(winid, { 1, name_start_col })
+  self.logger:debug(string.format("Set initial cursor to line 1, column %d (scope name start)", name_start_col))
 
   -- Set up keymaps for tree interaction
   local map_options = { noremap = true, silent = true }
@@ -1197,9 +1183,9 @@ function Variables4Plugin:OpenVariablesTree()
     popup:unmount()
   end, map_options)
 
-  -- Focus mode toggle
+  -- Simplified focus mode toggle
   popup:map("n", "f", function()
-    self:toggleFocusMode(tree, popup)
+    self:toggleSimpleFocus(tree, popup)
   end, map_options)
 
   -- Show help
@@ -1207,18 +1193,19 @@ function Variables4Plugin:OpenVariablesTree()
     print("Variables4 Tree Controls:")
     print("Navigation:")
     print("  j/k: Linear navigation through visible nodes")
-    print("  h/l: Tree traversal (collapse/expand with focus updates)")
+    print("  h/l: Tree traversal (jump to parent/drill into children)")
     print("")
     print("Tree Operations:")  
-    print("  h: Collapse node or move to parent (updates focus)")
-    print("  l: Expand node and drill-down (resolves lazy, updates focus)")
-    print("  f: Toggle focus mode (show parent subtree)")
+    print("  h: Jump to parent while collapsing children")
+    print("  l: Drill down to first child (resolves lazy variables)")
+    print("  f: Simple focus toggle (parent/root)")
     print("  q/Esc: Close popup")
     print("")
-    print("Focus mode: Hierarchical tree navigation without mode exits")
-    print("           h-key: Expand focus (subtree → scope → all scopes)")
-    print("           l-key: Focus deeper into current selection")
-    print("           j/k: Linear browsing within current focus level")
+    print("Focus mode: Simple parent focus")
+    print("           First f: Focus on parent of current node")
+    print("           Second f: Focus on parent of focused node") 
+    print("           No-op f: Return to root view")
+    print("Beautiful UTF-8 tree indicators: ╰─ and │")
   end, map_options)
 
   -- Tree popup is now open and interactive
