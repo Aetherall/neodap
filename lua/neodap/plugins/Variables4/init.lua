@@ -715,17 +715,37 @@ function Variables4Plugin:ExpandNodeWithCallback(tree, node, popup, callback)
     local children = data_object:variables()
 
     if children and #children > 0 then
-      -- Create child nodes and add them to the tree
+      -- Check if node already has children to prevent duplication
+      local existing_child_ids = node:has_children() and node:get_child_ids() or {}
+      local existing_child_names = {}
+      
+      -- Build set of existing child names to detect duplicates
+      for _, child_id in ipairs(existing_child_ids) do
+        local existing_child = tree.nodes.by_id[child_id]
+        if existing_child and existing_child._variable and existing_child._variable.ref then
+          existing_child_names[existing_child._variable.ref.name] = true
+        end
+      end
+      
+      -- Create child nodes and add them to the tree, skipping duplicates
+      local new_children_added = 0
       for _, child in ipairs(children) do
         local variable_instance = self:ensureVariableWrapper(child, data_object, node)
-        local child_node = variable_instance:asNode()
-        child_node._variable = variable_instance
-        tree:add_node(child_node, node:get_id())
+        
+        -- Skip if this child already exists (prevents self-evaluation duplication)
+        if not existing_child_names[variable_instance.ref.name] then
+          local child_node = variable_instance:asNode()
+          child_node._variable = variable_instance
+          tree:add_node(child_node, node:get_id())
+          new_children_added = new_children_added + 1
+        else
+          self.logger:debug("Skipping duplicate child: " .. variable_instance.ref.name)
+        end
       end
 
       node._children_loaded = true
 
-      self.logger:debug("Loaded " .. #children .. " children for: " .. (node.text or "unknown"))
+      self.logger:debug("Loaded " .. new_children_added .. " new children (skipped " .. (#children - new_children_added) .. " duplicates) for: " .. (node.text or "unknown"))
 
       -- Expand the node now that children are loaded
       node:expand()
@@ -835,6 +855,32 @@ function Variables4Plugin:navigateDown(tree, popup)
   if next_node_id then
     self:setCursorToNode(tree, next_node_id)
     -- j/k are linear navigation only - no auto-drill behavior
+  else
+    -- Special case: if we're in focus mode and at the bottom of the focused subtree,
+    -- navigate to the next sibling of the focused root
+    if self.focus_mode_active and tree.nodes.root_ids[1] then
+      local focused_root = tree.nodes.by_id[tree.nodes.root_ids[1]]
+      if focused_root then
+        local parent_id = focused_root:get_parent_id()
+        if parent_id then
+          local parent_node = tree.nodes.by_id[parent_id]
+          if parent_node and parent_node:has_children() then
+            local sibling_ids = parent_node:get_child_ids()
+            local focused_root_id = tree.nodes.root_ids[1]
+            
+            -- Find the focused root in siblings and get next sibling
+            for i, sibling_id in ipairs(sibling_ids) do
+              if sibling_id == focused_root_id and i < #sibling_ids then
+                local next_sibling_id = sibling_ids[i + 1]
+                self:setCursorToNode(tree, next_sibling_id)
+                self.logger:debug("J-key in focus mode: Navigated to next sibling outside focus")
+                return
+              end
+            end
+          end
+        end
+      end
+    end
   end
 end
 
@@ -848,6 +894,22 @@ function Variables4Plugin:navigateUp(tree, popup)
   if prev_node_id then
     self:setCursorToNode(tree, prev_node_id)
     -- j/k are linear navigation only - no auto-drill behavior
+  else
+    -- Special case: if we're in focus mode and at the top of the focused subtree,
+    -- navigate to the parent node even if it's outside the current focus
+    if self.focus_mode_active then
+      local current_id = current_node:get_id()
+      -- Check if current node is the focused root
+      if tree.nodes.root_ids[1] == current_id then
+        -- Get parent of the focused root
+        local parent_id = current_node:get_parent_id()
+        if parent_id then
+          -- Navigate to parent outside of focused view
+          self:setCursorToNode(tree, parent_id)
+          self.logger:debug("K-key in focus mode: Navigated to parent outside focus")
+        end
+      end
+    end
   end
 end
 
@@ -1193,6 +1255,7 @@ function Variables4Plugin:OpenVariablesTree()
     print("Variables4 Tree Controls:")
     print("Navigation:")
     print("  j/k: Linear navigation through visible nodes")
+    print("       In focus mode: can navigate outside focused subtree")
     print("  h/l: Tree traversal (jump to parent/drill into children)")
     print("")
     print("Tree Operations:")  
@@ -1205,6 +1268,8 @@ function Variables4Plugin:OpenVariablesTree()
     print("           First f: Focus on parent of current node")
     print("           Second f: Focus on parent of focused node") 
     print("           No-op f: Return to root view")
+    print("           j/k at boundaries: Navigate to nodes outside focus")
+    print("")
     print("Beautiful UTF-8 tree indicators: ╰─ and │")
   end, map_options)
 
