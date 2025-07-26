@@ -504,62 +504,6 @@ function Variables4Plugin:adjustViewportForNode(tree, target_node_id)
   return true
 end
 
--- Navigation Intent: The semantic meaning behind a navigation action
-local NavigationIntent = {
-  LINEAR_FORWARD = "linear_forward",       -- j key: traverse down through visible nodes
-  LINEAR_BACKWARD = "linear_backward",     -- k key: traverse up through visible nodes
-  HIERARCHICAL_UP = "hierarchical_up",     -- h key: jump to parent level
-  HIERARCHICAL_DOWN = "hierarchical_down", -- l key: drill into children
-}
-
--- Navigation Target Resolution: Crystallized strategies using unified neighbor method
-local NavigationTargetResolver = {
-  [NavigationIntent.LINEAR_FORWARD] = function(self, tree, current_node)
-    return self:getVisibleNodeNeighbor(tree, current_node, "next") or self:findNextLogicalSibling(tree, current_node),
-        false
-  end,
-
-  [NavigationIntent.LINEAR_BACKWARD] = function(self, tree, current_node)
-    return self:getVisibleNodeNeighbor(tree, current_node, "previous") or current_node:get_parent_id(), false
-  end,
-
-  [NavigationIntent.HIERARCHICAL_UP] = function(self, tree, current_node)
-    return current_node:get_parent_id() or self:getViewportParent(tree), true
-  end,
-
-  [NavigationIntent.HIERARCHICAL_DOWN] = function(self, tree, current_node)
-    return nil, nil -- Handled by NodeStateMachine
-  end,
-}
--- Tree Operation Transaction: Crystallized atomic pattern
-local TreeTransaction = {
-  execute = function(self, tree, popup, operations)
-    -- Ensure target is visible
-    if operations.target_node_id and not self:isNodeVisible(tree, operations.target_node_id) then
-      self:adjustViewportForNode(tree, operations.target_node_id)
-    end
-
-    -- Apply collapse if requested
-    if operations.collapse_target and operations.target_node_id then
-      local target_node = tree.nodes.by_id[operations.target_node_id]
-      if target_node and target_node:is_expanded() then
-        target_node:collapse()
-        self:collapseAllChildren(tree, target_node)
-      end
-    end
-
-    -- Render and update UI
-    tree:render()
-    self:updatePopupTitle(tree, popup)
-
-    -- Position cursor
-    if operations.target_node_id then
-      self:setCursorToNode(tree, operations.target_node_id)
-    end
-
-    return true
-  end
-}
 -- ========================================
 -- OPERATION CONTEXT (Use-Case Optimization)
 -- ========================================
@@ -576,96 +520,61 @@ function TreeOperationContext.new(plugin, tree, popup)
   }, TreeOperationContext)
 end
 
--- Execute any tree operation with proper context
-function TreeOperationContext:execute(operation)
-  return TreeTransaction.execute(self.plugin, self.tree, self.popup, operation)
+-- Simplified navigation to target node
+function TreeOperationContext:navigateToNode(target_node_id, should_collapse)
+  if not target_node_id then return false end
+  
+  -- Ensure target is visible
+  if not self.plugin:isNodeVisible(self.tree, target_node_id) then
+    self.plugin:adjustViewportForNode(self.tree, target_node_id)
+  end
+
+  -- Apply collapse if requested
+  if should_collapse then
+    local target_node = self.tree.nodes.by_id[target_node_id]
+    if target_node and target_node:is_expanded() then
+      target_node:collapse()
+      self.plugin:collapseAllChildren(self.tree, target_node)
+    end
+  end
+
+  -- Render and position cursor
+  self.tree:render()
+  self.plugin:updatePopupTitle(self.tree, self.popup)
+  self.plugin:setCursorToNode(self.tree, target_node_id)
+  return true
 end
 
--- Node State Machine: Defines the lifecycle and valid transitions of tree nodes
-local NodeStateMachine = {
-  -- Determine current state of a node
-  getState = function(node)
-    if node._variable and node._variable.ref and node._variable.ref.presentationHint then
-      local hint = node._variable.ref.presentationHint
-      if hint.lazy and not node._lazy_resolved then
-        return "lazy_unresolved"
-      end
-    end
-
-    if not node.expandable then
-      return "leaf"
-    elseif not node._children_loaded then
-      return "expandable_unloaded"
-    elseif not node:is_expanded() then
-      return "expandable_collapsed"
-    else
-      return "expanded"
-    end
-  end,
-
-  -- Define valid transitions and actions for each state
-  transitions = {
-    lazy_unresolved = function(self, tree, popup, node)
-      self:resolveLazyVariable(tree, node, popup)
-    end,
-
-    expandable_unloaded = function(self, tree, popup, node)
-      self:ExpandNodeWithCallback(tree, node, popup, function()
-        self:moveToFirstChild(tree, node)
-      end)
-    end,
-
-    expandable_collapsed = function(self, tree, popup, node)
-      node:expand()
-      tree:render()
-      self:moveToFirstChild(tree, node)
-    end,
-
-    expanded = function(self, tree, popup, node)
-      self:moveToFirstChild(tree, node)
-    end,
-
-    leaf = function(self, tree, popup, node)
-      -- No action for leaf nodes
-    end,
-  }
-}
 
 -- Get current node with context
 function TreeOperationContext:getCurrentNode()
   return self.tree:get_node()
 end
 
--- Navigate using context
-function TreeOperationContext:navigate(intent)
-  local current_node = self:getCurrentNode()
-  if not current_node then return end
 
-  -- Resolve target using strategy
-  if intent == NavigationIntent.HIERARCHICAL_DOWN then
-    return self:drillIntoNode(current_node)
-  end
-
-  local resolver = NavigationTargetResolver[intent]
-  if resolver then
-    local target, should_collapse = resolver(self.plugin, self.tree, current_node)
-    if target then
-      return self:execute({
-        target_node_id = target,
-        collapse_target = should_collapse,
-      })
+-- Simplified node expansion logic
+function TreeOperationContext:drillIntoNode(node)
+  -- Check for lazy variables first
+  if node._variable and node._variable.ref and node._variable.ref.presentationHint then
+    local hint = node._variable.ref.presentationHint
+    if hint.lazy and not node._lazy_resolved then
+      return self.plugin:resolveLazyVariable(self.tree, node, self.popup)
     end
   end
-end
 
--- Drill into node using context
-function TreeOperationContext:drillIntoNode(node)
-  local state = NodeStateMachine.getState(node)
-  local transition = NodeStateMachine.transitions[state]
-
-  if transition then
-    return transition(self.plugin, self.tree, self.popup, node)
+  -- Handle expandable nodes
+  if node.expandable then
+    if not node._children_loaded then
+      return self.plugin:ExpandNodeAndNavigate(self.tree, node, self.popup)
+    elseif not node:is_expanded() then
+      node:expand()
+      self.tree:render()
+      self.plugin:moveToFirstChild(self.tree, node)
+    else
+      self.plugin:moveToFirstChild(self.tree, node)
+    end
   end
+  -- Leaf nodes: no action
 end
 
 -- Use-Case Focused Operations: Direct expression of user intentions
@@ -677,12 +586,29 @@ function TreeOperationContext:expandVariableToSeeContents()
 end
 
 function TreeOperationContext:navigateToSibling(direction)
-  local intent = direction == "next" and NavigationIntent.LINEAR_FORWARD or NavigationIntent.LINEAR_BACKWARD
-  return self:navigate(intent)
+  local current_node = self:getCurrentNode()
+  if not current_node then return end
+  
+  local target
+  if direction == "next" then
+    target = self.plugin:getVisibleNodeNeighbor(self.tree, current_node, "next") or self.plugin:findNextLogicalSibling(self.tree, current_node)
+  else
+    target = self.plugin:getVisibleNodeNeighbor(self.tree, current_node, "previous") or current_node:get_parent_id()
+  end
+  
+  if target then
+    return self:navigateToNode(target, false)
+  end
 end
 
 function TreeOperationContext:navigateToParentLevel()
-  return self:navigate(NavigationIntent.HIERARCHICAL_UP)
+  local current_node = self:getCurrentNode()
+  if not current_node then return end
+  
+  local target = current_node:get_parent_id() or self.plugin:getViewportParent(self.tree)
+  if target then
+    return self:navigateToNode(target, true)  -- collapse when going up
+  end
 end
 
 function TreeOperationContext:focusOnCurrentScope()
@@ -749,12 +675,6 @@ function Variables4Plugin:findNextLogicalSibling(tree, current_node)
     node_to_check = parent_node
   end
   return nil
-end
-
--- Drill into a node using operation context
-function Variables4Plugin:drillIntoNode(tree, popup, node)
-  local context = TreeOperationContext.new(self, tree, popup)
-  return context:drillIntoNode(node)
 end
 
 -- Get parent of current viewport for focused view navigation
@@ -851,8 +771,8 @@ function Variables4Plugin:moveToFirstChild(tree, node)
   end
 end
 
--- Refined node expansion with simplified procedure
-function Variables4Plugin:ExpandNodeWithCallback(tree, node, popup, callback)
+-- Simplified node expansion without callback complexity
+function Variables4Plugin:ExpandNodeAndNavigate(tree, node, popup)
   if node._children_loaded then return end
   
   local data_object = node._scope or node._variable
@@ -903,7 +823,7 @@ function Variables4Plugin:ExpandNodeWithCallback(tree, node, popup, callback)
         added_count, #children - added_count, node.text or "unknown"))
       node:expand()
       tree:render()
-      if callback then callback() end
+      self:moveToFirstChild(tree, node)  -- Direct call instead of callback
     else
       self.logger:debug("No new children for: " .. (node.text or "unknown"))
     end
@@ -992,7 +912,7 @@ function Variables4Plugin:resolveLazyVariable(tree, node, popup)
       if node.expandable then
         node._children_loaded = false
         if not node._children_loaded then
-          self:ExpandNodeWithCallback(tree, node, popup, function() self:moveToFirstChild(tree, node) end)
+          self:ExpandNodeAndNavigate(tree, node, popup)
         elseif node:has_children() then
           self:moveToFirstChild(tree, node)
         end
