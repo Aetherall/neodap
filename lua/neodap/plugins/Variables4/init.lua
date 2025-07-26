@@ -477,39 +477,6 @@ function Variables4Plugin:focusOnNode(tree, popup, node_id)
   self:setViewportRoots(tree, popup, new_roots, "focused on " .. (node.text or "unknown"))
 end
 
--- Viewport focus toggle: crystallized zoom logic using setViewportRoots
-function Variables4Plugin:toggleViewportFocus(tree, popup)
-  local current_node = tree:get_node()
-  if not current_node then return end
-
-  local parent_id = current_node:get_parent_id()
-
-  if parent_id then
-    -- Check if already focused at parent level
-    local parent_node = tree.nodes.by_id[parent_id]
-    local parent_children = parent_node and parent_node:has_children() and parent_node:get_child_ids() or {}
-    local already_focused = #parent_children == #tree.nodes.root_ids and
-        vim.deep_equal(parent_children, tree.nodes.root_ids)
-
-    if already_focused then
-      -- Zoom out to grandparent or full view
-      local grandparent_id = parent_node:get_parent_id()
-      if grandparent_id then
-        self:focusOnNode(tree, popup, parent_id)
-      else
-        self:setViewportRoots(tree, popup, self.true_root_ids, "zoomed to full view")
-      end
-    else
-      self:focusOnNode(tree, popup, parent_id)
-    end
-  else
-    -- Root level toggle
-    local showing_single = #tree.nodes.root_ids == 1 and tree.nodes.root_ids[1] == current_node:get_id()
-    local new_roots = showing_single and self.true_root_ids or { current_node:get_id() }
-    self:setViewportRoots(tree, popup, new_roots, showing_single and "expanded to all" or "focused on root")
-  end
-end
-
 -- ========================================
 -- PATH AND VIEWPORT MANAGEMENT
 -- ========================================
@@ -813,12 +780,6 @@ end
 -- ========================================
 
 
-
--- Unified navigation using operation context
-function Variables4Plugin:navigate(tree, popup, intent)
-  local context = TreeOperationContext.new(self, tree, popup)
-  return context:navigate(intent)
-end
 
 -- Find next logical sibling when linear navigation reaches boundary
 function Variables4Plugin:findNextLogicalSibling(tree, current_node)
