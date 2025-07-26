@@ -15,6 +15,7 @@ local NvimAsync = require('neodap.tools.async')
 ---@field logger Logger
 ---@field focus_mode_active boolean
 ---@field original_root_ids? string[]
+---@field true_root_ids? string[]
 local Variables4Plugin = Class()
 
 Variables4Plugin.name = "Variables4"
@@ -506,23 +507,76 @@ function Variables4Plugin:updateFocusOnNavigation(tree, popup)
     return
   end
   
-  -- If we've navigated to a scope node, exit focus mode (show full tree)
+  -- If we've navigated to a scope node, expand focus hierarchically instead of exiting
   if current_node.type == "scope" then
-    -- Exit focus mode: restore full tree
-    if self.original_root_ids then
-      tree.nodes.root_ids = self.original_root_ids
-      self.original_root_ids = nil
+    -- Check if we're already showing all scopes (true root)
+    local showing_all_scopes = false
+    if self.true_root_ids then
+      -- Compare current root_ids with true_root_ids
+      if #tree.nodes.root_ids == #self.true_root_ids then
+        local all_match = true
+        for i, root_id in ipairs(tree.nodes.root_ids) do
+          if root_id ~= self.true_root_ids[i] then
+            all_match = false
+            break
+          end
+        end
+        showing_all_scopes = all_match
+      end
     end
-    self.focus_mode_active = false
     
-    -- Update title
-    if popup and popup.border and popup.border.text then
-      popup.border.text.top = " Variables4 Debug Tree "
-      popup:update_layout()
+    if showing_all_scopes then
+      -- Already showing all scopes - can't expand further
+      if popup and popup.border and popup.border.text then
+        popup.border.text.top = " Focus: All Scopes View "
+        popup:update_layout()
+      end
+      print("Focus mode: Already showing all scopes")
+    else
+      -- Check if we're showing original tree (scope subtree)
+      local showing_original_tree = false
+      if self.original_root_ids then
+        if #tree.nodes.root_ids == #self.original_root_ids then
+          local all_match = true
+          for i, root_id in ipairs(tree.nodes.root_ids) do
+            if root_id ~= self.original_root_ids[i] then
+              all_match = false
+              break
+            end
+          end
+          showing_original_tree = all_match
+        end
+      end
+      
+      if showing_original_tree then
+        -- Expand from scope subtree to all scopes
+        if self.true_root_ids then
+          tree.nodes.root_ids = self.true_root_ids
+        end
+        
+        if popup and popup.border and popup.border.text then
+          popup.border.text.top = " Focus: All Scopes View "
+          popup:update_layout()
+        end
+        
+        tree:render()
+        print("Focus mode: Expanded to all scopes")
+      else
+        -- Expand from focused subtree to scope subtree (original view)
+        if self.original_root_ids then
+          tree.nodes.root_ids = self.original_root_ids
+        end
+        
+        if popup and popup.border and popup.border.text then
+          popup.border.text.top = " Focus: Scope View "
+          popup:update_layout()
+        end
+        
+        tree:render()
+        print("Focus mode: Expanded to scope view")
+      end
     end
     
-    print("Focus mode: OFF (navigated to scope level)")
-    tree:render()
     return
   end
   
@@ -728,6 +782,32 @@ function Variables4Plugin:ExpandNodeWithCallback(tree, node, popup, callback)
   end)
 end
 
+-- Helper to recursively collapse all children of a node
+function Variables4Plugin:collapseAllChildren(tree, node)
+  if not node or not node:has_children() then
+    return
+  end
+  
+  -- Get all child IDs
+  local child_ids = node:get_child_ids()
+  if not child_ids then
+    return
+  end
+  
+  -- Recursively collapse children first (depth-first)
+  for _, child_id in ipairs(child_ids) do
+    local child_node = tree.nodes.by_id[child_id]
+    if child_node then
+      -- Recursively collapse children of this child
+      self:collapseAllChildren(tree, child_node)
+      -- Then collapse this child if it's expanded
+      if child_node:is_expanded() then
+        child_node:collapse()
+      end
+    end
+  end
+end
+
 -- Navigate to parent of current node (h key behavior)
 function Variables4Plugin:navigateToParent(tree, popup)
   local current_node = tree:get_node()
@@ -735,39 +815,47 @@ function Variables4Plugin:navigateToParent(tree, popup)
 
   local parent_id = current_node:get_parent_id()
   if parent_id then
-    -- If current node is expanded, collapse it
+    -- Always collapse current node first when navigating up
     if current_node:is_expanded() then
       current_node:collapse()
       tree:render()
+      -- Update focus after collapse for consistency
+      self:updateFocusOnNavigation(tree, popup)
     else
+      -- Current node is collapsed, move to parent node
+      -- But first, collapse all children of the parent to maintain clean tree state
+      local parent_node = tree.nodes.by_id[parent_id]
+      if parent_node then
+        self:collapseAllChildren(tree, parent_node)
+      end
+      
       -- Move to parent node
       self:setCursorToNode(tree, parent_id)
       -- Update focus after navigation
       self:updateFocusOnNavigation(tree, popup)
     end
-  end
-end
-
--- Helper to check and resolve lazy variables after navigation
-function Variables4Plugin:checkAndResolveLazyAfterNavigation(tree, popup)
-  local current_node = tree:get_node()
-  if not current_node then return end
-  
-  -- Check if this is a lazy variable that needs resolution
-  if current_node._variable and current_node._variable.ref and current_node._variable.ref.presentationHint then
-    local hint = current_node._variable.ref.presentationHint
-    if hint.lazy and not current_node._lazy_resolved then
-      -- This is an unresolved lazy variable - resolve it
-      self:resolveLazyVariable(tree, current_node, popup)
-      return
+  else
+    -- No parent - this is a scope or root level node
+    -- Collapse the scope node if it's expanded
+    if current_node:is_expanded() then
+      current_node:collapse()
+      tree:render()
+      -- Update focus after collapse for consistency
+      self:updateFocusOnNavigation(tree, popup)
+      print("Collapsed scope: " .. (current_node.text or "unknown"))
+    else
+      -- Already collapsed scope, can't go higher
+      print("Already at collapsed scope level")
     end
   end
-  
-  -- Update focus after navigation (only if no lazy resolution happened)
-  self:updateFocusOnNavigation(tree, popup)
 end
 
+-- Note: Removed checkAndResolveLazyAfterNavigation helper
+-- j/k navigation is now pure linear movement without auto-drill behavior
+-- Lazy resolution and focus updates only happen on intentional l/h navigation
+
 -- Navigate down through siblings or into children (j key behavior)
+-- Pure linear navigation - no focus updates, no lazy resolution
 function Variables4Plugin:navigateDown(tree, popup)
   local current_node = tree:get_node()
   if not current_node then return end
@@ -775,12 +863,12 @@ function Variables4Plugin:navigateDown(tree, popup)
   local next_node_id = self:getNextVisibleNode(tree, current_node)
   if next_node_id then
     self:setCursorToNode(tree, next_node_id)
-    -- Check for lazy variables and update focus
-    self:checkAndResolveLazyAfterNavigation(tree, popup)
+    -- j/k are linear navigation only - no auto-drill behavior
   end
 end
 
 -- Navigate up through siblings or to parent level (k key behavior)  
+-- Pure linear navigation - no focus updates, no lazy resolution
 function Variables4Plugin:navigateUp(tree, popup)
   local current_node = tree:get_node()
   if not current_node then return end
@@ -788,8 +876,7 @@ function Variables4Plugin:navigateUp(tree, popup)
   local prev_node_id = self:getPreviousVisibleNode(tree, current_node)
   if prev_node_id then
     self:setCursorToNode(tree, prev_node_id)
-    -- Check for lazy variables and update focus
-    self:checkAndResolveLazyAfterNavigation(tree, popup)
+    -- j/k are linear navigation only - no auto-drill behavior
   end
 end
 
@@ -920,10 +1007,17 @@ function Variables4Plugin:resolveLazyVariable(tree, node, popup)
       if node.expandable and not node._children_loaded then
         self:ExpandNodeWithCallback(tree, node, popup, function()
           self:moveToFirstChild(tree, node)
+          -- Update focus after moving to first child
+          self:updateFocusOnNavigation(tree, popup)
         end)
       elseif node.expandable and node:has_children() then
         -- If already has children, just move to first child
         self:moveToFirstChild(tree, node)
+        -- Update focus after moving to first child  
+        self:updateFocusOnNavigation(tree, popup)
+      else
+        -- Variable resolved but not expandable, just update focus for current position
+        self:updateFocusOnNavigation(tree, popup)
       end
     else
       self.logger:debug("Failed to resolve lazy variable: " .. variable_name)
@@ -998,6 +1092,9 @@ function Variables4Plugin:OpenVariablesTree()
     bufnr = popup.bufnr,
     nodes = tree_nodes,
   })
+
+  -- Store the true root IDs (all scopes) for hierarchical focus navigation
+  self.true_root_ids = vim.deepcopy(tree.nodes.root_ids)
 
   -- Create a custom prepare_node function that calculates relative indentation
   local function prepare_node_with_relative_indent(node)
@@ -1108,15 +1205,20 @@ function Variables4Plugin:OpenVariablesTree()
   -- Show help
   popup:map("n", "?", function()
     print("Variables4 Tree Controls:")
-    print("  h: Collapse node or move to parent")
-    print("  j: Navigate down through visible nodes") 
-    print("  k: Navigate up through visible nodes")
-    print("  l: Expand node and move to first child")
+    print("Navigation:")
+    print("  j/k: Linear navigation through visible nodes")
+    print("  h/l: Tree traversal (collapse/expand with focus updates)")
+    print("")
+    print("Tree Operations:")  
+    print("  h: Collapse node or move to parent (updates focus)")
+    print("  l: Expand node and drill-down (resolves lazy, updates focus)")
     print("  f: Toggle focus mode (show parent subtree)")
     print("  q/Esc: Close popup")
     print("")
-    print("Focus mode: Auto-drills to show parent of current node as you navigate")
-    print("           Press 'f' to toggle focus mode on/off")
+    print("Focus mode: Hierarchical tree navigation without mode exits")
+    print("           h-key: Expand focus (subtree → scope → all scopes)")
+    print("           l-key: Focus deeper into current selection")
+    print("           j/k: Linear browsing within current focus level")
   end, map_options)
 
   -- Tree popup is now open and interactive
