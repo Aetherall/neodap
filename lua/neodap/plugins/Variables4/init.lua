@@ -13,8 +13,6 @@ local NvimAsync = require('neodap.tools.async')
 ---@field api Api
 ---@field current_frame? api.Frame
 ---@field logger Logger
----@field focus_mode_active boolean
----@field original_root_ids? string[]
 ---@field true_root_ids? string[]
 local Variables4Plugin = Class()
 
@@ -37,9 +35,7 @@ end
 function Variables4Plugin:initialize()
   self.logger:info("Initializing Variables4 plugin - asNode() caching strategy")
 
-  -- Initialize focus mode state
-  self.focus_mode_active = false
-  self.original_root_ids = nil -- Store original tree root for toggle
+  -- Initialize viewport state (no longer tracking focus mode as a boolean)
 
   -- Set up event handlers
   self:setupEventHandlers()
@@ -403,16 +399,38 @@ end
 -- ========================================
 
 
--- Get a simple node path string
-function Variables4Plugin:getNodePath(tree, node)
-  if not node then
-    return ""
+-- Get a display string for the current viewport path
+function Variables4Plugin:getViewportPathString(tree)
+  -- If showing all roots, no path
+  if tree.nodes.root_ids and self.true_root_ids then
+    local showing_all_roots = true
+    if #tree.nodes.root_ids == #self.true_root_ids then
+      for i, id in ipairs(tree.nodes.root_ids) do
+        if id ~= self.true_root_ids[i] then
+          showing_all_roots = false
+          break
+        end
+      end
+    else
+      showing_all_roots = false
+    end
+    
+    if showing_all_roots then
+      return nil  -- No path, showing root level
+    end
   end
-
+  
+  -- Get the first root node to determine the viewport level
+  local first_root_id = tree.nodes.root_ids and tree.nodes.root_ids[1]
+  if not first_root_id then return nil end
+  
+  local first_root = tree.nodes.by_id[first_root_id]
+  if not first_root then return nil end
+  
+  -- Build path from true root to current viewport
   local path_parts = {}
-  local current = node
-
-  -- Build path by walking up the tree
+  local current = first_root
+  
   while current do
     -- Extract simple name from node text
     local name = "?"
@@ -428,9 +446,9 @@ function Variables4Plugin:getNodePath(tree, node)
         name = current.text:match("📁%s*(.+)") or current.text
       end
     end
-
+    
     table.insert(path_parts, 1, name)
-
+    
     -- Move to parent
     local parent_id = current:get_parent_id()
     if not parent_id then
@@ -438,77 +456,192 @@ function Variables4Plugin:getNodePath(tree, node)
     end
     current = tree.nodes.by_id[parent_id]
   end
-
-  return table.concat(path_parts, " → ")
+  
+  -- Remove the last element (which is the current viewport level)
+  table.remove(path_parts)
+  
+  if #path_parts > 0 then
+    return table.concat(path_parts, " → ")
+  else
+    return nil
+  end
 end
 
 
--- Simplified focus toggle: parent focus on f-key, return to root if no-op
-function Variables4Plugin:toggleSimpleFocus(tree, popup)
+-- Update popup title to show current viewport path
+function Variables4Plugin:updatePopupTitle(tree, popup)
+  if not popup or not popup.border or not popup.border.text then
+    return
+  end
+  
+  local viewport_path = self:getViewportPathString(tree)
+  if viewport_path then
+    popup.border.text.top = " Variables4: " .. viewport_path .. " "
+  else
+    popup.border.text.top = " Variables4 Debug Tree "
+  end
+  popup:update_layout()
+end
+
+-- Focus on a specific node by setting viewport to show it and its siblings
+function Variables4Plugin:focusOnNode(tree, popup, node_id)
+  local node = tree.nodes.by_id[node_id]
+  if not node then return end
+  
+  local parent_id = node:get_parent_id()
+  if parent_id then
+    -- Focus on this level - show node and its siblings
+    local parent_node = tree.nodes.by_id[parent_id]
+    if parent_node and parent_node:has_children() then
+      tree.nodes.root_ids = parent_node:get_child_ids()
+    else
+      tree.nodes.root_ids = { node_id }
+    end
+  else
+    -- Node is at root level - focus on just this node
+    tree.nodes.root_ids = { node_id }
+  end
+  
+  tree:render()
+  self:updatePopupTitle(tree, popup)
+  self.logger:debug("Focused viewport on: " .. (node.text or "unknown"))
+end
+
+-- Viewport focus toggle: zoom in/out based on current view
+function Variables4Plugin:toggleViewportFocus(tree, popup)
   local current_node = tree:get_node()
   if not current_node then return end
   
-  if not self.focus_mode_active then
-    -- Enter focus mode: focus on parent of current node
-    local parent_id = current_node:get_parent_id()
-    if parent_id then
-      -- Store original root for restoration
-      self.original_root_ids = vim.deepcopy(tree.nodes.root_ids)
-      
-      -- Focus on parent
-      tree.nodes.root_ids = { parent_id }
-      self.focus_mode_active = true
-      
-      -- Update title
-      if popup and popup.border and popup.border.text then
-        local parent_node = tree.nodes.by_id[parent_id]
-        if parent_node then
-          popup.border.text.top = " Focus: " .. (parent_node.text or "unknown") .. " "
-          popup:update_layout()
+  -- Strategy: Focus on parent of current node, or zoom out if can't focus deeper
+  local parent_id = current_node:get_parent_id()
+  
+  if parent_id then
+    -- Check if we're already focused at the parent level
+    local already_focused_here = false
+    if tree.nodes.root_ids then
+      -- Check if parent's children are the current roots
+      local parent_node = tree.nodes.by_id[parent_id]
+      if parent_node and parent_node:has_children() then
+        local parent_children = parent_node:get_child_ids()
+        if #parent_children == #tree.nodes.root_ids then
+          already_focused_here = true
+          for i, child_id in ipairs(parent_children) do
+            if child_id ~= tree.nodes.root_ids[i] then
+              already_focused_here = false
+              break
+            end
+          end
         end
       end
-      
-      tree:render()
-      self.logger:debug("Focus enabled on parent: " .. (tree.nodes.by_id[parent_id].text or "unknown"))
+    end
+    
+    if already_focused_here then
+      -- Already focused at this level, zoom out one level
+      local grandparent_id = tree.nodes.by_id[parent_id]:get_parent_id()
+      if grandparent_id then
+        self:focusOnNode(tree, popup, parent_id)
+      else
+        -- Parent is at root, return to full root view
+        tree.nodes.root_ids = self.true_root_ids
+        tree:render()
+        self:updatePopupTitle(tree, popup)
+      end
     else
-      -- No parent to focus on
-      self.logger:debug("No parent to focus on - staying at root level")
+      -- Focus on parent level
+      self:focusOnNode(tree, popup, parent_id)
     end
   else
-    -- Already in focus mode - check if we can focus on parent again
-    local parent_id = current_node:get_parent_id()
-    if parent_id and tree.nodes.root_ids[1] ~= parent_id then
-      -- Focus on parent of current focused node
-      tree.nodes.root_ids = { parent_id }
-      
-      -- Update title
-      if popup and popup.border and popup.border.text then
-        local parent_node = tree.nodes.by_id[parent_id]
-        if parent_node then
-          popup.border.text.top = " Focus: " .. (parent_node.text or "unknown") .. " "
-          popup:update_layout()
-        end
-      end
-      
+    -- Current node is at root level
+    -- Check if we're showing all roots or focused on this one
+    if #tree.nodes.root_ids == 1 and tree.nodes.root_ids[1] == current_node:get_id() then
+      -- Currently focused on just this root, expand to show all
+      tree.nodes.root_ids = self.true_root_ids
       tree:render()
-      self.logger:debug("Focus changed to parent: " .. (tree.nodes.by_id[parent_id].text or "unknown"))
+      self:updatePopupTitle(tree, popup)
     else
-      -- No-op case: return to root
-      tree.nodes.root_ids = self.original_root_ids or self.true_root_ids
-      self.focus_mode_active = false
-      
-      -- Update title
-      if popup and popup.border and popup.border.text then
-        popup.border.text.top = " Variables4 Debug Tree "
-        popup:update_layout()
-      end
-      
+      -- Focus on just this root node
+      tree.nodes.root_ids = { current_node:get_id() }
       tree:render()
-      self.logger:debug("Focus disabled - returned to root")
+      self:updatePopupTitle(tree, popup)
     end
   end
 end
 
+
+-- ========================================
+-- PATH AND VIEWPORT MANAGEMENT
+-- ========================================
+
+-- Get the full path from root to a node as an array of node IDs
+function Variables4Plugin:getNodePath(tree, node_id)
+  local path = {}
+  local current_id = node_id
+  
+  while current_id do
+    table.insert(path, 1, current_id)  -- Insert at beginning to build path from root
+    local node = tree.nodes.by_id[current_id]
+    if not node then break end
+    current_id = node:get_parent_id()
+  end
+  
+  return path
+end
+
+-- Check if a node is currently visible in the tree
+function Variables4Plugin:isNodeVisible(tree, node_id)
+  local visible_nodes = self:getVisibleNodes(tree)
+  for _, visible_id in ipairs(visible_nodes) do
+    if visible_id == node_id then
+      return true
+    end
+  end
+  return false
+end
+
+-- Adjust viewport to ensure a node is visible by setting appropriate root_ids
+function Variables4Plugin:adjustViewportForNode(tree, target_node_id)
+  -- If node is already visible, no adjustment needed
+  if self:isNodeVisible(tree, target_node_id) then
+    return false  -- No adjustment made
+  end
+  
+  -- Get the path to the target node
+  local path = self:getNodePath(tree, target_node_id)
+  if #path == 0 then return false end
+  
+  -- Find the appropriate level to show: the parent of the target and its siblings
+  local target_node = tree.nodes.by_id[target_node_id]
+  if not target_node then return false end
+  
+  local parent_id = target_node:get_parent_id()
+  if parent_id then
+    -- Set root to show parent and its siblings
+    local grandparent_node = tree.nodes.by_id[parent_id]
+    local grandparent_id = grandparent_node and grandparent_node:get_parent_id()
+    
+    if grandparent_id then
+      -- Show all children of grandparent (parent and its siblings)
+      local grandparent = tree.nodes.by_id[grandparent_id]
+      if grandparent and grandparent:has_children() then
+        tree.nodes.root_ids = grandparent:get_child_ids()
+        self.logger:debug("Viewport adjusted to show parent level and siblings")
+        return true
+      end
+    else
+      -- Parent is at root level, show all root nodes
+      tree.nodes.root_ids = self.true_root_ids or tree.nodes.root_ids
+      self.logger:debug("Viewport adjusted to root level")
+      return true
+    end
+  else
+    -- Target is at root level, ensure all roots are visible
+    tree.nodes.root_ids = self.true_root_ids or tree.nodes.root_ids
+    self.logger:debug("Viewport adjusted to show all roots")
+    return true
+  end
+  
+  return false
+end
 
 -- ========================================
 -- TREE NAVIGATION HELPERS
@@ -792,51 +925,102 @@ function Variables4Plugin:collapseAllChildren(tree, node)
 end
 
 -- Navigate to parent of current node (h key behavior)
--- Enhanced to jump to parent WHILE collapsing children for fluid navigation
+-- Path-aware navigation with automatic viewport adjustment and collapse behavior
 function Variables4Plugin:navigateToParent(tree, popup)
   local current_node = tree:get_node()
   if not current_node then return end
 
   local parent_id = current_node:get_parent_id()
   if parent_id then
-    -- ENHANCED BEHAVIOR: Always move to parent AND collapse current node + children
-    -- This creates fluid "jump up while collapsing" behavior
+    -- ENHANCED BEHAVIOR: Move to parent and collapse THE PARENT (destination)
+    -- This creates predictable navigation - you arrive at a collapsed parent
     
-    -- First, collapse current node if it's expanded
-    if current_node:is_expanded() then
-      current_node:collapse()
-      self.logger:debug("H-key: Collapsed current node: " .. (current_node.text or "unknown"))
-    end
-    
-    -- Also collapse all children recursively for clean state
-    self:collapseAllChildren(tree, current_node)
-    
-    -- Get parent node and collapse its other children too (clean tree management)
+    -- Get parent node and prepare it by collapsing it
     local parent_node = tree.nodes.by_id[parent_id]
     if parent_node then
+      -- Collapse the parent node if it's expanded
+      if parent_node:is_expanded() then
+        parent_node:collapse()
+        self.logger:debug("H-key: Collapsed parent node: " .. (parent_node.text or "unknown"))
+      end
+      
+      -- Also collapse all of parent's children for clean state
       self:collapseAllChildren(tree, parent_node)
       self.logger:debug("H-key: Jumping to parent: " .. (parent_node.text or "unknown"))
     end
     
-    -- Jump to parent node (this is the key enhancement!)
-    self:setCursorToNode(tree, parent_id)
+    -- Check if viewport adjustment is needed (parent not visible)
+    local viewport_adjusted = false
+    if not self:isNodeVisible(tree, parent_id) then
+      -- Adjust viewport to show parent and its siblings
+      if self:adjustViewportForNode(tree, parent_id) then
+        viewport_adjusted = true
+        self.logger:debug("H-key: Adjusted viewport to show parent level")
+      end
+    end
     
-    -- Re-render to show all collapse changes
+    -- Re-render to show all collapse changes and viewport adjustment
     tree:render()
     
-    -- No automatic focus updates - focus is manual only
+    -- Update title if viewport was adjusted
+    if viewport_adjusted then
+      self:updatePopupTitle(tree, popup)
+    end
+    
+    -- Jump to parent node
+    self:setCursorToNode(tree, parent_id)
     
   else
     -- No parent - this is a scope or root level node
-    -- Collapse the scope node if it's expanded
+    -- Special case: if we're in a focused viewport, h should navigate out to parent level
+    if tree.nodes.root_ids and self.true_root_ids then
+      -- Check if we're in a focused view (not showing all roots)
+      local showing_all_roots = true
+      if #tree.nodes.root_ids ~= #self.true_root_ids then
+        showing_all_roots = false
+      else
+        for i, id in ipairs(tree.nodes.root_ids) do
+          if id ~= self.true_root_ids[i] then
+            showing_all_roots = false
+            break
+          end
+        end
+      end
+      
+      if not showing_all_roots then
+        -- We're in a focused view - find parent of first root
+        local first_root = tree.nodes.by_id[tree.nodes.root_ids[1]]
+        if first_root then
+          local root_parent_id = first_root:get_parent_id()
+          if root_parent_id then
+            -- Collapse current node first
+            if current_node:is_expanded() then
+              current_node:collapse()
+            end
+            
+            -- Adjust viewport to show parent level
+            if self:adjustViewportForNode(tree, root_parent_id) then
+              tree:render()
+              self:updatePopupTitle(tree, popup)
+            end
+            
+            -- Navigate to the parent
+            self:setCursorToNode(tree, root_parent_id)
+            self.logger:debug("H-key: Navigated out of focused view to parent")
+            return
+          end
+        end
+      end
+    end
+    
+    -- Standard behavior: collapse if expanded
     if current_node:is_expanded() then
       current_node:collapse()
       tree:render()
-      -- No automatic focus updates - focus is manual only
       self.logger:debug("H-key: Collapsed scope: " .. (current_node.text or "unknown"))
     else
-      -- Already collapsed scope, can't go higher
-      self.logger:debug("H-key: Already at collapsed scope level")
+      -- Already collapsed and at root level
+      self.logger:debug("H-key: Already at collapsed root level")
     end
   end
 end
@@ -846,70 +1030,85 @@ end
 -- Lazy resolution and focus updates only happen on intentional l/h navigation
 
 -- Navigate down through siblings or into children (j key behavior)
--- Pure linear navigation - no focus updates, no lazy resolution
+-- Path-aware navigation with automatic viewport adjustment
 function Variables4Plugin:navigateDown(tree, popup)
   local current_node = tree:get_node()
   if not current_node then return end
   
+  -- First try normal visible navigation
   local next_node_id = self:getNextVisibleNode(tree, current_node)
   if next_node_id then
     self:setCursorToNode(tree, next_node_id)
-    -- j/k are linear navigation only - no auto-drill behavior
-  else
-    -- Special case: if we're in focus mode and at the bottom of the focused subtree,
-    -- navigate to the next sibling of the focused root
-    if self.focus_mode_active and tree.nodes.root_ids[1] then
-      local focused_root = tree.nodes.by_id[tree.nodes.root_ids[1]]
-      if focused_root then
-        local parent_id = focused_root:get_parent_id()
-        if parent_id then
-          local parent_node = tree.nodes.by_id[parent_id]
-          if parent_node and parent_node:has_children() then
-            local sibling_ids = parent_node:get_child_ids()
-            local focused_root_id = tree.nodes.root_ids[1]
+    return
+  end
+  
+  -- If at boundary, find the next logical node in the tree structure
+  local current_id = current_node:get_id()
+  
+  -- Strategy: Find next sibling of current node or ancestors
+  local node_to_check = current_node
+  while node_to_check do
+    local parent_id = node_to_check:get_parent_id()
+    if parent_id then
+      local parent_node = tree.nodes.by_id[parent_id]
+      if parent_node and parent_node:has_children() then
+        local sibling_ids = parent_node:get_child_ids()
+        local current_check_id = node_to_check:get_id()
+        
+        -- Find current node in siblings and get next
+        for i, sibling_id in ipairs(sibling_ids) do
+          if sibling_id == current_check_id and i < #sibling_ids then
+            -- Found a next sibling!
+            local next_sibling_id = sibling_ids[i + 1]
             
-            -- Find the focused root in siblings and get next sibling
-            for i, sibling_id in ipairs(sibling_ids) do
-              if sibling_id == focused_root_id and i < #sibling_ids then
-                local next_sibling_id = sibling_ids[i + 1]
-                self:setCursorToNode(tree, next_sibling_id)
-                self.logger:debug("J-key in focus mode: Navigated to next sibling outside focus")
-                return
-              end
+            -- Adjust viewport if needed
+            if self:adjustViewportForNode(tree, next_sibling_id) then
+              tree:render()
+              self:updatePopupTitle(tree, popup)
             end
+            
+            -- Navigate to the sibling
+            self:setCursorToNode(tree, next_sibling_id)
+            self.logger:debug("J-key: Navigated to next sibling with viewport adjustment")
+            return
           end
         end
       end
+      
+      -- No next sibling at this level, check parent's level
+      node_to_check = parent_node
+    else
+      -- Reached root level with no next sibling
+      break
     end
   end
 end
 
 -- Navigate up through siblings or to parent level (k key behavior)  
--- Pure linear navigation - no focus updates, no lazy resolution
+-- Path-aware navigation with automatic viewport adjustment
 function Variables4Plugin:navigateUp(tree, popup)
   local current_node = tree:get_node()
   if not current_node then return end
   
+  -- First try normal visible navigation
   local prev_node_id = self:getPreviousVisibleNode(tree, current_node)
   if prev_node_id then
     self:setCursorToNode(tree, prev_node_id)
-    -- j/k are linear navigation only - no auto-drill behavior
-  else
-    -- Special case: if we're in focus mode and at the top of the focused subtree,
-    -- navigate to the parent node even if it's outside the current focus
-    if self.focus_mode_active then
-      local current_id = current_node:get_id()
-      -- Check if current node is the focused root
-      if tree.nodes.root_ids[1] == current_id then
-        -- Get parent of the focused root
-        local parent_id = current_node:get_parent_id()
-        if parent_id then
-          -- Navigate to parent outside of focused view
-          self:setCursorToNode(tree, parent_id)
-          self.logger:debug("K-key in focus mode: Navigated to parent outside focus")
-        end
-      end
+    return
+  end
+  
+  -- If at boundary, navigate to parent node
+  local parent_id = current_node:get_parent_id()
+  if parent_id then
+    -- Adjust viewport if parent is not visible
+    if self:adjustViewportForNode(tree, parent_id) then
+      tree:render()
+      self:updatePopupTitle(tree, popup)
     end
+    
+    -- Navigate to parent
+    self:setCursorToNode(tree, parent_id)
+    self.logger:debug("K-key: Navigated to parent with viewport adjustment")
   end
 end
 
@@ -1245,32 +1444,34 @@ function Variables4Plugin:OpenVariablesTree()
     popup:unmount()
   end, map_options)
 
-  -- Simplified focus mode toggle
+  -- Viewport focus toggle
   popup:map("n", "f", function()
-    self:toggleSimpleFocus(tree, popup)
+    self:toggleViewportFocus(tree, popup)
   end, map_options)
 
   -- Show help
   popup:map("n", "?", function()
     print("Variables4 Tree Controls:")
-    print("Navigation:")
-    print("  j/k: Linear navigation through visible nodes")
-    print("       In focus mode: can navigate outside focused subtree")
-    print("  h/l: Tree traversal (jump to parent/drill into children)")
     print("")
-    print("Tree Operations:")  
-    print("  h: Jump to parent while collapsing children")
-    print("  l: Drill down to first child (resolves lazy variables)")
-    print("  f: Simple focus toggle (parent/root)")
+    print("Navigation (Path-aware with automatic viewport adjustment):")
+    print("  j/k: Navigate down/up through tree")
+    print("       Auto-adjusts viewport when reaching boundaries")
+    print("  h: Jump to parent (collapses parent node)")
+    print("     Also adjusts viewport if parent is outside current view")
+    print("  l: Drill into first child (expands & resolves lazy vars)")
+    print("")
+    print("Viewport Management:")  
+    print("  f: Toggle viewport focus")
+    print("     - Zooms into parent level of current node")
+    print("     - Press again to zoom out")
+    print("     - Title shows current viewport path")
+    print("")
+    print("Other:")
     print("  q/Esc: Close popup")
+    print("  ?: Show this help")
     print("")
-    print("Focus mode: Simple parent focus")
-    print("           First f: Focus on parent of current node")
-    print("           Second f: Focus on parent of focused node") 
-    print("           No-op f: Return to root view")
-    print("           j/k at boundaries: Navigate to nodes outside focus")
-    print("")
-    print("Beautiful UTF-8 tree indicators: ╰─ and │")
+    print("The tree automatically adjusts its viewport as you navigate,")
+    print("ensuring you can always reach any node in the tree.")
   end, map_options)
 
   -- Tree popup is now open and interactive
