@@ -38,7 +38,7 @@ function Scope.instanciate(frame, scope)
     frame = frame,
     --- State
     _variables = nil,
-    _source = scope.source and frame.stack.thread.session:getSourceFor(scope.source),
+    _source = scope.source and frame.session:getSourceFor(scope.source),
     --- DAP
     ref = scope,
     type = scopeType,
@@ -82,9 +82,7 @@ function Scope:variables()
     return self._variables
   end
 
-  local response = self.frame.stack.thread.session.ref.calls:variables({
-    variablesReference = self.ref.variablesReference,
-  }):wait()
+  local response = self.frame.session:Variables(self.ref.variablesReference, self.frame.ref.id)
 
   self._variables = vim.tbl_map(function(variable)
     return Variable.instanciate(self, variable)

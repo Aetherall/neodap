@@ -139,7 +139,7 @@ local function go()
 
   ---@async
   nio.run(function()
-    session:start({
+    session:Start({
       configuration = {
         type = "pwa-node",
         program = vim.fn.getcwd() .. "/spec/fixtures/loop.js",

@@ -6,7 +6,7 @@ local Class = require('neodap.tools.class')
 ---@field indexer Indexer<T> Function to generate index key
 ---@field unique boolean true = single value per key, false = multiple values per key
 
----@class CollectionProps<T>
+---@class CollectionProps<T, K>
 ---@field items? T[] Initial items for the collection
 ---@field indexes table<K, IndexDefinition<T>> Index definitions
 
@@ -15,7 +15,7 @@ local Class = require('neodap.tools.class')
 ---@field _indexes table<K, table<string|number|boolean, T|T[]>> Index name to key->item(s) mapping
 ---@field _indexers table<K, Indexer<T>> Index name to key function mapping
 ---@field _indexDefinitions table<K, IndexDefinition<T>> Index name to definition mapping
----@field new Constructor<CollectionProps<T>>
+---@field new Constructor<CollectionProps<T, K>>
 
 ---For specialized collections, use this pattern:
 ----@class api.BreakpointCollection: Collection<api.Breakpoint>
@@ -23,7 +23,8 @@ local Class = require('neodap.tools.class')
 --- Multi indexes: 'source_key' (use whereBy)
 local Collection = Class()
 
----@param props CollectionProps<T>
+---@generic T, K
+---@param props CollectionProps<T, K>
 ---@return Collection<T, K>
 function Collection.create(props)
   local instance = Collection:new({
@@ -71,7 +72,6 @@ function Collection:_initialize(props)
   -- Build initial indexes
   self:_rebuildAllIndexes()
 end
-
 
 ---@class (partial) Collection<U, K>
 ---@field _buildIndex fun(self: Collection<U, K>, name: string): void
@@ -362,8 +362,9 @@ function Collection:groupBy(key_function)
   end
 end
 
+---@generic T
 ---@class (partial) Collection<U, K>
----@field map fun(self: Collection<U, K>, transform_function: fun(item: U, position?: integer): any): Collection<any, K>
+---@field map fun(self: Collection<U, K>, transform_function: fun(item: U, position?: integer): T): Collection<T, any>
 function Collection:map(transform_function)
   local mapped = self:createEmpty()
   for position, item in ipairs(self.items) do
@@ -394,8 +395,8 @@ function Collection:forEach(callback)
   return self
 end
 
----@class (partial) Collection<U>
----@field toArray fun(self: Collection<U>): U[]
+---@class (partial) Collection<U, K>
+---@field toArray fun(self: Collection<U, K>): U[]
 function Collection:toArray()
   return vim.tbl_map(function(item) return item end, self.items)
 end
@@ -417,8 +418,8 @@ function Collection:isNotEmpty()
   return #self.items > 0
 end
 
----@class (partial) Collection<U>
----@field createEmpty fun(self: Collection<U>): Collection<U>
+---@class (partial) Collection<U, K>
+---@field createEmpty fun(self: Collection<U, K>): Collection<U, K>
 function Collection:createEmpty()
   -- Create a deep copy of index definitions
   local indexes_copy = {}

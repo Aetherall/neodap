@@ -44,7 +44,7 @@ local function prepare()
 
     ---@async
     nio.run(function()
-      session:start({
+      session:Start({
         configuration = {
           type = "pwa-node",
           program = vim.fn.fnamemodify("spec/fixtures/" .. fixture, ":p"),

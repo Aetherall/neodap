@@ -497,7 +497,7 @@ function LaunchJsonSupport:createSessionFromConfig(config_name, manager, workspa
   })
 
   -- Start session
-  session:start({
+  session:Start({
     configuration = self:transformConfiguration(config),
     request = config.request or "launch",
   })

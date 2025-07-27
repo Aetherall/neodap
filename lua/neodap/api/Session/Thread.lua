@@ -122,51 +122,29 @@ function Thread:onResumed(listener, opts)
 end
 
 function Thread:pause()
-  return self.session.ref.calls:pause({
-    threadId = self.id,
-  })
+  return self.session:Pause(self.id)
 end
 
 function Thread:continue()
-  return self.session.ref.calls:continue({
-    threadId = self.id,
-  })
+  return self.session:Continue(self.id)
 end
 
 function Thread:stepIn()
   -- local log = Logger.get("DAP:Thread")
   log:info("Thread", self.id, "initiating stepIn")
-  local args = {
-    threadId = self.id,
-    singleThread = true, -- Prevent other threads from resuming during step
-    granularity = "line" -- Step by line for proper stepping behavior
-  }
-  log:debug("stepIn args:", args)
-  return self.session.ref.calls:stepIn(args)
+  return self.session:StepIn(self.id, nil, true, "line")
 end
 
 function Thread:stepOver()
   -- local log = Logger.get("DAP:Thread")
   log:info("Thread", self.id, "initiating stepOver (next command)")
-  local args = {
-    threadId = self.id,
-    singleThread = true, -- Prevent other threads from resuming during step
-    granularity = "line" -- Step by line for proper stepping behavior
-  }
-  log:debug("stepOver args:", args)
-  return self.session.ref.calls:next(args)
+  return self.session:StepOver(self.id, true, "line")
 end
 
 function Thread:stepOut()
   -- local log = Logger.get("DAP:Thread")
   log:info("Thread", self.id, "initiating stepOut")
-  local args = {
-    threadId = self.id,
-    singleThread = true, -- Prevent other threads from resuming during step
-    granularity = "line" -- Step by line for proper stepping behavior
-  }
-  log:debug("stepOut args:", args)
-  return self.session.ref.calls:stepOut(args)
+  return self.session:StepOut(self.id, true, "line")
 end
 
 ---@return api.Stack?
@@ -181,10 +159,7 @@ function Thread:stack()
 
   -- local log = Logger.get("DAP:Thread")
   log:trace("Thread", self.id, "fetching stack trace")
-  local stack = self.session.ref.calls:stackTrace({
-    threadId = self.id,
-    -- levels = 1,
-  }):wait()
+  local stack = self.session:StackTrace(self.id)
 
   log:debug("Thread", self.id, "stack trace received:", stack)
   self._stack = Stack.instanciate(self, stack, self.hookable)

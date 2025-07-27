@@ -47,7 +47,7 @@ function Breakpoint:setCondition(condition)
     self.condition = condition
     self:emit('ConditionChanged', condition)
     -- Trigger resync for all sessions
-    self.manager:resyncBreakpoint(self)
+    self.manager:ResyncBreakpoint(self)
   end
 end
 
@@ -57,7 +57,7 @@ function Breakpoint:setLogMessage(logMessage)
     self.logMessage = logMessage
     self:emit('LogMessageChanged', logMessage)
     -- Trigger resync for all sessions
-    self.manager:resyncBreakpoint(self)
+    self.manager:ResyncBreakpoint(self)
   end
 end
 

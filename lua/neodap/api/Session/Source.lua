@@ -160,10 +160,7 @@ function Source:_getDapContent()
   log:debug("Source: Requesting DAP content for sourceReference:", self.ref.sourceReference)
   
   local ok, result = pcall(function()
-    return self.session.ref.calls:source({
-      source = self.ref,
-      sourceReference = self.ref.sourceReference
-    }):wait()
+    return self.session:Source(self.ref.sourceReference)
   end)
   
   if not ok then
@@ -185,10 +182,7 @@ end
 function Source:breakpointLocations(opts)
   local line = opts.line or 1
 
-  local result = self.session.ref.calls:breakpointLocations({
-    source = self.ref,
-    line = line,
-  }):wait()
+  local result = self.session:BreakpointLocations(self.ref, line)
 
   if not result or not result.breakpoints then
     return function() return nil end

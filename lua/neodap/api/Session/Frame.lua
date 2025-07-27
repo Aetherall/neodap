@@ -6,6 +6,7 @@ local Location = require("neodap.api.Location")
 
 ---@class api.FrameProps
 ---@field stack api.Stack
+---@field session api.Session
 ---@field ref dap.StackFrame
 
 ---@class api.Frame: api.FrameProps
@@ -19,6 +20,7 @@ local Frame = Class()
 function Frame.instanciate(stack, frame)
   local instance = Frame:new({
     stack = stack,
+    session = stack.thread.session,
     --- DAP
     _scopes = nil,
     _source = frame.source and stack.thread.session:getSourceFor(frame.source),
@@ -49,10 +51,7 @@ function Frame:scopes()
     return self._scopes
   end
 
-  local response = self.stack.thread.session.ref.calls:scopes({
-    frameId = self.ref.id,
-    threadId = self.stack.thread.id,
-  }):wait()
+  local response = self.session:Scopes(self.ref.id)
 
   if not response or not response.scopes then
     return nil
@@ -66,19 +65,13 @@ function Frame:scopes()
 end
 
 function Frame:variables(variablesReference)
-  local response = self.stack.thread.session.ref.calls:variables({
-    variablesReference = variablesReference
-  }):wait()
+  local response = self.session:Variables(variablesReference, self.ref.id)
 
   return response.variables
 end
 
 function Frame:evaluate(expression)
-  local response = self.stack.thread.session.ref.calls:evaluate({
-    expression = expression,
-    frameId = self.ref.id,
-    context = "variables"
-  }):wait()
+  local response = self.session:Evaluate(expression, self.ref.id, "variables")
 
   if not response or not response.result then
     return nil
@@ -114,7 +107,7 @@ function Frame:Jump()
     return
   end
 
-  local bufnr = location:manifests(self.stack.thread.session)
+  local bufnr = location:manifests(self.session)
 
   if not bufnr then
     return
@@ -146,7 +139,7 @@ function Frame:highlight(namespace, hl_group)
     return
   end
 
-  local bufnr = location:manifests(self.stack.thread.session)
+  local bufnr = location:manifests(self.session)
 
   if not bufnr then
     -- If buffer creation/lookup failed, return without highlighting

@@ -6,6 +6,7 @@ local Frames     = require("neodap.api.Session.Frames")
 
 ---@class api.StackProps
 ---@field thread api.Thread
+---@field session api.Session
 ---@field hookable Hookable
 
 ---@class api.Stack: api.StackProps
@@ -20,6 +21,7 @@ local Stack      = Class()
 function Stack.instanciate(thread, stack, parentHookable)
   local instance = Stack:new({
     thread = thread,
+    session = thread.session,
     valid = true,
     frames = Frames.create(),
     totalFrames = stack.totalFrames,
@@ -45,7 +47,7 @@ function Stack:getFrames()
     return self.frames
   end
 
-  local trace = self.thread.session.ref.calls:stackTrace({ threadId = self.thread.id }):wait()
+  local trace = self.session:StackTrace(self.thread.id)
 
   -- Clear and repopulate frames collection
   self.frames:clear()

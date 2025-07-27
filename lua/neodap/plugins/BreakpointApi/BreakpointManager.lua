@@ -62,7 +62,7 @@ function BreakpointManager:addBreakpoint(location, opts)
   for session in self.api:eachSession() do
     local source = session:getSource(location)
     if source then
-      self:queueSourceSync(source, session)
+      self:QueueSourceSync(source, session)
     end
   end
   
@@ -89,7 +89,7 @@ function BreakpointManager:removeBreakpoint(breakpoint)
   for session in self.api:eachSession() do
     local source = session:getSource(identifier)
     if source then
-      self:queueSourceSync(source, session)
+      self:QueueSourceSync(source, session)
     end
   end
   
@@ -111,13 +111,13 @@ function BreakpointManager:toggleBreakpoint(location)
 end
 
 ---@param breakpoint api.Breakpoint
-function BreakpointManager:resyncBreakpoint(breakpoint)
+function BreakpointManager:ResyncBreakpoint(breakpoint)
   -- Queue sync for all sessions that have this source
   local identifier = breakpoint.location.sourceId
   for session in self.api:eachSession() do
     local source = session:getSource(identifier)
     if source then
-      self:queueSourceSync(source, session)
+      self:QueueSourceSync(source, session)
     end
   end
 end
@@ -126,7 +126,7 @@ end
 
 ---@param source api.Source
 ---@param session api.Session
-function BreakpointManager:queueSourceSync(source, session)
+function BreakpointManager:QueueSourceSync(source, session)
   local key = session.id .. ":" .. source.id:toString()
   
   if self.pendingOperations[key] then
@@ -148,14 +148,14 @@ function BreakpointManager:queueSourceSync(source, session)
       return
     end
     
-    self:syncSourceToSession(source, session)
+    self:SyncSourceToSession(source, session)
     self.pendingOperations[key] = nil
   end)
 end
 
 ---@param source api.Source
 ---@param session api.Session
-function BreakpointManager:syncSourceToSession(source, session)
+function BreakpointManager:SyncSourceToSession(source, session)
   local log = Logger.get("Plugin:BreakpointApi")
   log:debug("BreakpointManager:syncSourceToSession - source:", source.id:toString(), "session:", session.id)
   
@@ -199,10 +199,7 @@ function BreakpointManager:syncSourceToSession(source, session)
   local dapSource = source.ref
   
   -- 6. Send to DAP (replaces all breakpoints for source)
-  local result = session.ref.calls:setBreakpoints({
-    source = dapSource,
-    breakpoints = dapBreakpoints
-  }):wait()
+  local result = session:SetBreakpoints(dapSource, dapBreakpoints)
   
   log:trace("DAP returned", #result.breakpoints, "breakpoint responses")
 
@@ -330,7 +327,7 @@ function BreakpointManager:listen()
     -- When source loads, sync existing breakpoints
     session:onSourceLoaded(function(source)
       log:debug("Session", session.id, "- Source loaded:", source.id:toString())
-      self:queueSourceSync(source, session)
+      self:QueueSourceSync(source, session)
     end)
 
     -- Handle DAP breakpoint events (should be rare with source-level sync)
@@ -347,7 +344,7 @@ function BreakpointManager:listen()
 
       local source = session:getSource(location)
       if source then
-        self:queueSourceSync(source, session)
+        self:QueueSourceSync(source, session)
       end
     end)
 

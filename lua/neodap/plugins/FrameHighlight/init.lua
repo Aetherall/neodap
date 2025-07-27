@@ -72,6 +72,7 @@ function FrameHighlight:listen()
 end
 
 -- Collect frame locations and apply highlights directly
+---@param thread api.Thread
 function FrameHighlight:collectFrameLocations(thread)
   self.logger:debug("FrameHighlight: Collecting frame locations for thread", thread.id)
 
@@ -80,24 +81,20 @@ function FrameHighlight:collectFrameLocations(thread)
     return
   end
 
-  local frames = stack:frames()
-  if not frames then
-    return
-  end
+  local frame_data = stack.frames:map(function(frame, index)
+    return {
+      location = frame:location(),
+      frame_index = index, -- Convert to 1-based index
+      frame = frame
+    }
+  end):filter(function(data)
+    return data.location ~= nil
+  end):toArray()
 
-  -- Collect all locations from frames with their indices using Collection
-  local frame_data = Collection:new():create({ items = frames })
-      :map(function(frame, index)
-        return {
-          location = frame:location(),
-          frame_index = index,
-          frame = frame
-        }
-      end)
-      :filter(function(data)
-        return data.location ~= nil
-      end)
-      :toArray()
+  -- local frames = stack:getFrames()
+  -- if not frames then
+  --   return
+  -- end
 
   -- Store frame data for this thread
   self.highlights[thread.id] = frame_data

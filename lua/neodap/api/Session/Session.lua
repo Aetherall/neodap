@@ -398,6 +398,258 @@ end
 --   }
 -- end
 
+-- ==============================================================================
+-- DAP OPERATION FACADE METHODS
+-- These methods provide clean API access to DAP operations, eliminating the need
+-- for direct .ref.calls access and reducing coupling between layers
+-- ==============================================================================
+
+---@param frameId integer
+---@return dap.ScopesResponseBody?
+function Session:Scopes(frameId)
+  if not self.ref or not self.ref.calls then
+    return nil
+  end
+  
+  local success, result = pcall(function()
+    return self.ref.calls:scopes({frameId = frameId}):wait()
+  end)
+  
+  return success and result or nil
+end
+
+---@param variablesReference integer
+---@param frameId? integer
+---@return dap.VariablesResponseBody?
+function Session:Variables(variablesReference, frameId)
+  if not self.ref or not self.ref.calls then
+    return nil
+  end
+  
+  local args = {variablesReference = variablesReference}
+  if frameId then
+    args.frameId = frameId
+  end
+  
+  local success, result = pcall(function()
+    return self.ref.calls:variables(args):wait()
+  end)
+  
+  return success and result or nil
+end
+
+---@param expression string
+---@param frameId? integer
+---@param context? string
+---@return dap.EvaluateResponseBody?
+function Session:Evaluate(expression, frameId, context)
+  if not self.ref or not self.ref.calls then
+    return nil
+  end
+  
+  local args = {
+    expression = expression,
+    context = context or "repl"
+  }
+  if frameId then
+    args.frameId = frameId
+  end
+  
+  local success, result = pcall(function()
+    return self.ref.calls:evaluate(args):wait()
+  end)
+  
+  return success and result or nil
+end
+
+---@param threadId integer
+---@return dap.PauseResponseBody?
+function Session:Pause(threadId)
+  if not self.ref or not self.ref.calls then
+    return nil
+  end
+  
+  local success, result = pcall(function()
+    return self.ref.calls:pause({threadId = threadId}):wait()
+  end)
+  
+  return success and result or nil
+end
+
+---@param threadId integer
+---@return dap.ContinueResponseBody?
+function Session:Continue(threadId)
+  if not self.ref or not self.ref.calls then
+    return nil
+  end
+  
+  local success, result = pcall(function()
+    return self.ref.calls:continue({threadId = threadId}):wait()
+  end)
+  
+  return success and result or nil
+end
+
+---@param threadId integer
+---@param targetId? integer
+---@param singleThread? boolean
+---@param granularity? string
+---@return dap.StepInResponseBody?
+function Session:StepIn(threadId, targetId, singleThread, granularity)
+  if not self.ref or not self.ref.calls then
+    return nil
+  end
+  
+  local args = {threadId = threadId}
+  if targetId then
+    args.targetId = targetId
+  end
+  if singleThread ~= nil then
+    args.singleThread = singleThread
+  end
+  if granularity then
+    args.granularity = granularity
+  end
+  
+  local success, result = pcall(function()
+    return self.ref.calls:stepIn(args):wait()
+  end)
+  
+  return success and result or nil
+end
+
+---@param threadId integer
+---@param singleThread? boolean
+---@param granularity? string
+---@return dap.StepOutResponseBody?
+function Session:StepOut(threadId, singleThread, granularity)
+  if not self.ref or not self.ref.calls then
+    return nil
+  end
+  
+  local args = {threadId = threadId}
+  if singleThread ~= nil then
+    args.singleThread = singleThread
+  end
+  if granularity then
+    args.granularity = granularity
+  end
+  
+  local success, result = pcall(function()
+    return self.ref.calls:stepOut(args):wait()
+  end)
+  
+  return success and result or nil
+end
+
+---@param threadId integer
+---@param singleThread? boolean
+---@param granularity? string
+---@return dap.NextResponseBody?
+function Session:StepOver(threadId, singleThread, granularity)
+  if not self.ref or not self.ref.calls then
+    return nil
+  end
+  
+  local args = {threadId = threadId}
+  if singleThread ~= nil then
+    args.singleThread = singleThread
+  end
+  if granularity then
+    args.granularity = granularity
+  end
+  
+  local success, result = pcall(function()
+    return self.ref.calls:next(args):wait()
+  end)
+  
+  return success and result or nil
+end
+
+---@param threadId integer
+---@return dap.StackTraceResponseBody?
+function Session:StackTrace(threadId, startFrame, levels)
+  if not self.ref or not self.ref.calls then
+    return nil
+  end
+  
+  local args = {threadId = threadId}
+  if startFrame then
+    args.startFrame = startFrame
+  end
+  if levels then
+    args.levels = levels
+  end
+  
+  local success, result = pcall(function()
+    return self.ref.calls:stackTrace(args):wait()
+  end)
+  
+  return success and result or nil
+end
+
+---@param source dap.Source
+---@param breakpoints dap.SourceBreakpoint[]
+---@return dap.SetBreakpointsResponseBody?
+function Session:SetBreakpoints(source, breakpoints)
+  if not self.ref or not self.ref.calls then
+    return nil
+  end
+  
+  local success, result = pcall(function()
+    return self.ref.calls:setBreakpoints({
+      source = source,
+      breakpoints = breakpoints
+    }):wait()
+  end)
+  
+  return success and result or nil
+end
+
+---@param source dap.Source
+---@param line integer
+---@param column? integer
+---@return dap.BreakpointLocationsResponseBody?
+function Session:BreakpointLocations(source, line, column)
+  if not self.ref or not self.ref.calls then
+    return nil
+  end
+  
+  local args = {
+    source = source,
+    line = line or 0
+  }
+  if column then
+    args.column = column
+  end
+  
+  local success, result = pcall(function()
+    return self.ref.calls:breakpointLocations(args):wait()
+  end)
+  
+  return success and result or nil
+end
+
+---@param sourceReference integer
+---@return dap.SourceResponseBody?
+function Session:Source(sourceReference)
+  if not self.ref or not self.ref.calls then
+    return nil
+  end
+  
+  local success, result = pcall(function()
+    return self.ref.calls:source({
+      sourceReference = sourceReference
+    }):wait()
+  end)
+  
+  return success and result or nil
+end
+
+-- ==============================================================================
+-- END DAP OPERATION FACADE METHODS
+-- ==============================================================================
+
 --- Destroys this session and all its child resources
 --- This method ensures complete cleanup of threads, sources and handlers
 function Session:destroy()

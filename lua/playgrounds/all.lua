@@ -133,21 +133,15 @@ local function go()
     })
 
 
-    ---@async
-    local NvimAsync = require("neodap.tools.async")
-    NvimAsync.run(function()
-        print("Starting session...")
-        session:start({
-            configuration = {
-                type = "pwa-node",
-                program = vim.fn.getcwd() .. "/lua/testing/fixtures/loop/loop.js",
-                cwd = vim.fn.getcwd(),
-            },
-            request = "launch",
-        })
-
-        nio.sleep(1000)
-    end)
+    print("Starting session...")
+    session:Start({
+        configuration = {
+            type = "pwa-node",
+            program = vim.fn.getcwd() .. "/lua/testing/fixtures/loop/loop.js",
+            cwd = vim.fn.getcwd(),
+        },
+        request = "launch",
+    })
 end
 
 
