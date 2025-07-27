@@ -11,7 +11,12 @@ function CommonSetups.loadStandardPlugins(api)
     launchJsonSupport = api:getPluginInstance(require('neodap.plugins.LaunchJsonSupport')),
     breakpointApi = api:getPluginInstance(require('neodap.plugins.BreakpointApi')),
     toggleBreakpoint = api:getPluginInstance(require('neodap.plugins.ToggleBreakpoint')),
-    variables4 = api:getPluginInstance(require('neodap.plugins.Variables4'))
+    variables4 = api:getPluginInstance(require('neodap.plugins.Variables4')),
+    -- New buffer-centric plugins
+    variablesBuffer = api:getPluginInstance(require('neodap.plugins.VariablesBuffer')),
+    variablesPopup = api:getPluginInstance(require('neodap.plugins.VariablesPopup')),
+    debugMode = api:getPluginInstance(require('neodap.plugins.DebugMode')),
+    debugOverlay = api:getPluginInstance(require('neodap.plugins.DebugOverlay'))
   }
 end
 

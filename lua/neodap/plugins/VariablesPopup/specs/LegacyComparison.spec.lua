@@ -1,77 +1,61 @@
--- Visual verification test for Variables4 plugin
--- This test generates snapshots to visually verify the Variables4 NUI tree displays correctly
--- and allows interactive navigation through variable scopes
+-- Legacy Variables4 vs New VariablesPopup Comparison Tests
+-- Ensures backward compatibility and equivalent functionality
 
 local T = require("testing.testing")(describe, it)
-local CommonSetups = require("testing.common_setups")
 
 T.Scenario(function(api)
-  -- Load standard plugins
-  local plugins = CommonSetups.loadStandardPlugins(api)
+  -- Load all plugins for comparison
+  api:getPluginInstance(require('neodap.plugins.LaunchJsonSupport'))
+  api:getPluginInstance(require('neodap.plugins.BreakpointApi'))
+  api:getPluginInstance(require('neodap.plugins.ToggleBreakpoint'))
+  api:getPluginInstance(require('neodap.plugins.Variables4'))
+  api:getPluginInstance(require('neodap.plugins.VariablesBuffer'))
+  api:getPluginInstance(require('neodap.plugins.VariablesPopup'))
 
-  -- Change to the fixture directory and open the file
-  T.cmd("cd lua/testing/fixtures/variables")
-  T.cmd("edit complex.js")
-  T.TerminalSnapshot('01_initial_file')
-
-  -- Launch the debug session - this will hit the debugger statement
+  -- Set up debugging session
+  T.cmd("edit lua/testing/fixtures/variables/complex.js")
+  T.cmd("normal! 6j")
+  T.cmd("NeodapToggleBreakpoint")
   T.cmd("NeodapLaunchClosest Variables [variables]")
-  T.sleep(2000) -- Wait for debugger to start and hit breakpoint
-
-  -- Take snapshot showing stopped at debugger
-  T.TerminalSnapshot('02_stopped_at_debugger')
-
-  -- Open the Variables4 NUI tree popup
+  T.sleep(1500)
+  
+  -- Test legacy Variables4Tree command (should delegate to new system)
+  T.TerminalSnapshot('before_legacy_command')
+  
   T.cmd("Variables4Tree")
   T.sleep(500)
-
-  -- Take snapshot showing the Variables4 popup with collapsed scopes
-  T.TerminalSnapshot('03_variables4_popup_scopes')
-
-  -- Expand the first scope (Local) using Enter key
-  T.cmd("execute \"normal \\<CR>\"")
-  T.sleep(1000)
-
-  -- Take snapshot showing expanded Local scope with all variables
-  T.TerminalSnapshot('04_local_scope_expanded')
-
-  -- Navigate down and expand Global scope
+  T.TerminalSnapshot('legacy_variables4_popup')
+  
+  -- Test navigation in legacy popup
   T.cmd("normal! j")
-  T.sleep(100)
   T.cmd("execute \"normal \\<CR>\"")
-  T.sleep(1000)
-
-  -- Take snapshot showing both scopes expanded
-  T.TerminalSnapshot('05_both_scopes_expanded')
-
-  -- Navigate back to Local scope variables
-  T.cmd("normal! k")
-  T.cmd("normal! j")  -- Move to first variable
-  T.sleep(100)
-
-  -- Take snapshot showing navigation within variables
-  T.TerminalSnapshot('06_variable_navigation')
-
-  -- Close the popup with q
-  T.cmd("normal! q")
   T.sleep(300)
-
-  -- Take final snapshot showing return to normal editing
-  T.TerminalSnapshot('07_popup_closed')
+  T.TerminalSnapshot('legacy_navigation')
+  
+  -- Close legacy popup
+  T.cmd("normal! q")
+  T.sleep(200)
+  
+  -- Now test new VariablesPopup command for comparison
+  T.cmd("VariablesPopup")
+  T.sleep(500)
+  T.TerminalSnapshot('new_variables_popup')
+  
+  -- Test same navigation in new popup
+  T.cmd("normal! j")
+  T.cmd("execute \"normal \\<CR>\"")
+  T.sleep(300)
+  T.TerminalSnapshot('new_navigation')
+  
+  -- Close new popup
+  T.cmd("normal! q")
+  T.sleep(200)
+  T.TerminalSnapshot('both_popups_closed')
 end)
 
-
-
-
-
-
-
-
-
-
---[[ TERMINAL SNAPSHOT: 01_initial_file
+--[[ TERMINAL SNAPSHOT: before_legacy_command
 Size: 24x80
-Cursor: [1, 0] (line 1, col 0)
+Cursor: [7, 0] (line 7, col 0)
 Mode: n
 
  1| // Test fixture for Variables plugin - various variable types
@@ -96,55 +80,11 @@ Mode: n
 20|             level: 2,
 21|             data: ["a", "b", "c"]
 22|         },
-23| complex.js                                                    1,1            Top
+23| lua/testing/fixtures/variables/complex.js                     7,1            Top
 24| 
 ]]
 
-
-
-
-
-
-
-
---[[ TERMINAL SNAPSHOT: 02_stopped_at_debugger
-Size: 24x80
-Cursor: [1, 0] (line 1, col 0)
-Mode: n
-
- 1| // Test fixture for Variables plugin - various variable types
- 2| 
- 3| function testVariables() {
- 4|     // Primitive types
- 5|     let numberVar = 42;
- 6|     let stringVar = "Hello, Debug!";
- 7|     let booleanVar = true;
- 8|     let nullVar = null;
- 9|     let undefinedVar = undefined;
-10|     let veryLongVariableNameThatExceedsNormalLimitsForDisplay = "short value";
-11|     let longStringValue = "This is a very long string value that should be trunc
-12| ated when displayed in the tree view to prevent line wrapping";
-13| 
-14|     // Complex types
-15|     let arrayVar = [1, 2, 3, "four", { five: 5 }];
-16|     let objectVar = {
-17|         name: "Test Object",
-18|         count: 100,
-19|         nested: {
-20|             level: 2,
-21|             data: ["a", "b", "c"]
-22|         },
-23| complex.js                                                    1,1            Top
-24| 
-]]
-
-
-
-
-
-
-
---[[ TERMINAL SNAPSHOT: 03_variables4_popup_scopes
+--[[ TERMINAL SNAPSHOT: legacy_variables4_popup
 Size: 24x80
 Cursor: [1, 0] (line 1, col 0)
 Mode: n
@@ -171,24 +111,49 @@ Mode: n
 20|             level: 2,
 21|             data: ["a", "b", "c"]
 22|         },
-23| complex.js                                                    1,1            Top
+23| lua/testing/fixtures/variables/complex.js                     7,1            Top
 24|                                                               1,1           All
 ]]
 
+--[[ TERMINAL SNAPSHOT: legacy_navigation
+Size: 24x80
+Cursor: [2, 0] (line 2, col 0)
+Mode: n
 
+ 1| // Test fixture for Variables plugin - various variable types
+ 2| 
+ 3| functio╭──────────────── Variables Debug Tree (Legacy) ─────────────────╮
+ 4|     // │📁  Local: testVariables                                         │
+ 5|     let│📁  Global                                                       │
+ 6|     let│                                                                │
+ 7|     let│                                                                │
+ 8|     let│                                                                │
+ 9|     let│                                                                │
+10|     let│                                                                │lue";
+11|     let│                                                                │e trunc
+12| ated wh│                                                                │
+13|        │                                                                │
+14|     // │                                                                │
+15|     let│                                                                │
+16|     let│                                                                │
+17|        │                                                                │
+18|        │                                                                │
+19|        ╰────────────────────────────────────────────────────────────────╯
+20|             level: 2,
+21|             data: ["a", "b", "c"]
+22|         },
+23| lua/testing/fixtures/variables/complex.js                     7,1            Top
+24|                                                               2,1           All
+]]
 
-
-
-
-
---[[ TERMINAL SNAPSHOT: 04_local_scope_expanded
+--[[ TERMINAL SNAPSHOT: new_variables_popup
 Size: 24x80
 Cursor: [1, 0] (line 1, col 0)
 Mode: n
 
  1| // Test fixture for Variables plugin - various variable types
  2| 
- 3| functio╭──────────────── Variables Debug Tree (Legacy) ─────────────────╮
+ 3| functio╭───────────────────── Variables Debug Tree ─────────────────────╮
  4|     // │📁  Local: testVariables                                         │
  5|     let│📁  Global                                                       │
  6|     let│                                                                │
@@ -208,24 +173,18 @@ Mode: n
 20|             level: 2,
 21|             data: ["a", "b", "c"]
 22|         },
-23| complex.js                                                    1,1            Top
+23| lua/testing/fixtures/variables/complex.js                     7,1            Top
 24|                                                               1,1           All
 ]]
 
-
-
-
-
-
-
---[[ TERMINAL SNAPSHOT: 05_both_scopes_expanded
+--[[ TERMINAL SNAPSHOT: new_navigation
 Size: 24x80
 Cursor: [2, 0] (line 2, col 0)
 Mode: n
 
  1| // Test fixture for Variables plugin - various variable types
  2| 
- 3| functio╭──────────────── Variables Debug Tree (Legacy) ─────────────────╮
+ 3| functio╭───────────────────── Variables Debug Tree ─────────────────────╮
  4|     // │📁  Local: testVariables                                         │
  5|     let│📁  Global                                                       │
  6|     let│                                                                │
@@ -245,24 +204,18 @@ Mode: n
 20|             level: 2,
 21|             data: ["a", "b", "c"]
 22|         },
-23| complex.js                                                    1,1            Top
+23| lua/testing/fixtures/variables/complex.js                     7,1            Top
 24|                                                               2,1           All
 ]]
 
-
-
-
-
-
-
---[[ TERMINAL SNAPSHOT: 06_variable_navigation
+--[[ TERMINAL SNAPSHOT: both_popups_closed
 Size: 24x80
 Cursor: [2, 0] (line 2, col 0)
 Mode: n
 
  1| // Test fixture for Variables plugin - various variable types
  2| 
- 3| functio╭──────────────── Variables Debug Tree (Legacy) ─────────────────╮
+ 3| functio╭───────────────────── Variables Debug Tree ─────────────────────╮
  4|     // │📁  Local: testVariables                                         │
  5|     let│📁  Global                                                       │
  6|     let│                                                                │
@@ -282,43 +235,6 @@ Mode: n
 20|             level: 2,
 21|             data: ["a", "b", "c"]
 22|         },
-23| complex.js                                                    1,1            Top
-24|                                                               2,1           All
-]]
-
-
-
-
-
-
-
---[[ TERMINAL SNAPSHOT: 07_popup_closed
-Size: 24x80
-Cursor: [2, 0] (line 2, col 0)
-Mode: n
-
- 1| // Test fixture for Variables plugin - various variable types
- 2| 
- 3| functio╭──────────────── Variables Debug Tree (Legacy) ─────────────────╮
- 4|     // │📁  Local: testVariables                                         │
- 5|     let│📁  Global                                                       │
- 6|     let│                                                                │
- 7|     let│                                                                │
- 8|     let│                                                                │
- 9|     let│                                                                │
-10|     let│                                                                │lue";
-11|     let│                                                                │e trunc
-12| ated wh│                                                                │
-13|        │                                                                │
-14|     // │                                                                │
-15|     let│                                                                │
-16|     let│                                                                │
-17|        │                                                                │
-18|        │                                                                │
-19|        ╰────────────────────────────────────────────────────────────────╯
-20|             level: 2,
-21|             data: ["a", "b", "c"]
-22|         },
-23| complex.js                                                    1,1            Top
+23| lua/testing/fixtures/variables/complex.js                     7,1            Top
 24|                                                               2,1           All
 ]]

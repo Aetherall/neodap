@@ -337,6 +337,13 @@ function Variables4Plugin:withSessionContext(required_context, action, context_m
   return action()
 end
 
+-- Get current frame (only available when stopped)
+function Variables4Plugin:getCurrentFrame()
+  return self:withSessionContext(SessionContext.STOPPED, function()
+    return self.frame
+  end, "cannot access current frame")
+end
+
 -- Get current scopes (only available when stopped)
 function Variables4Plugin:getCurrentScopesAndVariables()
   return self:withSessionContext(SessionContext.STOPPED, function()
@@ -1066,73 +1073,458 @@ function TreeAssembly.setupRendering(tree)
   end
 end
 
--- Main tree assembly function
-function Variables4Plugin:OpenVariablesTree()
-  local scopes = self:getCurrentScopesAndVariables()
-  if not scopes then return end
+-- ========================================
+-- BUFFER-COMPOSABLE RENDERING
+-- ========================================
 
-  -- Close existing tree if open
-  if self.popup then
-    self.popup:unmount()
+---Render Variables4 tree to any buffer (NEW: Buffer-composable approach)
+---@param bufnr number The buffer to render to
+---@param options table? Optional configuration
+---@return table buffer_handle Buffer contract implementation with advanced features
+function Variables4Plugin:renderToBuffer(bufnr, options)
+  local opts = vim.tbl_extend("force", {
+    frame = nil,              -- Frame to display (defaults to current)
+    compact = false,          -- Compact rendering
+    auto_refresh = false,     -- Auto-refresh on frame changes
+    enable_focus = true,      -- Enable focus mode navigation
+    enable_lazy = true,       -- Enable lazy variable resolution
+  }, options or {})
+  
+  local frame = opts.frame or self:getCurrentFrame()
+  if not frame then
+    self:renderEmptyBuffer(bufnr, "No current frame available")
+    return self:createEmptyBufferHandle(bufnr)
   end
-
-  -- Execute assembly pipeline
-  local tree_nodes = TreeAssembly.prepareData(scopes)
-  local popup = TreeAssembly.createPopup()
-  local tree = TreeAssembly.createTree(popup, tree_nodes)
-
-  -- Store UI state on plugin instance
-  self.popup = popup
-  self.tree = tree
-  self.true_root_ids = vim.deepcopy(tree.nodes.root_ids)
-
-  -- Setup tree appearance and behavior
-  TreeAssembly.setupRendering(tree)
-
-  -- Initialize with smart cursor positioning
-  self:refreshTreeUI()
-  local line = vim.api.nvim_buf_get_lines(0, 0, 1, false)[1] or ""
-  local col = line:find("[%w_]") or 6
-  vim.api.nvim_win_set_cursor(vim.api.nvim_get_current_win(), { 1, col - 1 })
-
-  -- Setup navigation and controls
-  self:setupTreeKeybindings()
+  
+  self.logger:debug("Rendering Variables4 tree to buffer " .. bufnr)
+  
+  -- Configure buffer
+  vim.api.nvim_buf_set_option(bufnr, 'buftype', 'nofile')
+  vim.api.nvim_buf_set_option(bufnr, 'bufhidden', 'wipe')
+  vim.api.nvim_buf_set_option(bufnr, 'swapfile', false)
+  -- Set unique buffer name to avoid conflicts
+  local unique_name = 'Variables4[' .. (frame.ref.id or 'unknown') .. '][' .. bufnr .. ']'
+  pcall(vim.api.nvim_buf_set_name, bufnr, unique_name)
+  
+  -- Initialize advanced state
+  local buffer_state = {
+    frame = frame,
+    options = opts,
+    bufnr = bufnr,
+    tree = nil,           -- Will hold NUI tree for advanced navigation
+    popup = nil,          -- Will be set if used in popup context
+    true_root_ids = {},   -- For viewport management
+    current_viewport = {} -- Track focus state
+  }
+  
+  -- Perform initial render
+  self:renderTreeToBuffer(buffer_state)
+  
+  -- Setup advanced navigation
+  if opts.enable_focus then
+    self:setupAdvancedNavigation(bufnr, buffer_state)
+  else
+    self:setupBasicNavigation(bufnr, buffer_state)
+  end
+  
+  -- Return enhanced buffer handle
+  return {
+    bufnr = bufnr,
+    refresh = function()
+      self:renderTreeToBuffer(buffer_state)
+    end,
+    close = function()
+      self:closeBufferTree(buffer_state)
+    end,
+    
+    -- Advanced Variables4 methods
+    focusOnNode = function(node_id)
+      return self:focusOnNodeInBuffer(buffer_state, node_id)
+    end,
+    navigateToNode = function(target_id, should_collapse)
+      return self:navigateToNodeInBuffer(buffer_state, target_id, should_collapse)
+    end,
+    expandVariable = function()
+      return self:expandVariableInBuffer(buffer_state)
+    end,
+    resolveLazy = function()
+      return self:resolveLazyInBuffer(buffer_state)
+    end,
+    
+    -- Buffer state access
+    getTree = function() return buffer_state.tree end,
+    getCurrentNode = function() return self:getCurrentNodeInBuffer(buffer_state) end,
+    
+    metadata = {
+      frame_id = frame.ref.id,
+      compact = opts.compact,
+      auto_refresh = opts.auto_refresh,
+      has_advanced_features = true,
+      variables4_version = "buffer_composable"
+    }
+  }
 end
 
-function Variables4Plugin:setupTreeKeybindings()
+---Enhanced tree rendering using Variables4's sophisticated logic
+function Variables4Plugin:renderTreeToBuffer(buffer_state)
+  local frame = buffer_state.frame
+  local bufnr = buffer_state.bufnr
+  
+  -- Get scopes using existing Variables4 logic
+  local scopes = self:getCurrentScopesAndVariables()
+  if not scopes then
+    self:renderEmptyBuffer(bufnr, "No variables available")
+    return
+  end
+  
+  -- Use Variables4's TreeAssembly pipeline but target buffer
+  local tree_nodes = TreeAssembly.prepareData(scopes)
+  if not tree_nodes or #tree_nodes == 0 then
+    self:renderEmptyBuffer(bufnr, "No variables found")
+    return
+  end
+  
+  -- Create invisible NUI tree for navigation logic (but render to buffer)
+  local NuiTree = require("nui.tree")
+  buffer_state.tree = NuiTree({
+    bufnr = bufnr,
+    nodes = tree_nodes,
+  })
+  
+  -- Store true root IDs for viewport management
+  buffer_state.true_root_ids = vim.deepcopy(buffer_state.tree.nodes.root_ids)
+  
+  -- Setup sophisticated rendering
+  TreeAssembly.setupRendering(buffer_state.tree)
+  
+  -- Render tree to buffer using NUI logic but custom output
+  self:renderNuiTreeToBuffer(buffer_state)
+end
+
+---Convert NUI tree to buffer lines while preserving all functionality
+function Variables4Plugin:renderNuiTreeToBuffer(buffer_state)
+  local tree = buffer_state.tree
+  local bufnr = buffer_state.bufnr
+  
+  if not tree then return end
+  
+  -- Generate lines using NUI's prepare_node logic
+  local lines = {}
+  local line_to_node = {}
+  
+  local function traverse_nodes(node_ids, depth)
+    depth = depth or 0
+    for _, node_id in ipairs(node_ids) do
+      local node = tree.nodes.by_id[node_id]
+      if node then
+        -- Use NUI's sophisticated prepare_node to generate line
+        local nui_line = tree._.prepare_node(node)
+        local line_text = nui_line:content()
+        
+        table.insert(lines, line_text)
+        line_to_node[#lines] = {
+          node_id = node_id,
+          node = node,
+          depth = depth
+        }
+        
+        -- Traverse children if expanded
+        if node:is_expanded() and node:has_children() then
+          traverse_nodes(node:get_child_ids(), depth + 1)
+        end
+      end
+    end
+  end
+  
+  traverse_nodes(tree.nodes.root_ids)
+  
+  -- Store mapping for navigation
+  buffer_state.line_to_node = line_to_node
+  buffer_state.node_to_line = {}
+  for line, data in pairs(line_to_node) do
+    buffer_state.node_to_line[data.node_id] = line
+  end
+  
+  -- Update buffer content
+  vim.api.nvim_buf_set_option(bufnr, 'modifiable', true)
+  vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+  vim.api.nvim_buf_set_option(bufnr, 'modifiable', false)
+  
+  self.logger:debug("Rendered " .. #lines .. " lines to buffer")
+end
+
+-- Main tree assembly function (UPDATED: Now uses buffer-composable approach)
+function Variables4Plugin:OpenVariablesTree()
+  -- Get current frame using existing logic
+  local frame = self:getCurrentFrame()
+  if not frame then
+    print("No current frame available")
+    return
+  end
+  
+  -- Close existing popup if open
+  if self.popup then
+    self.popup:unmount()
+    self.popup = nil
+  end
+  
+  -- Create popup using existing TreeAssembly
+  self.popup = TreeAssembly.createPopup()
+  
+  -- Use new buffer-composable rendering
+  local buffer_handle = self:renderToBuffer(self.popup.bufnr, {
+    frame = frame,
+    enable_focus = true,
+    enable_lazy = true,
+    auto_refresh = false
+  })
+  
+  -- Store enhanced state
+  self.tree = buffer_handle.getTree()
+  buffer_handle.popup = self.popup  -- Link popup to buffer handle
+  
+  -- Setup keybindings using buffer handle methods
+  self:setupTreeKeybindings(buffer_handle)
+  
+  self.logger:info("Variables4 tree opened with buffer-composable architecture")
+end
+
+-- ========================================
+-- BUFFER-COMPOSABLE HELPER METHODS
+-- ========================================
+
+function Variables4Plugin:createEmptyBufferHandle(bufnr)
+  return {
+    bufnr = bufnr,
+    refresh = function() end,
+    close = function()
+      if vim.api.nvim_buf_is_valid(bufnr) then
+        vim.api.nvim_buf_delete(bufnr, { force = true })
+      end
+    end,
+    metadata = { has_advanced_features = false }
+  }
+end
+
+function Variables4Plugin:renderEmptyBuffer(bufnr, message)
+  local lines = {
+    "",
+    "  " .. (message or "No content available"),
+    "",
+    "  Press 'q' to close"
+  }
+  vim.api.nvim_buf_set_option(bufnr, 'modifiable', true)
+  vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+  vim.api.nvim_buf_set_option(bufnr, 'modifiable', false)
+end
+
+function Variables4Plugin:closeBufferTree(buffer_state)
+  if buffer_state.popup then
+    buffer_state.popup:unmount()
+  end
+  if vim.api.nvim_buf_is_valid(buffer_state.bufnr) then
+    vim.api.nvim_buf_delete(buffer_state.bufnr, { force = true })
+  end
+  buffer_state.tree = nil
+end
+
+-- ========================================
+-- ADVANCED NAVIGATION FOR BUFFERS
+-- ========================================
+
+function Variables4Plugin:getCurrentNodeInBuffer(buffer_state)
+  if not buffer_state.tree then return nil end
+  
+  local current_line = vim.api.nvim_win_get_cursor(0)[1]
+  local line_data = buffer_state.line_to_node[current_line]
+  return line_data and line_data.node
+end
+
+function Variables4Plugin:navigateToNodeInBuffer(buffer_state, target_node_id, should_collapse)
+  if not target_node_id or not buffer_state.tree then return false end
+
+  -- Use existing sophisticated navigation logic
+  local success = self:navigateToNode(target_node_id, should_collapse)
+  if success then
+    -- Re-render buffer with updated tree state
+    self:renderNuiTreeToBuffer(buffer_state)
+    -- Position cursor on target node
+    self:setCursorToNodeInBuffer(buffer_state, target_node_id)
+  end
+  return success
+end
+
+function Variables4Plugin:focusOnNodeInBuffer(buffer_state, node_id)
+  if not buffer_state.tree then return end
+  
+  -- Use existing focus logic
+  self:focusOnNode(node_id)
+  -- Re-render with focused viewport
+  self:renderNuiTreeToBuffer(buffer_state)
+  -- Update popup title if available
+  if buffer_state.popup then
+    self:updatePopupTitle()
+  end
+end
+
+function Variables4Plugin:expandVariableInBuffer(buffer_state)
+  local node = self:getCurrentNodeInBuffer(buffer_state)
+  if not node then return end
+  
+  -- Use existing sophisticated expand logic
+  self:drillIntoNode(node)
+  -- Re-render buffer
+  self:renderNuiTreeToBuffer(buffer_state)
+end
+
+function Variables4Plugin:resolveLazyInBuffer(buffer_state)
+  local node = self:getCurrentNodeInBuffer(buffer_state)
+  if not node then return end
+  
+  local isLazy = isNodeLazy(node)
+  if isLazy then
+    -- Use existing lazy resolution
+    self:resolveLazyVariable(node)
+    -- Re-render buffer
+    self:renderNuiTreeToBuffer(buffer_state)
+  end
+end
+
+function Variables4Plugin:setCursorToNodeInBuffer(buffer_state, node_id)
+  local line_num = buffer_state.node_to_line[node_id]
+  if line_num then
+    -- Get line content for smart column positioning
+    local line = vim.api.nvim_buf_get_lines(buffer_state.bufnr, line_num - 1, line_num, false)[1] or ""
+    local col = line:find("[%w_]") or 6 -- Find first word char or default to 6
+    vim.api.nvim_win_set_cursor(vim.api.nvim_get_current_win(), { line_num, col - 1 })
+  end
+end
+
+-- ========================================
+-- ADVANCED NAVIGATION SETUP
+-- ========================================
+
+function Variables4Plugin:setupAdvancedNavigation(bufnr, buffer_state)
+  local map_opts = { buffer = bufnr, noremap = true, silent = true }
+  
+  -- Advanced navigation using buffer-composable methods
+  vim.keymap.set('n', 'h', function() 
+    self:navigateToParentLevel() 
+    self:renderNuiTreeToBuffer(buffer_state)
+  end, map_opts)
+  
+  vim.keymap.set('n', 'j', function() 
+    self:navigateToSibling("next")
+    self:renderNuiTreeToBuffer(buffer_state)
+  end, map_opts)
+  
+  vim.keymap.set('n', 'k', function() 
+    self:navigateToSibling("previous")
+    self:renderNuiTreeToBuffer(buffer_state)
+  end, map_opts)
+  
+  vim.keymap.set('n', 'l', function() 
+    self:expandVariableInBuffer(buffer_state)
+  end, map_opts)
+  
+  vim.keymap.set('n', '<CR>', function() 
+    self:expandVariableInBuffer(buffer_state)
+  end, map_opts)
+  
+  vim.keymap.set('n', 'f', function() 
+    local node = self:getCurrentNodeInBuffer(buffer_state)
+    if node then
+      self:focusOnNodeInBuffer(buffer_state, node:get_id())
+    end
+  end, map_opts)
+  
+  -- Refresh
+  vim.keymap.set('n', 'r', function() 
+    self:renderTreeToBuffer(buffer_state) 
+  end, map_opts)
+end
+
+function Variables4Plugin:setupBasicNavigation(bufnr, buffer_state)
+  local map_opts = { buffer = bufnr, noremap = true, silent = true }
+  
+  -- Basic navigation without advanced features
+  vim.keymap.set('n', 'j', function() 
+    vim.cmd('normal! j')
+  end, map_opts)
+  
+  vim.keymap.set('n', 'k', function() 
+    vim.cmd('normal! k')
+  end, map_opts)
+  
+  vim.keymap.set('n', 'r', function() 
+    self:renderTreeToBuffer(buffer_state) 
+  end, map_opts)
+end
+
+function Variables4Plugin:setupTreeKeybindings(buffer_handle)
   local map_options = { noremap = true, silent = true }
 
-  -- Direct method calls using stored UI state
-  self.popup:map("n", "h", function() self:navigateToParentLevel() end, map_options)
-  self.popup:map("n", "j", function() self:navigateToSibling("next") end, map_options)
-  self.popup:map("n", "k", function() self:navigateToSibling("previous") end, map_options)
-  self.popup:map("n", "l", function() self:expandVariableToSeeContents() end, map_options)
-  self.popup:map("n", "<CR>", function() self:expandVariableToSeeContents() end, map_options) -- Add Enter key support
+  -- Advanced method calls using buffer handle
+  self.popup:map("n", "h", function() 
+    self:navigateToParentLevel() 
+    buffer_handle.refresh()
+  end, map_options)
+  
+  self.popup:map("n", "j", function() 
+    self:navigateToSibling("next")
+    buffer_handle.refresh()
+  end, map_options)
+  
+  self.popup:map("n", "k", function() 
+    self:navigateToSibling("previous") 
+    buffer_handle.refresh()
+  end, map_options)
+  
+  self.popup:map("n", "l", function() 
+    buffer_handle.expandVariable()
+  end, map_options)
+  
+  self.popup:map("n", "<CR>", function() 
+    buffer_handle.expandVariable()
+  end, map_options)
 
   -- Controls
-  self.popup:map("n", "q", function() self:closeTree() end, map_options)
-  self.popup:map("n", "<Esc>", function() self:closeTree() end, map_options)
-  self.popup:map("n", "f", function() self:focusOnCurrentScope() end, map_options)
+  self.popup:map("n", "q", function() 
+    buffer_handle.close()
+  end, map_options)
+  
+  self.popup:map("n", "<Esc>", function() 
+    buffer_handle.close()
+  end, map_options)
+  
+  self.popup:map("n", "f", function() 
+    local node = buffer_handle.getCurrentNode()
+    if node then
+      buffer_handle.focusOnNode(node:get_id())
+    end
+  end, map_options)
 
   -- Help
   self.popup:map("n", "?", function()
-    print("Variables4 Tree Controls (Use-Case Driven):")
+    print("Variables4 Tree Controls (Buffer-Composable):")
     print("")
     print("Core Actions:")
-    print("  l: Expand variable to see contents")
+    print("  l/<CR>: Expand variable to see contents")
     print("  h: Navigate to parent level")
     print("  j/k: Navigate to next/previous sibling")
     print("  f: Focus on current scope")
+    print("  r: Refresh tree")
     print("")
     print("Controls:")
     print("  q/Esc: Close popup")
     print("  ?: Show this help")
     print("")
-    print("The interface automatically handles:")
+    print("Advanced Features Preserved:")
+    print("- AsNode() caching strategy")
     print("- Lazy variable resolution")
-    print("- Viewport adjustment for navigation")
-    print("- Node state transitions")
-    print("- Tree rendering and updates")
+    print("- Viewport focus management")
+    print("- Sophisticated tree rendering")
+    print("- Smart navigation and expansion")
   end, map_options)
 end
 
