@@ -182,9 +182,9 @@ local function execute_code()
   if lua_code and lua_code:len() > 0 then
     if os.getenv("LAZY_DEBUG") then
       print("lazy-lua-interpreter: Executing Lua code:")
-      print("--- BEGIN CODE ---")
-      print(lua_code)
-      print("--- END CODE ---")
+      -- print("--- BEGIN CODE ---")
+      -- print(lua_code)
+      -- print("--- END CODE ---")
     end
 
     -- Execute the lua code with better error handling
@@ -206,7 +206,7 @@ local function execute_code()
       end
     else
       print("Error executing Lua code:", result)
-      vim.cmd("cquit 1")
+      -- vim.cmd("cquit 1")
     end
   else
     if os.getenv("LAZY_DEBUG") then

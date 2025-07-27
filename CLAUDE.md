@@ -286,7 +286,7 @@ end)
     T.sleep(1500)
     
     -- Open the UI popup
-    T.cmd("Variables4TreeDemo")
+    T.cmd("Variables4Tree")
     T.sleep(300)  -- Let UI render
     T.TerminalSnapshot('variables_popup_open')
     

@@ -39,6 +39,9 @@
 		"enable": true
 	},
 	"workspace": {
+		"ignoreDir": [
+			".cache"
+		],
 		"library": [
 			"./lua",
 			"/nix/store/q570k9f80p21sbr4x74vbggjxhg82brz-neovim-unwrapped-0.11.2/share/nvim/runtime/lua",
