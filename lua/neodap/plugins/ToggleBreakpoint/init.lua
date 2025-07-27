@@ -1,41 +1,25 @@
-local Logger = require("neodap.tools.logger")
-local Class = require("neodap.tools.class")
+local BasePlugin = require("neodap.plugins.BasePlugin")
 local BreakpointApi = require("neodap.plugins.BreakpointApi")
 local Location = require("neodap.api.Location")
 local NvimAsync = require("neodap.tools.async")
 
----@class neodap.plugin.ToggleBreakpointProps
----@field api Api
+---@class neodap.plugin.ToggleBreakpoint: BasePlugin
 ---@field breakpointApi BreakpointApiPlugin
----@field logger Logger
-
----@class neodap.plugin.ToggleBreakpoint: neodap.plugin.ToggleBreakpointProps
----@field new Constructor<neodap.plugin.ToggleBreakpointProps>
-local ToggleBreakpoint = Class()
+local ToggleBreakpoint = BasePlugin:extend()
 
 ToggleBreakpoint.name = "ToggleBreakpoint"
 ToggleBreakpoint.description = "Plugin to toggle breakpoints in Neodap"
 
 -- Smart Adjustment System
 function ToggleBreakpoint.plugin(api)
-  local logger = Logger.get("Plugin:ToggleBreakpoint")
-
-  local instance = ToggleBreakpoint:new({
-    api = api,
-    logger = logger,
+  return BasePlugin.createPlugin(api, ToggleBreakpoint, {
     breakpointApi = api:getPluginInstance(BreakpointApi),
   })
-
-  instance:init()
-
-  return instance
 end
 
-function ToggleBreakpoint:init(props)
-  vim.api.nvim_create_user_command("NeodapToggleBreakpoint", function(args)
-    self:Toggle()
-  end, {
-    desc = "Toggle a breakpoint at the current cursor position",
+function ToggleBreakpoint:setupCommands()
+  self:registerCommands({
+    {"NeodapToggleBreakpoint", function(args) self:Toggle() end, {desc = "Toggle a breakpoint at the current cursor position"}}
   })
 end
 

@@ -1,32 +1,23 @@
-local Logger = require("neodap.tools.logger")
-local Class = require("neodap.tools.class")
+local BasePlugin = require("neodap.plugins.BasePlugin")
 local Location = require("neodap.api.Location")
 local NvimAsync = require("neodap.tools.async")
 
----@class neodap.plugin.StackNavigationProps
----@field api Api
----@field logger Logger
-
----@class neodap.plugin.StackNavigation: neodap.plugin.StackNavigationProps
----@field new Constructor<neodap.plugin.StackNavigationProps>
-local StackNavigation = Class()
+---@class neodap.plugin.StackNavigation: BasePlugin
+---@field navigation_states table Per-thread navigation state: [session_id][thread_id] = { current_frame_id }
+local StackNavigation = BasePlugin:extend()
 
 StackNavigation.name = "StackNavigation"
 StackNavigation.description = "Navigate through call stacks with cursor awareness"
 
 function StackNavigation.plugin(api)
-    local logger = Logger.get("Plugin:StackNavigation")
-
-    local instance = StackNavigation:new({
-        api = api,
-        logger = logger,
+    return BasePlugin.createPlugin(api, StackNavigation, {
         -- Per-thread navigation state: [session_id][thread_id] = { current_frame_id }
         navigation_states = {},
     })
+end
 
-    instance:setupListeners()
-    instance:setupCommands()
-    return instance
+function StackNavigation:listen()
+    self:setupListeners()
 end
 
 ---@param location api.Location?
@@ -39,7 +30,7 @@ function StackNavigation:getClosestFrame(location)
 
     -- Find frame closest to cursor across all sessions and threads
     for session in self.api:eachSession() do
-        for thread in session:eachThread({ filter = 'stopped' }) do
+        for thread in session.threads:eachStopped() do
             local stack = thread:stack()
             if stack then
                 for frame in stack:eachFrame({ sourceId = target.sourceId }) do
@@ -107,7 +98,7 @@ function StackNavigation:getFramesAtLocation(location)
     local frames = {}
 
     for session in self.api:eachSession() do
-        for thread in session:eachThread({ filter = 'stopped' }) do
+        for thread in session.threads:eachStopped() do
             local stack = thread:stack()
             if stack then
                 for frame in stack:eachFrame({ sourceId = location.sourceId }) do
@@ -209,7 +200,7 @@ function StackNavigation:getCurrentThread()
 
     -- Find the thread that has a frame at the cursor location
     for session in self.api:eachSession() do
-        for thread in session:eachThread({ filter = 'stopped' }) do
+        for thread in session.threads:eachStopped() do
             local stack = thread:stack()
             if stack then
                 for frame in stack:eachFrame({ sourceId = cursor_location.sourceId }) do
@@ -224,7 +215,7 @@ function StackNavigation:getCurrentThread()
 
     -- Fallback: return any stopped thread
     for session in self.api:eachSession() do
-        for thread in session:eachThread({ filter = 'stopped' }) do
+        for thread in session.threads:eachStopped() do
             return thread
         end
     end
@@ -354,17 +345,11 @@ end
 
 ---Setup user commands for stack navigation
 function StackNavigation:setupCommands()
-    vim.api.nvim_create_user_command("NeodapStackNavigationUp", function()
-        self:Up()
-    end, { desc = "Navigate up the call stack (towards caller)" })
-
-    vim.api.nvim_create_user_command("NeodapStackNavigationDown", function()
-        self:Down()
-    end, { desc = "Navigate down the call stack (towards callee)" })
-
-    vim.api.nvim_create_user_command("NeodapStackNavigationTop", function()
-        self:Top()
-    end, { desc = "Navigate to top frame (most recent call)" })
+    self:registerCommands({
+        { "NeodapStackNavigationUp",   function() self:Up() end,   { desc = "Navigate up the call stack (towards caller)" } },
+        { "NeodapStackNavigationDown", function() self:Down() end, { desc = "Navigate down the call stack (towards callee)" } },
+        { "NeodapStackNavigationTop",  function() self:Top() end,  { desc = "Navigate to top frame (most recent call)" } }
+    })
 end
 
 ---Setup reactive listeners for state management

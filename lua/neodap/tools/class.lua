@@ -64,7 +64,13 @@ function Class(parent)
   end
 
   -- Set metamethod on the class itself to intercept method definitions
-  setmetatable(class, { __newindex = class_newindex })
+  -- Preserve existing metatable if it has parent inheritance
+  local existing_mt = getmetatable(class)
+  if existing_mt then
+    existing_mt.__newindex = class_newindex
+  else
+    setmetatable(class, { __newindex = class_newindex })
+  end
 
   function class:new(opts)
     local instance = {}

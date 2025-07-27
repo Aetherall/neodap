@@ -1,19 +1,18 @@
-local Class = require('neodap.tools.class')
-
-local Frame = require('neodap.api.Session.Frame')
-local Hookable = require("neodap.transport.hookable")
-local logger = require("neodap.tools.logger")
+local Class      = require('neodap.tools.class')
+local Frame      = require('neodap.api.Session.Frame')
+local Collection = require("neodap.tools.Collection")
+local Hookable   = require("neodap.transport.hookable")
+local Frames     = require("neodap.api.Session.Frames")
 
 ---@class api.StackProps
 ---@field thread api.Thread
----@field _index table<integer, integer> | nil
 ---@field hookable Hookable
 
 ---@class api.Stack: api.StackProps
 ---@field new Constructor<api.StackProps>
 ---@field valid boolean
----@field _frames { [integer]: api.Frame? } | nil
-local Stack = Class()
+---@field frames api.Frames
+local Stack      = Class()
 
 ---@param thread api.Thread
 ---@param stack dap.StackTraceResponseBody
@@ -21,43 +20,42 @@ local Stack = Class()
 function Stack.instanciate(thread, stack, parentHookable)
   local instance = Stack:new({
     thread = thread,
-    --- State
-    _frames = nil,
-    _index = nil,
-    hookable = Hookable.create(parentHookable),
     valid = true,
-    --- DAP
+    frames = Frames.create(),
     totalFrames = stack.totalFrames,
+    hookable = Hookable.create(parentHookable)
   })
 
-  -- Initialize frames after the stack is created
-  local frames, index = Frame.indexAll(instance, stack.stackFrames)
-  instance._frames = frames
-  instance._index = index
+  -- Add frames to collection
+  for _i, frameData in ipairs(stack.stackFrames) do
+    local frame = Frame.instanciate(instance, frameData)
+    instance.frames:add(frame)
+  end
 
   return instance
 end
 
----@return { [integer]: api.Frame? } | nil
-function Stack:frames()
+---@return Collection?
+function Stack:getFrames()
   if not self.valid then
     return nil
   end
 
-  if self._frames then
-    return self._frames
+  if self.frames and not self.frames:isEmpty() then
+    return self.frames
   end
 
   local trace = self.thread.session.ref.calls:stackTrace({ threadId = self.thread.id }):wait()
 
-  local frames, index = Frame.indexAll(self, trace.stackFrames)
+  -- Clear and repopulate frames collection
+  self.frames:clear()
+  for _i, frameData in ipairs(trace.stackFrames) do
+    local frame = Frame.instanciate(self, frameData)
+    self.frames:add(frame)
+  end
 
-  self._frames = frames
-  self._index = index
-
-  return self._frames
+  return self.frames
 end
-
 
 ---@param opts { sourceId: SourceIdentifier? }?
 ---@return fun(): api.Frame?
@@ -66,78 +64,76 @@ function Stack:eachFrame(opts)
     return function() return nil end
   end
 
-  local frames = self:frames()
-  if not frames or #frames == 0 then
+  local frames = self:getFrames()
+  if not frames or frames:isEmpty() then
     return function() return nil end
   end
 
-  local index = 0
-  return function()
-    while true do
-      index = index + 1
-      if index > #frames then
-        return nil
-      end
-
-      local frame = frames[index]
-      if not frame then
-        return nil
-      end
-
-      if opts and opts.sourceId then
-        local location = frame:location()
-        if location and location.sourceId:equals(opts.sourceId) then
-          return frame
-        end
-      else
-        return frame
-      end
-    end
+  if opts and opts.sourceId then
+    -- Filter frames by sourceId
+    local filteredFrames = frames:filter(function(frame)
+      local location = frame:location()
+      return location and location.sourceId:equals(opts.sourceId)
+    end)
+    return filteredFrames:each()
+  else
+    return frames:each()
   end
 end
-
 
 function Stack:top()
   if not self.valid then
     return nil
   end
 
-  local frames = self:frames()
-  if not frames or #frames == 0 then
+  local frames = self:getFrames()
+  if not frames or frames:isEmpty() then
     return nil
   end
 
-  return frames[1]
+  return frames:first()
 end
 
 function Stack:upOf(frameId)
-  local index = self._index[frameId]
-  if not index or index <= 1 then
+  local frames = self:getFrames()
+  if not frames or frames:isEmpty() then
     return nil
   end
 
-  if not self._frames then
+  -- Find current frame and its position using Collection's indexOf
+  local currentFrame = frames:getBy("id", frameId)
+  if not currentFrame then
     return nil
   end
 
-  local previous = index - 1
+  local position = frames:indexOf(currentFrame)
+  if not position or position <= 1 then
+    return nil
+  end
 
-  return self._frames[previous]
+  local previous = position - 1
+  return frames:at(previous)
 end
 
 function Stack:downOf(frameId)
-  local index = self._index[frameId]
-  if not index or index >= #self._frames then
+  local frames = self:getFrames()
+  if not frames or frames:isEmpty() then
     return nil
   end
 
-  if not self._frames then
+  -- Find current frame and its position using Collection's indexOf
+  local currentFrame = frames:getBy("id", frameId)
+  if not currentFrame then
     return nil
   end
 
-  local next = index + 1
+  local position = frames:indexOf(currentFrame)
+  if not position or position >= frames:count() then
+    return nil
+  end
 
-  return self._frames[next]
+  local next = position + 1
+  return frames:at(next)
 end
 
 ---@param listener fun()
@@ -154,23 +150,19 @@ end
 --- Destroys this stack and all its child resources
 --- This method ensures complete cleanup of frames and handlers
 function Stack:destroy()
-  -- Clean up all frames
-  if self._frames then
-    for _, frame in pairs(self._frames) do
-      if frame and frame.destroy then
-        frame:destroy()
-      end
-    end
+  -- Clean up frames using Collection methods directly
+  if self.frames then
+    self.frames:each(function(frame)
+      if frame.destroy then frame:destroy() end
+    end)
+    self.frames:clear()
   end
-  
-  -- Clean up our hookable (and all handlers registered on it)
+
+  -- Clean up hookable
   if self.hookable and not self.hookable.destroyed then
     self.hookable:destroy()
   end
-  
-  -- Clear references
-  self._frames = nil
-  self._index = nil
+
   self.valid = false
 end
 

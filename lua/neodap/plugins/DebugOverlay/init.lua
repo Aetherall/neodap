@@ -1,31 +1,21 @@
-local Logger = require("neodap.tools.logger")
-local Class = require("neodap.tools.class")
+local BasePlugin = require("neodap.plugins.BasePlugin")
 local Layout = require("nui.layout")
 local Popup = require("nui.popup")
 
----@class neodap.plugin.DebugOverlayProps
----@field api Api
----@field logger Logger
+---@class neodap.plugin.DebugOverlay: BasePlugin
 ---@field layout nui.layout | nil
 ---@field left_panel nui.popup | nil
 ---@field right_panel nui.popup | nil
 ---@field is_visible boolean
 ---@field panel_contents table<string, table>
 ---@field layout_config table
-
----@class neodap.plugin.DebugOverlay: neodap.plugin.DebugOverlayProps
----@field new Constructor<neodap.plugin.DebugOverlayProps>
-local DebugOverlay = Class()
+local DebugOverlay = BasePlugin:extend()
 
 DebugOverlay.name = "DebugOverlay"
 DebugOverlay.description = "Layout manager for debug interface using nui.layout"
 
 function DebugOverlay.plugin(api)
-  local logger = Logger.get("Plugin:DebugOverlay")
-  
-  local instance = DebugOverlay:new({
-    api = api,
-    logger = logger,
+  return BasePlugin.createPlugin(api, DebugOverlay, {
     layout = nil,
     left_panel = nil,
     right_panel = nil,
@@ -45,29 +35,15 @@ function DebugOverlay.plugin(api)
       prefer_side_by_side = true, -- Prefer side-by-side over stacked
     }
   })
-  
-  instance:setup_commands()
-  instance:listen()
-  
-  return instance
 end
 
-function DebugOverlay:setup_commands()
-  vim.api.nvim_create_user_command("NeodapDebugOverlayShow", function()
-    self:show()
-  end, { desc = "Show debug overlay" })
-  
-  vim.api.nvim_create_user_command("NeodapDebugOverlayHide", function()
-    self:hide()
-  end, { desc = "Hide debug overlay" })
-  
-  vim.api.nvim_create_user_command("NeodapDebugOverlayToggle", function()
-    self:toggle()
-  end, { desc = "Toggle debug overlay" })
-  
-  vim.api.nvim_create_user_command("NeodapDebugOverlayConfig", function()
-    self:show_config()
-  end, { desc = "Show debug overlay configuration" })
+function DebugOverlay:setupCommands()
+  self:registerCommands({
+    {"NeodapDebugOverlayShow", function() self:show() end, {desc = "Show debug overlay"}},
+    {"NeodapDebugOverlayHide", function() self:hide() end, {desc = "Hide debug overlay"}},
+    {"NeodapDebugOverlayToggle", function() self:toggle() end, {desc = "Toggle debug overlay"}},
+    {"NeodapDebugOverlayConfig", function() self:show_config() end, {desc = "Show debug overlay configuration"}}
+  })
 end
 
 function DebugOverlay:calculate_optimal_layout()

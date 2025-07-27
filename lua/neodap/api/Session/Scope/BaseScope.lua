@@ -13,6 +13,39 @@ local RangedScopeTrait = require('neodap.api.Session.Scope.traits.RangedScopeTra
 ---@field new Constructor<api.ScopeProps>
 local Scope = RangedScopeTrait.extend(Class())
 
+---@param frame api.Frame
+---@param scope dap.Scope
+---@return api.Scope
+function Scope.instanciate(frame, scope)
+  -- Determine scope type based on presentationHint (same logic as old factory)
+  local presentationHint = scope.presentationHint
+  local scopeName = scope.name and scope.name:lower() or ""
+  
+  local scopeType = "generic"  -- default
+  if presentationHint == "arguments" then 
+    scopeType = "arguments"
+  elseif presentationHint == "locals" then 
+    scopeType = "locals"
+  elseif presentationHint == "registers" then 
+    scopeType = "registers"
+  elseif presentationHint == "returnValue" then 
+    scopeType = "returnValue"
+  elseif scopeName:match("global") or scopeName:match("window") then 
+    scopeType = "globals"
+  end
+
+  local instance = Scope:new({
+    frame = frame,
+    --- State
+    _variables = nil,
+    _source = scope.source and frame.stack.thread.session:getSourceFor(scope.source),
+    --- DAP
+    ref = scope,
+    type = scopeType,
+  })
+  return instance
+end
+
 ---@return_cast self api.ArgumentsScope
 function Scope:isArguments()
   return self.type == 'arguments'

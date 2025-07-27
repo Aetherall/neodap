@@ -26,7 +26,7 @@ local function go()
 
     local api = Api.register(manager)
 
-    -- -- local HighlightCurrentFrame = require("neodap.plugins.HighlightCurrentFrame")
+    -- local HighlightCurrentFrame = require("neodap.plugins.HighlightCurrentFrame")
     -- local BreakpointVirtualText = require("neodap.plugins.BreakpointVirtualText")
     -- local BreakpointApi = require("neodap.plugins.BreakpointApi")
     -- -- local FrameVariables = require("neodap.plugins.FrameVariables")
@@ -36,8 +36,8 @@ local function go()
     -- -- local CallStackViewer = require("neodap.plugins.CallStackViewer")
 
     -- api:getPluginInstance(require("neodap.plugins.JumpToStoppedFrame"))
-    api:getPluginInstance(require("neodap.plugins.BreakpointVirtualText"))
     api:getPluginInstance(require("neodap.plugins.BreakpointApi"))
+    api:getPluginInstance(require("neodap.plugins.BreakpointVirtualText"))
     -- api:getPluginInstance(require("neodap.plugins.FrameVariables"))
     local stack = api:getPluginInstance(require("neodap.plugins.StackNavigation"))
     local brkpt = api:getPluginInstance(require("neodap.plugins.ToggleBreakpoint"))

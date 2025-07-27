@@ -1,16 +1,12 @@
 local T = require("testing.testing")(describe, it)
+local CommonSetups = require("testing.common_setups")
 
 T.Scenario(function(api)
-  -- First, ensure the necessary plugins are loaded
-  api:getPluginInstance(require('neodap.plugins.BreakpointApi'))
+  -- Load standard plugins + BreakpointVirtualText (no session needed for offline test)
+  local plugins = CommonSetups.loadStandardPlugins(api)
   api:getPluginInstance(require('neodap.plugins.BreakpointVirtualText'))
-  api:getPluginInstance(require('neodap.plugins.ToggleBreakpoint'))
 
-  -- Second, open the fixture
   T.cmd("edit lua/testing/fixtures/loop/loop.js")
-
-  -- Then, proceed with the test
-
   T.cmd("normal! 2j") -- Move cursor to line 3
 
   T.TerminalSnapshot('before')
@@ -23,7 +19,6 @@ T.Scenario(function(api)
 
   T.TerminalSnapshot('toggled_off')
 end)
-
 
 
 --[[ TERMINAL SNAPSHOT: before
@@ -54,8 +49,9 @@ Mode: n
 21| ~
 22| ~
 23| lua/testing/fixtures/loop/loop.js                             3,1            All
-24| Too many rounds of missing plugins
+24| 
 ]]
+
 
 --[[ TERMINAL SNAPSHOT: toggled_on
 Size: 24x80
@@ -85,7 +81,7 @@ Mode: n
 21| ~
 22| ~
 23| lua/testing/fixtures/loop/loop.js                             3,1-2          All
-24|
+24| 
 ]]
 
 --[[ TERMINAL SNAPSHOT: toggled_off
@@ -116,5 +112,5 @@ Mode: n
 21| ~
 22| ~
 23| lua/testing/fixtures/loop/loop.js                             3,1            All
-24|
+24| 
 ]]

@@ -1,22 +1,21 @@
 -- Variables4 Plugin - AsNode() Caching Strategy
 -- Variables and Scopes get an asNode() method that creates and caches NuiTree.Nodes
 
-local Class = require('neodap.tools.class')
-local Logger = require('neodap.tools.logger')
+local BasePlugin = require('neodap.plugins.BasePlugin')
 local NvimAsync = require('neodap.tools.async')
+local Collection = require('neodap.tools.Collection')
+local Logger = require('neodap.tools.logger')
 
 -- ========================================
 -- PLUGIN CLASS
 -- ========================================
 
----@class Variables4Plugin
----@field api Api
----@field current_frame? api.Frame
----@field logger Logger
----@field focus_mode_active boolean
----@field original_root_ids? string[]
+---@class Variables4Plugin: BasePlugin
+---@field frame api.Frame
 ---@field true_root_ids? string[]
-local Variables4Plugin = Class()
+---@field tree NuiTree
+---@field popup NuiPopup
+local Variables4Plugin = BasePlugin:extend()
 
 Variables4Plugin.name = "Variables4"
 
@@ -25,135 +24,90 @@ Variables4Plugin.name = "Variables4"
 -- ========================================
 
 function Variables4Plugin.plugin(api)
-  local instance = Variables4Plugin:new({
-    api = api,
-    logger = Logger.get("Variables4"),
-  })
-
-  instance:initialize()
-  return instance
+  return BasePlugin.createPlugin(api, Variables4Plugin)
 end
 
-function Variables4Plugin:initialize()
+function Variables4Plugin:listen()
   self.logger:info("Initializing Variables4 plugin - asNode() caching strategy")
-
-  -- Initialize focus mode state
-  self.focus_mode_active = false
-  self.original_root_ids = nil -- Store original tree root for toggle
-
+  
   -- Set up event handlers
   self:setupEventHandlers()
-
-  -- Create commands
-  self:setupCommands()
 
   self.logger:info("Variables4 plugin initialized")
 end
 
 -- ========================================
--- VALUE FORMATTING AND VISUAL ENHANCEMENTS
+-- VARIABLE PRESENTATION STRATEGY (Information Gem)
 -- ========================================
 
--- DAP type to icon mapping for visual clarity
-local TYPE_ICONS = {
-  -- JavaScript primitives
-  string = "󰉿", -- String icon
-  number = "󰎠", -- Number icon
-  boolean = "◐", -- Boolean icon
-  undefined = "󰟢", -- Undefined icon
-  ['nil'] = "∅", -- Null icon
-  null = "∅", -- Null icon (alternative)
+-- Variable Presentation: How a variable should appear in the UI
+local VariablePresentation = {
+  -- Visual representation (icon + highlight + truncation)
+  styles = {
+    -- JavaScript primitives
+    string = { icon = "󰉿", highlight = "String", truncate = 35 },
+    number = { icon = "󰎠", highlight = "Number", truncate = 40 },
+    boolean = { icon = "◐", highlight = "Boolean", truncate = 40 },
+    undefined = { icon = "󰟢", highlight = "Constant", truncate = 40 },
+    ['nil'] = { icon = "∅", highlight = "Constant", truncate = 40 },
+    null = { icon = "∅", highlight = "Constant", truncate = 40 },
 
-  -- Complex types
-  object = "󰅩", -- Object icon
-  array = "󰅪", -- Array icon
-  ['function'] = "󰊕", -- Function icon
+    -- Complex types
+    object = { icon = "󰅩", highlight = "Structure", truncate = 40 },
+    array = { icon = "󰅪", highlight = "Structure", truncate = 40 },
+    ['function'] = { icon = "󰊕", highlight = "Function", truncate = 25 },
 
-  -- Special types
-  date = "󰃭", -- Calendar icon
-  regexp = "󰑑", -- Regex icon
-  map = "󰘣", -- Map icon
-  set = "󰘦", -- Set icon
+    -- Special types
+    date = { icon = "󰃭", highlight = "Special", truncate = 40 },
+    regexp = { icon = "󰑑", highlight = "String", truncate = 40 },
+    map = { icon = "󰘣", highlight = "Type", truncate = 40 },
+    set = { icon = "󰘦", highlight = "Type", truncate = 40 },
 
-  -- Default fallback
-  default = "󰀬", -- Generic icon
+    -- Default fallback
+    default = { icon = "󰀬", highlight = "Identifier", truncate = 40 },
+  }
 }
 
--- DAP type to treesitter highlight mapping
-local TYPE_HIGHLIGHTS = {
-  -- JavaScript primitives (match treesitter highlights)
-  string = "String",      -- @string
-  number = "Number",      -- @number
-  boolean = "Boolean",    -- @boolean
-  undefined = "Constant", --kk @constant.builtin
-  ['nil'] = "Constant",   -- @constant.builtin
-  null = "Constant",      -- @constant.builtin
+-- Get presentation style for a variable type
+function VariablePresentation.getStyle(var_type)
+  return VariablePresentation.styles[var_type] or VariablePresentation.styles.default
+end
 
-  -- Complex types
-  object = "Structure",      -- @structure / Type
-  array = "Structure",       -- @structure
-  ['function'] = "Function", -- @function
-
-  -- Special types
-  date = "Special",  -- @special
-  regexp = "String", -- @string.regex
-  map = "Type",      -- @type
-  set = "Type",      -- @type
-
-  -- Default
-  default = "Identifier", -- @variable
-}
-
--- Constants for formatting (reduced to prevent line wrapping)
-local TRUNCATION_LENGTHS = {
-  default = 40,      -- Reduced from 60
-  ['function'] = 25, -- Reduced from 40
-  string = 35,       -- Reduced from 50
-  signature = 20,    -- Reduced from 30
-}
-
--- Unified type detection - returns icon, highlight, and whether it's an array
+-- Unified type detection using presentation strategy
 local function getTypeInfo(ref)
   if not ref or not ref.type then
-    return TYPE_ICONS.default, TYPE_HIGHLIGHTS.default, false
+    local style = VariablePresentation.getStyle("default")
+    return style.icon, style.highlight, false
   end
 
   local var_type = ref.type:lower()
   local is_array = var_type == "object" and ref.value and ref.value:match("^%[.*%]$")
 
   if is_array then
-    return TYPE_ICONS.array, TYPE_HIGHLIGHTS.array, true
+    local style = VariablePresentation.getStyle("array")
+    return style.icon, style.highlight, true
   end
 
-  local icon = TYPE_ICONS[var_type] or TYPE_ICONS.default
-  local highlight = TYPE_HIGHLIGHTS[var_type] or TYPE_HIGHLIGHTS.default
-
-  return icon, highlight, false
+  local style = VariablePresentation.getStyle(var_type)
+  return style.icon, style.highlight, false
 end
 
--- Format variable value with smart truncation and inlining
+-- Format variable value using presentation strategy
 local function formatVariableValue(ref)
   if not ref then return "undefined" end
 
   local value = ref.value or ""
   local var_type = ref.type or "default"
+  local style = VariablePresentation.getStyle(var_type)
 
   -- Handle multiline values by inlining
   if type(value) == "string" then
-    -- Replace actual newlines and carriage returns
-    value = value:gsub("[\r\n]+", " ")
-    -- Replace literal \n, \r, \t characters (escaped sequences)
-    value = value:gsub("\\[nrt]", " ")
-    -- Replace multiple spaces with single spaces
-    value = value:gsub("%s+", " ")
-    -- Trim leading/trailing whitespace
+    value = value:gsub("[\r\n]+", " "):gsub("\\[nrt]", " "):gsub("%s+", " ")
     value = value:match("^%s*(.-)%s*$") or ""
 
-    -- Smart truncation based on type
-    local max_length = TRUNCATION_LENGTHS[var_type] or TRUNCATION_LENGTHS.default
-
-    if #value > max_length then
-      value = value:sub(1, max_length - 3) .. "..."
+    -- Smart truncation using presentation strategy
+    if #value > style.truncate then
+      value = value:sub(1, style.truncate - 3) .. "..."
     end
   end
 
@@ -161,14 +115,12 @@ local function formatVariableValue(ref)
   if var_type == "string" then
     return string.format('"%s"', value)
   elseif var_type == "function" and value:match("^function") then
-    -- Extract function signature only
     local signature = value:match("^function%s*([^{]*)")
     if signature then
-      local max_sig = TRUNCATION_LENGTHS.signature
+      local max_sig = 20 -- signature truncation
       return "ƒ " .. signature:gsub("%s+", " "):sub(1, max_sig) .. (signature:len() > max_sig and "..." or "")
     end
   elseif var_type == "object" and ref.variablesReference and ref.variablesReference > 0 then
-    -- Show object preview instead of [object Object]
     return value:match("^%{.*%}$") and value or ("{" .. (value or "Object") .. "}")
   end
 
@@ -180,15 +132,19 @@ end
 -- ========================================
 
 local Variable = require('neodap.api.Session.Variable')
-local ArgumentsScope = require('neodap.api.Session.Scope.ArgumentsScope')
-local LocalsScope = require('neodap.api.Session.Scope.LocalsScope')
-local GlobalsScope = require('neodap.api.Session.Scope.GlobalsScope')
-local ReturnValueScope = require('neodap.api.Session.Scope.ReturnValueScope')
-local RegistersScope = require('neodap.api.Session.Scope.RegistersScope')
-local GenericScope = require('neodap.api.Session.Scope.GenericScope')
+local BaseScope = require('neodap.api.Session.Scope.BaseScope')
 
 local NuiTree = require("nui.tree")
-local BaseScope = require("neodap.api.Session.Scope.BaseScope")
+
+-- Helper function to validate variable structure
+local function validateVariableRef(variable, method_name)
+  if not variable.ref then
+    error(method_name .. " called on variable with no ref property")
+  end
+  if not variable.ref.name then
+    error(method_name .. " called on variable with no name in ref")
+  end
+end
 
 ---@class (partial) api.Variable
 ---@field _node NuiTree.Node?
@@ -197,44 +153,31 @@ local BaseScope = require("neodap.api.Session.Scope.BaseScope")
 function Variable:asNode()
   if self._node then return self._node end
 
-  -- Add safety checks for variable structure
-  if not self.ref then
-    error("Variable:asNode() called on variable with no ref property")
-  end
-
-  if not self.ref.name then
-    error("Variable:asNode() called on variable with no name in ref")
-  end
+  validateVariableRef(self, "Variable:asNode()")
 
   -- Check for lazy variables - many global objects in Node.js are lazy-loaded getters
   if self.ref.presentationHint then
     if self.ref.presentationHint.lazy then
-      Logger.get("Variables4"):info("Found lazy variable: " .. self.ref.name .. " with hint: " .. vim.inspect(self.ref.presentationHint))
+      Logger.get("Variables4"):info("Found lazy variable: " ..
+        self.ref.name .. " with hint: " .. vim.inspect(self.ref.presentationHint))
     end
   end
-  
+
   -- Debug: Log getter functions to see if they should be marked as lazy
   if self.ref.value and type(self.ref.value) == "string" and self.ref.value:match("^ƒ get%(%)") then
-    Logger.get("Variables4"):debug("Found getter function (potential lazy var): " .. self.ref.name .. " = " .. self.ref.value:sub(1, 50))
+    Logger.get("Variables4"):debug("Found getter function (potential lazy var): " ..
+      self.ref.name .. " = " .. self.ref.value:sub(1, 50))
   end
 
   -- Get icon, highlight, and formatted value using our enhancement functions
   local icon, highlight, _ = getTypeInfo(self.ref)
   local formatted_value = formatVariableValue(self.ref)
 
-  -- Generate hierarchical ID to handle recursive references
-  -- Include parent context to ensure uniqueness
-  local node_id
-  if self._parent_var_ref then
-    -- This is a nested variable: use parent's variablesReference as context (PRIORITY)
-    node_id = string.format("var:%s:%s", self._parent_var_ref, self.ref.name)
-  elseif self.scope and self.scope.ref and self.scope.ref.name then
-    -- This is a scope-level variable: use scope name as context
-    node_id = string.format("var:%s:%s", self.scope.ref.name, self.ref.name)
-  else
-    -- Fallback to simple ID (shouldn't happen in normal cases)
-    node_id = string.format("var:%s", self.ref.name)
-  end
+  -- Generate unique ID using parent context for hierarchy
+  local parent_context = self._parent_var_ref or
+      (self.scope and self.scope.ref and self.scope.ref.name) or
+      "root"
+  local node_id = string.format("var:%s:%s", parent_context, self.ref.name)
 
   self._node = NuiTree.Node({
     id = node_id,
@@ -250,9 +193,7 @@ end
 
 -- Add variables method to Variable for nested children
 function Variable:variables()
-  if not self.ref then
-    error("Variable:variables() called on variable with no ref property")
-  end
+  validateVariableRef(self, "Variable:variables()")
 
   if not (self.ref.variablesReference and self.ref.variablesReference > 0) then
     return nil
@@ -285,25 +226,8 @@ function BaseScope:asNode()
   return self._node
 end
 
--- Add BaseScope methods to concrete scope classes (inheritance fix)
-local scope_classes = {
-  ArgumentsScope, LocalsScope, GlobalsScope,
-  ReturnValueScope, RegistersScope, GenericScope
-}
-
-for _, ScopeClass in ipairs(scope_classes) do
-  -- Add variables method if not present (same fix as Variables3/Variables4)
-  if not ScopeClass.variables and BaseScope.variables then
-    ScopeClass.variables = BaseScope.variables
-  end
-end
-
-for _, ScopeClass in ipairs(scope_classes) do
-  -- Add method if not present (same fix as Variables3/Variables4)
-  if not ScopeClass.asNode and BaseScope.asNode then
-    ScopeClass.asNode = BaseScope.asNode
-  end
-end
+-- Note: With scope unification, all scope functionality is now in BaseScope
+-- No need to copy methods to individual scope classes since they're unified
 
 -- ========================================
 
@@ -337,13 +261,24 @@ function Variables4Plugin:setupEventHandlers()
 end
 
 function Variables4Plugin:UpdateCurrentFrame(frame)
-  self.current_frame = frame
+  self.frame = frame
   self.logger:debug("Updated current frame")
 end
 
 function Variables4Plugin:ClearCurrentFrame()
-  self.current_frame = nil
-  self.logger:debug("Cleared current frame")
+  self.frame = nil
+  -- Also clear UI state when session ends
+  self:closeTree()
+  self.logger:debug("Cleared current frame and UI state")
+end
+
+function Variables4Plugin:closeTree()
+  if self.popup then
+    self.popup:unmount()
+    self.popup = nil
+  end
+  self.tree = nil
+  self.true_root_ids = nil
 end
 
 -- ========================================
@@ -351,51 +286,126 @@ end
 -- ========================================
 
 function Variables4Plugin:setupCommands()
-  -- Core functionality - open the variables tree popup
-  vim.api.nvim_create_user_command("Variables4Tree", function()
-    self:OpenVariablesTree()
-  end, { desc = "Open Variables4 tree popup" })
-
-  -- Frame management commands
-  vim.api.nvim_create_user_command("Variables4UpdateFrame", function()
-    self:UpdateFrameCommand()
-  end, { desc = "Update Variables4 current frame to top of stack" })
-
-  vim.api.nvim_create_user_command("Variables4ClearFrame", function()
-    self:ClearCurrentFrame()
-  end, { desc = "Clear Variables4 current frame" })
+  self:registerCommands({
+    {"Variables4Tree", function() self:OpenVariablesTree() end, {desc = "Open Variables4 tree popup"}},
+    {"Variables4UpdateFrame", function() self:UpdateFrameCommand() end, {desc = "Update Variables4 current frame to top of stack"}},
+    {"Variables4ClearFrame", function() self:ClearCurrentFrame() end, {desc = "Clear Variables4 current frame"}}
+  })
 end
 
 -- ========================================
--- HELPER METHODS
+-- DEBUG SESSION CONTEXT (Information Gem)
 -- ========================================
 
-function Variables4Plugin:requireActiveFrame(context_message)
-  if not self.current_frame then
-    print("No debug session active - " .. context_message)
-    return false
+-- Debug Session Context: The current debugging state and capabilities
+local SessionContext = {
+  INACTIVE = "inactive", -- No debug session
+  ACTIVE = "active",     -- Session running but not stopped
+  STOPPED = "stopped",   -- Session stopped at breakpoint
+}
+
+-- Get current session context
+function Variables4Plugin:getSessionContext()
+  if not self.frame then
+    return SessionContext.INACTIVE
   end
-  return true
+
+  -- If we have a frame, we're stopped at a breakpoint
+  return SessionContext.STOPPED
 end
 
+-- Execute action only in appropriate session context
+function Variables4Plugin:withSessionContext(required_context, action, context_message)
+  local current_context = self:getSessionContext()
+
+  if current_context ~= required_context then
+    local context_names = {
+      [SessionContext.INACTIVE] = "no debug session",
+      [SessionContext.ACTIVE] = "debug session running",
+      [SessionContext.STOPPED] = "debug session stopped"
+    }
+    print(context_names[current_context] .. " - " .. context_message)
+    return nil
+  end
+
+  return action()
+end
+
+-- Get current scopes (only available when stopped)
 function Variables4Plugin:getCurrentScopesAndVariables()
-  if not self:requireActiveFrame("cannot access variables") then
-    return nil
-  end
+  return self:withSessionContext(SessionContext.STOPPED, function()
+    local frame = self.frame
+    if not frame then
+      print("No current frame available")
+      return nil
+    end
 
-  local frame = self.current_frame
-  if not frame then
-    print("No current frame available")
-    return nil
-  end
+    local scopes = frame:scopes()
+    if not scopes or #scopes == 0 then
+      print("No scopes available")
+      return nil
+    end
 
-  local scopes = frame:scopes()
-  if not scopes or #scopes == 0 then
-    print("No scopes available")
-    return nil
-  end
+    return scopes
+  end, "cannot access variables")
+end
 
-  return scopes
+-- ========================================
+-- UI COORDINATION HELPERS
+-- ========================================
+
+-- Simple helper to eliminate repetitive render+update+cursor pattern
+function Variables4Plugin:refreshTreeUI(target_node_id)
+  self.tree:render()
+  self:updatePopupTitle()
+  if target_node_id then
+    self:setCursorToNode(target_node_id)
+  end
+end
+
+-- Simple node data access helpers
+local function getNodeDataObject(node)
+  return node._scope or node._variable
+end
+
+local function getNodeVariable(node)
+  return node._variable
+end
+
+local function getNodeVariableRef(node)
+  return node._variable and node._variable.ref
+end
+
+local function isNodeLazy(node)
+  local var_ref = getNodeVariableRef(node)
+  return var_ref and var_ref.presentationHint and var_ref.presentationHint.lazy and not node._lazy_resolved
+end
+
+-- Helper to safely get current node (eliminates guard+fetch+validate pattern)
+function Variables4Plugin:getCurrentNodeSafely()
+  if not self.tree then return nil end
+  return self.tree:get_node()
+end
+
+-- Helper to safely get node by ID
+function Variables4Plugin:getNodeSafely(node_id)
+  if not self.tree then return nil end
+  return self.tree.nodes.by_id[node_id]
+end
+
+-- Helper to create properly configured variable instance (eliminates 5-line creation ritual)
+local function createVariableInstance(child, data_object, parent_node)
+  local instance = child.ref and child or Variable.instanciate(data_object.scope or data_object, child)
+  local var_ref = getNodeVariableRef(parent_node)
+  if var_ref then instance._parent_var_ref = var_ref.variablesReference end
+  instance.asNode = instance.asNode or Variable.asNode
+  instance.variables = instance.variables or Variable.variables
+  return instance
+end
+
+-- Simple async wrapper helper
+function Variables4Plugin:runAsync(operation)
+  NvimAsync.run(operation)
 end
 
 -- ========================================
@@ -403,288 +413,341 @@ end
 -- ========================================
 
 
--- Get a simple node path string
-function Variables4Plugin:getNodePath(tree, node)
-  if not node then
-    return ""
+-- Refined popup title update with simplified path generation
+function Variables4Plugin:updatePopupTitle()
+  if not (self.popup and self.popup.border and self.popup.border.text) then return end
+
+  -- Quick path: if showing all roots, use default title
+  if vim.deep_equal(self.tree.nodes.root_ids, self.true_root_ids) then
+    self.popup.border.text.top = " Variables4 Debug Tree "
+    self.popup:update_layout()
+    return
   end
 
+  -- Build viewport path from first root to its ancestors
   local path_parts = {}
-  local current = node
+  local current = self.tree.nodes.root_ids[1] and
+      self.tree.nodes.by_id[self.tree.nodes.root_ids[1]]
 
-  -- Build path by walking up the tree
   while current do
     -- Extract simple name from node text
     local name = "?"
     if current.text then
-      -- For variables: "icon name: value" format, extract name
       local colon_pos = current.text:find(": ")
       if colon_pos then
-        local name_part = current.text:sub(1, colon_pos - 1)
-        local space_pos = name_part:find(" ")
-        name = space_pos and name_part:sub(space_pos + 1) or name_part
+        -- Variable format: "icon name: value" → extract name
+        local before_colon = current.text:sub(1, colon_pos - 1)
+        name = before_colon:match(" ([^ ]+)$") or before_colon
       else
-        -- For scopes: "📁 ScopeName" format, extract name
+        -- Scope format: "📁 ScopeName" → extract name
         name = current.text:match("📁%s*(.+)") or current.text
       end
     end
 
     table.insert(path_parts, 1, name)
-
-    -- Move to parent
     local parent_id = current:get_parent_id()
-    if not parent_id then
-      break
-    end
-    current = tree.nodes.by_id[parent_id]
+    if not parent_id then break end
+    current = self.tree.nodes.by_id[parent_id]
   end
 
-  return table.concat(path_parts, " → ")
+  -- Remove current level and build title
+  table.remove(path_parts)
+  local title = #path_parts > 0
+      and " Variables4: " .. table.concat(path_parts, " → ") .. " "
+      or " Variables4 Debug Tree "
+
+  self.popup.border.text.top = title
+  self.popup:update_layout()
 end
 
+-- Focus on a specific node by setting viewport to show it and its siblings
+function Variables4Plugin:focusOnNode(node_id)
+  local node = self:getNodeSafely(node_id)
+  if not node then return end
 
--- Simplified focus toggle: parent focus on f-key, return to root if no-op
-function Variables4Plugin:toggleSimpleFocus(tree, popup)
-  local current_node = tree:get_node()
-  if not current_node then return end
-  
-  if not self.focus_mode_active then
-    -- Enter focus mode: focus on parent of current node
-    local parent_id = current_node:get_parent_id()
-    if parent_id then
-      -- Store original root for restoration
-      self.original_root_ids = vim.deepcopy(tree.nodes.root_ids)
-      
-      -- Focus on parent
-      tree.nodes.root_ids = { parent_id }
-      self.focus_mode_active = true
-      
-      -- Update title
-      if popup and popup.border and popup.border.text then
-        local parent_node = tree.nodes.by_id[parent_id]
-        if parent_node then
-          popup.border.text.top = " Focus: " .. (parent_node.text or "unknown") .. " "
-          popup:update_layout()
-        end
-      end
-      
-      tree:render()
-      self.logger:debug("Focus enabled on parent: " .. (tree.nodes.by_id[parent_id].text or "unknown"))
-    else
-      -- No parent to focus on
-      self.logger:debug("No parent to focus on - staying at root level")
-    end
+  local parent_id = node:get_parent_id()
+  local new_roots
+  if parent_id then
+    local parent_node = self.tree.nodes.by_id[parent_id]
+    new_roots = (parent_node and parent_node:has_children()) and parent_node:get_child_ids() or { node_id }
   else
-    -- Already in focus mode - check if we can focus on parent again
-    local parent_id = current_node:get_parent_id()
-    if parent_id and tree.nodes.root_ids[1] ~= parent_id then
-      -- Focus on parent of current focused node
-      tree.nodes.root_ids = { parent_id }
-      
-      -- Update title
-      if popup and popup.border and popup.border.text then
-        local parent_node = tree.nodes.by_id[parent_id]
-        if parent_node then
-          popup.border.text.top = " Focus: " .. (parent_node.text or "unknown") .. " "
-          popup:update_layout()
-        end
+    new_roots = { node_id }
+  end
+
+  -- Inlined setViewportRoots logic
+  self.tree.nodes.root_ids = new_roots
+  self:refreshTreeUI()
+  self.logger:debug("Viewport changed: focused on " .. (node.text or "unknown"))
+end
+
+-- ========================================
+-- PATH AND VIEWPORT MANAGEMENT
+-- ========================================
+
+-- Check if a node is currently visible in the tree (crystallized inline)
+function Variables4Plugin:isNodeVisible(node_id)
+  -- Inline check without creating full visible_nodes array
+  local function isVisible(check_id, root_ids)
+    for _, root_id in ipairs(root_ids) do
+      if root_id == check_id then return true end
+      local root_node = self.tree.nodes.by_id[root_id]
+      if root_node and root_node:is_expanded() and root_node:has_children() then
+        if isVisible(check_id, root_node:get_child_ids()) then return true end
       end
-      
-      tree:render()
-      self.logger:debug("Focus changed to parent: " .. (tree.nodes.by_id[parent_id].text or "unknown"))
+    end
+    return false
+  end
+  return isVisible(node_id, self.tree.nodes.root_ids)
+end
+
+-- Refined viewport adjustment with simplified logic
+function Variables4Plugin:adjustViewportForNode(target_node_id)
+  if self:isNodeVisible(target_node_id) then return false end
+
+  local target_node = self.tree.nodes.by_id[target_node_id]
+  if not target_node then return false end
+
+  local parent_id = target_node:get_parent_id()
+
+  -- No parent: show all roots
+  if not parent_id then
+    self.tree.nodes.root_ids = self.true_root_ids or self.tree.nodes.root_ids
+    self.logger:debug("Viewport adjusted to show all roots")
+    return true
+  end
+
+  -- Has parent: find appropriate level to show
+  local parent_node = self.tree.nodes.by_id[parent_id]
+  local grandparent_id = parent_node and parent_node:get_parent_id()
+
+  if grandparent_id then
+    -- Show parent and its siblings (children of grandparent)
+    local grandparent = self.tree.nodes.by_id[grandparent_id]
+    if grandparent and grandparent:has_children() then
+      self.tree.nodes.root_ids = grandparent:get_child_ids()
+      self.logger:debug("Viewport adjusted to show parent level and siblings")
+      return true
+    end
+  end
+
+  -- Fallback: show all roots
+  self.tree.nodes.root_ids = self.true_root_ids or self.tree.nodes.root_ids
+  self.logger:debug("Viewport adjusted to root level")
+  return true
+end
+
+-- ========================================
+-- OPERATION CONTEXT (Use-Case Optimization)
+-- ========================================
+
+-- Direct Navigation Methods: Eliminate TreeOperationContext indirection
+-- These methods take the parameters they actually need rather than bundling them
+
+function Variables4Plugin:navigateToNode(target_node_id, should_collapse)
+  if not target_node_id or not self.tree then return false end
+
+  -- Ensure target is visible
+  if not self:isNodeVisible(target_node_id) then
+    self:adjustViewportForNode(target_node_id)
+  end
+
+  -- Apply collapse if requested
+  if should_collapse then
+    local target_node = self.tree.nodes.by_id[target_node_id]
+    if target_node and target_node:is_expanded() then
+      target_node:collapse()
+      self:collapseAllChildren(target_node)
+    end
+  end
+
+  -- Render and position cursor
+  self:refreshTreeUI(target_node_id)
+  return true
+end
+
+function Variables4Plugin:drillIntoNode(node)
+  if not self.tree then return end
+
+  -- Check for lazy variables first
+  if isNodeLazy(node) then
+    return self:resolveLazyVariable(node)
+  end
+
+  -- Handle expandable nodes
+  if node.expandable then
+    if not node._children_loaded then
+      return self:ExpandNodeAndNavigate(node)
+    elseif not node:is_expanded() then
+      node:expand()
+      self:refreshTreeUI()
+      self:moveToFirstChild(node)
     else
-      -- No-op case: return to root
-      tree.nodes.root_ids = self.original_root_ids or self.true_root_ids
-      self.focus_mode_active = false
-      
-      -- Update title
-      if popup and popup.border and popup.border.text then
-        popup.border.text.top = " Variables4 Debug Tree "
-        popup:update_layout()
-      end
-      
-      tree:render()
-      self.logger:debug("Focus disabled - returned to root")
+      self:moveToFirstChild(node)
+    end
+  end
+  -- Leaf nodes: no action
+end
+
+function Variables4Plugin:expandVariableToSeeContents()
+  local node = self:getCurrentNodeSafely()
+  if node then
+    return self:drillIntoNode(node)
+  end
+end
+
+function Variables4Plugin:navigateToSibling(direction)
+  local current_node = self:getCurrentNodeSafely()
+  if not current_node then return end
+
+  local target
+  if direction == "next" then
+    target = self:getVisibleNodeNeighbor(current_node, "next") or
+        self:findNextLogicalSibling(current_node)
+  else
+    target = self:getVisibleNodeNeighbor(current_node, "previous") or current_node:get_parent_id()
+  end
+
+  if target then
+    return self:navigateToNode(target, false)
+  end
+end
+
+function Variables4Plugin:navigateToParentLevel()
+  local current_node = self:getCurrentNodeSafely()
+  if not current_node then return end
+
+  local target = current_node:get_parent_id() or self:getViewportParent()
+  if target then
+    return self:navigateToNode(target, true) -- collapse when going up
+  end
+end
+
+function Variables4Plugin:focusOnCurrentScope()
+  local node = self:getCurrentNodeSafely()
+  if node then
+    local parent_id = node:get_parent_id()
+    if parent_id then
+      self:focusOnNode(parent_id)
     end
   end
 end
 
-
 -- ========================================
--- TREE NAVIGATION HELPERS
+-- NAVIGATION CONCEPTS (Information Gems)
 -- ========================================
 
--- Get all visible nodes in display order (depth-first traversal)
-function Variables4Plugin:getVisibleNodes(tree)
+
+
+-- Find next logical sibling when linear navigation reaches boundary
+function Variables4Plugin:findNextLogicalSibling(current_node)
+  local node_to_check = current_node
+  while node_to_check do
+    local parent_id = node_to_check:get_parent_id()
+    if not parent_id then break end
+
+    local parent_node = self.tree.nodes.by_id[parent_id]
+    if parent_node and parent_node:has_children() then
+      local sibling_ids = parent_node:get_child_ids()
+      local current_check_id = node_to_check:get_id()
+
+      for i, sibling_id in ipairs(sibling_ids) do
+        if sibling_id == current_check_id and i < #sibling_ids then
+          return sibling_ids[i + 1]
+        end
+      end
+    end
+    node_to_check = parent_node
+  end
+  return nil
+end
+
+-- Get parent of current viewport for focused view navigation
+function Variables4Plugin:getViewportParent()
+  if not self.tree.nodes.root_ids or not self.true_root_ids then
+    return nil
+  end
+
+  -- Check if we're in a focused view (not showing all roots)
+  if #self.tree.nodes.root_ids == #self.true_root_ids then
+    for i, id in ipairs(self.tree.nodes.root_ids) do
+      if id ~= self.true_root_ids[i] then
+        break
+      end
+      if i == #self.tree.nodes.root_ids then
+        return nil -- Showing all roots
+      end
+    end
+  end
+
+  -- We're in a focused view - get parent of first root
+  local first_root = self.tree.nodes.by_id[self.tree.nodes.root_ids[1]]
+  return first_root and first_root:get_parent_id()
+end
+
+-- Unified visible node navigation (crystallized from 3 separate methods)
+function Variables4Plugin:getVisibleNodeNeighbor(current_node, direction)
   local visible_nodes = {}
-  
-  -- Helper function to traverse nodes recursively
+
+  -- Inline traversal (no separate getVisibleNodes method needed)
   local function traverse(node_id)
-    local node = tree.nodes.by_id[node_id]
+    local node = self.tree.nodes.by_id[node_id]
     if not node then return end
-    
     table.insert(visible_nodes, node_id)
-    
-    -- If node is expanded, traverse its children
     if node:is_expanded() and node:has_children() then
-      local child_ids = node:get_child_ids()
-      for _, child_id in ipairs(child_ids) do
+      for _, child_id in ipairs(node:get_child_ids()) do
         traverse(child_id)
       end
     end
   end
-  
-  -- Start with root nodes
-  for _, root_id in ipairs(tree.nodes.root_ids) do
+
+  for _, root_id in ipairs(self.tree.nodes.root_ids) do
     traverse(root_id)
   end
-  
-  return visible_nodes
-end
 
--- Get the next visible node after the current one
-function Variables4Plugin:getNextVisibleNode(tree, current_node)
-  local visible_nodes = self:getVisibleNodes(tree)
   local current_id = current_node:get_id()
-  
   for i, node_id in ipairs(visible_nodes) do
-    if node_id == current_id and i < #visible_nodes then
-      return visible_nodes[i + 1]
+    if node_id == current_id then
+      if direction == "next" and i < #visible_nodes then
+        return visible_nodes[i + 1]
+      elseif direction == "previous" and i > 1 then
+        return visible_nodes[i - 1]
+      end
+      break
     end
   end
-  
-  return nil -- Already at last node
+  return nil
 end
 
--- Get the previous visible node before the current one
-function Variables4Plugin:getPreviousVisibleNode(tree, current_node)
-  local visible_nodes = self:getVisibleNodes(tree)
-  local current_id = current_node:get_id()
-  
-  for i, node_id in ipairs(visible_nodes) do
-    if node_id == current_id and i > 1 then
-      return visible_nodes[i - 1]
-    end
-  end
-  
-  return nil -- Already at first node
-end
-
--- Helper to set cursor to a specific node using vim API with smart column positioning
-function Variables4Plugin:setCursorToNode(tree, node_id)
-  -- Smart but simple cursor positioning based on the line content
-  local node, linenr_start, linenr_end = tree:get_node(node_id)
+-- Crystallized cursor positioning: simplified smart positioning
+function Variables4Plugin:setCursorToNode(node_id)
+  local node, linenr_start = self.tree:get_node(node_id)
   if node and linenr_start then
-    local winid = vim.api.nvim_get_current_win()
-    
-    -- Get the actual line content to find where the name starts
-    local line_content = vim.api.nvim_buf_get_lines(0, linenr_start - 1, linenr_start, false)[1] or ""
-    local name_start_col = self:findNameStartColumn(line_content)
-    
-    vim.api.nvim_win_set_cursor(winid, { linenr_start, name_start_col })
-    self.logger:debug(string.format("Set cursor to line %d, column %d (name start)", linenr_start, name_start_col))
+    -- Simplified: find first alphanumeric char after tree decorations
+    local line = vim.api.nvim_buf_get_lines(0, linenr_start - 1, linenr_start, false)[1] or ""
+    local col = line:find("[%w_]") or 6 -- Find first word char or default to 6
+    vim.api.nvim_win_set_cursor(vim.api.nvim_get_current_win(), { linenr_start, col - 1 })
   else
-    -- Fallback: use column 4 as default
+    -- Fallback: stay on current line, column 4
     local current_line = vim.api.nvim_win_get_cursor(vim.api.nvim_get_current_win())[1]
     vim.api.nvim_win_set_cursor(vim.api.nvim_get_current_win(), { current_line, 4 })
-    self.logger:debug("Node lookup failed, set cursor to column 4 on current line")
   end
-end
-
--- Find where the actual name starts in a tree line
-function Variables4Plugin:findNameStartColumn(line_content)
-  -- Simple and effective approach: look for the first letter/word after icons
-  -- Based on typical lines like: "│▶ 📁  Local: testVariables"
-  
-  -- Strategy: Find where text starts after all the tree decorations
-  -- Skip tree chars (│╰─), arrows (▶▼), emojis, and spaces
-  local pos = 0
-  local len = #line_content
-  
-  -- Skip initial tree characters and arrows
-  while pos < len do
-    local char = line_content:sub(pos + 1, pos + 1)
-    local byte = string.byte(char)
-    
-    -- Skip known tree characters: │ ╰ ─ ▶ ▼
-    if char == "│" or char == "╰" or char == "─" or char == "▶" or char == "▼" or char == " " then
-      pos = pos + 1
-    -- Skip UTF-8 emoji characters (usually have high byte values)
-    elseif byte and byte > 127 then
-      pos = pos + 1
-    -- Found a regular character - this should be the start of the name
-    elseif char:match("[%w_]") then
-      return pos  -- Return 0-based position for vim cursor
-    else
-      pos = pos + 1
-    end
-  end
-  
-  -- Fallback: if we can't find a good position, use a reasonable default
-  return 6  -- Approximately where names usually start
 end
 
 -- Simple cursor positioning: just put cursor at column 4 for most items
 -- This covers the common case of "▶ 📁  Name" where name starts at column 4
 
--- Navigate to the first child of current node (l key behavior)
-function Variables4Plugin:navigateToFirstChild(tree, popup)
-  local current_node = tree:get_node()
-  if not current_node then return end
-
-  -- Log the drill-down attempt for debugging cursor behavior
-  self.logger:debug("L-key drill-down from: " .. (current_node.text or "unknown"))
-
-  -- Check if this is a lazy variable that needs resolution
-  if current_node._variable and current_node._variable.ref and current_node._variable.ref.presentationHint then
-    local hint = current_node._variable.ref.presentationHint
-    if hint.lazy and not current_node._lazy_resolved then
-      -- This is an unresolved lazy variable - resolve it
-      self.logger:debug("Resolving lazy variable before drill-down")
-      self:resolveLazyVariable(tree, current_node, popup)
-      return
-    end
-  end
-
-  -- If node is collapsed and expandable, expand it first
-  if not current_node:is_expanded() and current_node.expandable then
-    if not current_node._children_loaded then
-      -- Async expansion - set up callback to move to first child after loading
-      self.logger:debug("Async expansion + drill-down")
-      self:ExpandNodeWithCallback(tree, current_node, popup, function()
-        self:moveToFirstChild(tree, current_node)
-        -- No automatic focus updates - focus is manual only
-      end)
-      return
-    else
-      -- Sync expansion - expand and immediately move to first child
-      self.logger:debug("Sync expansion + drill-down")
-      current_node:expand()
-      tree:render()
-      self:moveToFirstChild(tree, current_node)
-      -- No automatic focus updates - focus is manual only
-    end
-  elseif current_node:is_expanded() and current_node:has_children() then
-    -- Already expanded - just move to first child
-    self.logger:debug("Node already expanded, drilling to first child")
-    self:moveToFirstChild(tree, current_node)
-    -- No automatic focus updates - focus is manual only
-  else
-    -- Node is not expandable or has no children
-    self.logger:debug("Node not expandable or has no children - staying in place")
-  end
-end
+-- Note: navigateToFirstChild wrapper removed - using navigate() directly
 
 -- Helper to move cursor to first child of a node with drill-down behavior
-function Variables4Plugin:moveToFirstChild(tree, node)
+function Variables4Plugin:moveToFirstChild(node)
   if node:is_expanded() and node:has_children() then
     local child_ids = node:get_child_ids()
     if child_ids and #child_ids > 0 then
       local first_child_id = child_ids[1]
-      self:setCursorToNode(tree, first_child_id)
-      
+      self:setCursorToNode(first_child_id)
+
       -- Log the drill-down action for better user feedback
-      local first_child = tree.nodes.by_id[first_child_id]
+      local first_child = self.tree.nodes.by_id[first_child_id]
       if first_child then
         self.logger:debug("Drilled down to: " .. (first_child.text or "unknown"))
       end
@@ -692,77 +755,83 @@ function Variables4Plugin:moveToFirstChild(tree, node)
   end
 end
 
--- Enhanced ExpandNode with callback support for complete l-key behavior
-function Variables4Plugin:ExpandNodeWithCallback(tree, node, popup, callback)
-  if node._children_loaded then
-    return -- Already loaded
-  end
+-- Simplified node expansion without callback complexity
+function Variables4Plugin:ExpandNodeAndNavigate(node)
+  if node._children_loaded then return end
 
-  -- Get the underlying data object (scope or variable)
-  local data_object = node._scope or node._variable
-  if not data_object then
-    return -- No data object found
-  end
-
-  -- Both scopes and variables should have a variables() method now
-  if not data_object.variables then
+  local data_object = getNodeDataObject(node)
+  if not data_object or not data_object.variables then
+    if not data_object then return end
     self.logger:warn("Data object has no variables() method: " .. (node.text or "unknown"))
     return
   end
 
-  -- Load children asynchronously
-  NvimAsync.run(function()
+  self:runAsync(function()
     local children = data_object:variables()
+    local tree = self.tree
 
+    if not tree then return end
+
+    -- Build existing child name set for duplicate detection
+    local existing_names = {}
+    if node:has_children() then
+      for _, child_id in ipairs(node:get_child_ids()) do
+        local child = tree.nodes.by_id[child_id]
+        local var_ref = getNodeVariableRef(child)
+        if var_ref then
+          existing_names[var_ref.name] = true
+        end
+      end
+    end
+
+    local added_count = 0
     if children and #children > 0 then
-      -- Create child nodes and add them to the tree
       for _, child in ipairs(children) do
-        local variable_instance = self:ensureVariableWrapper(child, data_object, node)
-        local child_node = variable_instance:asNode()
-        child_node._variable = variable_instance
-        tree:add_node(child_node, node:get_id())
+        -- Prepare variable instance
+        local instance = createVariableInstance(child, data_object, node)
+
+        -- Add if not duplicate
+        if not existing_names[instance.ref.name] then
+          local child_node = instance:asNode()
+          child_node._variable = instance
+          tree:add_node(child_node, node:get_id())
+          added_count = added_count + 1
+        end
       end
+    end
 
-      node._children_loaded = true
+    node._children_loaded = true
 
-      self.logger:debug("Loaded " .. #children .. " children for: " .. (node.text or "unknown"))
-
-      -- Expand the node now that children are loaded
+    if added_count > 0 then
+      self.logger:debug(string.format("Loaded %d children (skipped %d duplicates) for: %s",
+        added_count, #children - added_count, node.text or "unknown"))
       node:expand()
-
-      -- Re-render the tree
-      tree:render()
-      
-      -- Execute callback (e.g., move to first child)
-      if callback then
-        callback()
-      end
+      self:refreshTreeUI()
+      self:moveToFirstChild(node) -- Direct call instead of callback
     else
-      -- Mark as loaded even if no children, to avoid repeated attempts
-      node._children_loaded = true
-      self.logger:debug("No children found for: " .. (node.text or "unknown"))
+      self.logger:debug("No new children for: " .. (node.text or "unknown"))
     end
   end)
 end
 
 -- Helper to recursively collapse all children of a node
-function Variables4Plugin:collapseAllChildren(tree, node)
+function Variables4Plugin:collapseAllChildren(node)
   if not node or not node:has_children() then
     return
   end
-  
+
   -- Get all child IDs
   local child_ids = node:get_child_ids()
   if not child_ids then
     return
   end
-  
+
   -- Recursively collapse children first (depth-first)
   for _, child_id in ipairs(child_ids) do
-    local child_node = tree.nodes.by_id[child_id]
+    local child_node = self.tree.nodes.by_id[child_id]
     if child_node then
       -- Recursively collapse children of this child
-      self:collapseAllChildren(tree, child_node)
+      self:collapseAllChildren(child_node)
       -- Then collapse this child if it's expanded
       if child_node:is_expanded() then
         child_node:collapse()
@@ -771,85 +840,7 @@ function Variables4Plugin:collapseAllChildren(tree, node)
   end
 end
 
--- Navigate to parent of current node (h key behavior)
--- Enhanced to jump to parent WHILE collapsing children for fluid navigation
-function Variables4Plugin:navigateToParent(tree, popup)
-  local current_node = tree:get_node()
-  if not current_node then return end
-
-  local parent_id = current_node:get_parent_id()
-  if parent_id then
-    -- ENHANCED BEHAVIOR: Always move to parent AND collapse current node + children
-    -- This creates fluid "jump up while collapsing" behavior
-    
-    -- First, collapse current node if it's expanded
-    if current_node:is_expanded() then
-      current_node:collapse()
-      self.logger:debug("H-key: Collapsed current node: " .. (current_node.text or "unknown"))
-    end
-    
-    -- Also collapse all children recursively for clean state
-    self:collapseAllChildren(tree, current_node)
-    
-    -- Get parent node and collapse its other children too (clean tree management)
-    local parent_node = tree.nodes.by_id[parent_id]
-    if parent_node then
-      self:collapseAllChildren(tree, parent_node)
-      self.logger:debug("H-key: Jumping to parent: " .. (parent_node.text or "unknown"))
-    end
-    
-    -- Jump to parent node (this is the key enhancement!)
-    self:setCursorToNode(tree, parent_id)
-    
-    -- Re-render to show all collapse changes
-    tree:render()
-    
-    -- No automatic focus updates - focus is manual only
-    
-  else
-    -- No parent - this is a scope or root level node
-    -- Collapse the scope node if it's expanded
-    if current_node:is_expanded() then
-      current_node:collapse()
-      tree:render()
-      -- No automatic focus updates - focus is manual only
-      self.logger:debug("H-key: Collapsed scope: " .. (current_node.text or "unknown"))
-    else
-      -- Already collapsed scope, can't go higher
-      self.logger:debug("H-key: Already at collapsed scope level")
-    end
-  end
-end
-
--- Note: Removed checkAndResolveLazyAfterNavigation helper
--- j/k navigation is now pure linear movement without auto-drill behavior
--- Lazy resolution and focus updates only happen on intentional l/h navigation
-
--- Navigate down through siblings or into children (j key behavior)
--- Pure linear navigation - no focus updates, no lazy resolution
-function Variables4Plugin:navigateDown(tree, popup)
-  local current_node = tree:get_node()
-  if not current_node then return end
-  
-  local next_node_id = self:getNextVisibleNode(tree, current_node)
-  if next_node_id then
-    self:setCursorToNode(tree, next_node_id)
-    -- j/k are linear navigation only - no auto-drill behavior
-  end
-end
-
--- Navigate up through siblings or to parent level (k key behavior)  
--- Pure linear navigation - no focus updates, no lazy resolution
-function Variables4Plugin:navigateUp(tree, popup)
-  local current_node = tree:get_node()
-  if not current_node then return end
-  
-  local prev_node_id = self:getPreviousVisibleNode(tree, current_node)
-  if prev_node_id then
-    self:setCursorToNode(tree, prev_node_id)
-    -- j/k are linear navigation only - no auto-drill behavior
-  end
-end
+-- Note: Navigation wrapper methods removed - keybindings call navigate() directly
 
 
 -- ========================================
@@ -857,220 +848,146 @@ end
 -- ========================================
 
 function Variables4Plugin:UpdateFrameCommand()
-  if not self:requireActiveFrame("cannot update frame") then
-    return
-  end
-
-  local frame = self.current_frame
-
-  if not frame then
-    print("No current frame available")
-    return
-  end
-
-  -- Get the current thread's stack and update to top frame
-  local stack = frame.stack
-  if stack then
-    local top_frame = stack:top()
-    if top_frame then
-      self:UpdateCurrentFrame(top_frame)
-      print("✓ Variables4 frame updated to stack top")
-      print("Frame: " .. (top_frame.ref.name or "unknown"))
+  self:withSessionContext(SessionContext.STOPPED, function()
+    local frame = self.frame
+    local stack = frame.stack
+    if stack then
+      local top_frame = stack:top()
+      if top_frame then
+        self:UpdateCurrentFrame(top_frame)
+        print("✓ Variables4 frame updated to stack top")
+        print("Frame: " .. (top_frame.ref.name or "unknown"))
+      else
+        print("No frames available in current stack")
+      end
     else
-      print("No frames available in current stack")
+      print("No stack available for current thread")
     end
-  else
-    print("No stack available for current thread")
-  end
+  end, "cannot update frame")
 end
-
--- ========================================
--- UNIFIED EXPANSION LOGIC
--- ========================================
-
--- Helper function to ensure a child is wrapped as a proper Variable instance
-function Variables4Plugin:ensureVariableWrapper(child, data_object, parent_node)
-  local variable_instance
-
-  if child.ref then
-    -- This is already a wrapped Variable API object
-    variable_instance = child
-  else
-    -- This is a raw DAP variable object - wrap it
-    local parent_scope = data_object.scope or data_object -- Variable has scope, Scope is itself
-    variable_instance = Variable.instanciate(parent_scope, child)
-  end
-
-  -- Set parent context for hierarchical ID generation
-  if parent_node and parent_node._variable and parent_node._variable.ref.variablesReference then
-    variable_instance._parent_var_ref = parent_node._variable.ref.variablesReference
-  end
-
-  -- Ensure child has asNode method (in case it's a new Variable instance)
-  if not variable_instance.asNode then
-    -- Apply asNode method to new Variable instances
-    variable_instance.asNode = Variable.asNode
-    if not variable_instance.variables then
-      variable_instance.variables = Variable.variables
-    end
-  end
-
-  return variable_instance
-end
-
 
 -- ========================================
 -- LAZY VARIABLE RESOLUTION
 -- ========================================
 
--- Resolve a lazy variable by evaluating it and replacing the node
----@param tree NuiTree
----@param node NuiTreeNode
----@param popup any
-function Variables4Plugin:resolveLazyVariable(tree, node, popup)
-  if not node._variable or not node._variable.ref then
-    return
-  end
+-- Refined lazy variable resolution
+function Variables4Plugin:resolveLazyVariable(node)
+  local variable = getNodeVariable(node)
+  if not (variable and variable.ref) then return end
 
-  local variable = node._variable
-  local variable_name = variable.ref.name
-
-  -- Get the frame for evaluation context
   local frame = variable.scope and variable.scope.frame
-  if not frame or not frame.ref then
-    self.logger:warn("No frame available for lazy variable evaluation: " .. variable_name)
+  if not (frame and frame.ref) then
+    self.logger:warn("No frame available for lazy variable: " .. variable.ref.name)
     return
   end
 
-  -- Use the Variable's resolve method to get the actual value
-  NvimAsync.run(function()
-    self.logger:debug("Resolving lazy variable: " .. variable_name)
-    
-    -- Call the resolve method which updates the variable's ref in-place
+  self:runAsync(function()
     local resolved = variable:resolve()
-    
+
     if resolved then
-      self.logger:debug("Lazy variable resolved successfully: " .. variable_name)
-      
-      -- After resolution, we need to update the node's display
-      -- Clear the cached node so asNode() creates a new one with updated values
+      -- Update node with resolved values
       variable._node = nil
-      
-      -- Create a new node with the resolved values
       local resolved_node = variable:asNode()
-      
-      -- Update the existing node's properties to reflect the resolved state
       node.text = resolved_node.text
       node.expandable = resolved_node.expandable
       node._highlight = resolved_node._highlight
-      
-      -- Mark as resolved so we don't re-resolve it
       node._lazy_resolved = true
-      
-      -- If the resolved variable is expandable, mark children as not loaded
+
       if node.expandable then
         node._children_loaded = false
+        if not node._children_loaded then
+          self:ExpandNodeAndNavigate(node)
+        elseif node:has_children() then
+          self:moveToFirstChild(node)
+        end
       end
-      
-      self.logger:debug("Resolved lazy variable: " .. variable_name .. " -> " .. (variable.ref.value or ""))
-      
-      -- After successful resolution, continue with expansion if the variable is expandable
-      if node.expandable and not node._children_loaded then
-        self:ExpandNodeWithCallback(tree, node, popup, function()
-          self:moveToFirstChild(tree, node)
-          -- No automatic focus updates - focus is manual only
-        end)
-      elseif node.expandable and node:has_children() then
-        -- If already has children, just move to first child
-        self:moveToFirstChild(tree, node)
-        -- No automatic focus updates - focus is manual only
-      else
-        -- Variable resolved but not expandable - no action needed
-        -- No automatic focus updates - focus is manual only
-      end
+
+      self.logger:debug("Resolved: " .. variable.ref.name .. " -> " .. (variable.ref.value or ""))
     else
-      self.logger:debug("Failed to resolve lazy variable: " .. variable_name)
+      self.logger:debug("Failed to resolve: " .. variable.ref.name)
     end
-    
-    -- Re-render the tree to show the updated values
-    tree:render()
+
+    self:refreshTreeUI()
   end)
 end
 
 -- ========================================
--- TREE INTERFACE
+-- TREE ASSEMBLY PIPELINE (Information Gem)
 -- ========================================
 
-function Variables4Plugin:OpenVariablesTree()
-  local scopes = self:getCurrentScopesAndVariables()
-  if not scopes then return end
+-- Tree Assembly Pipeline: Transform debug data into interactive UI
+local TreeAssembly = {}
 
-  -- Create tree nodes from our cached nodes
-  local tree_nodes = {}
+-- Step 1: Prepare debug data for UI with auto-expansion of non-expensive scopes
+function TreeAssembly.prepareData(scopes)
+  return Collection.create({items = scopes})
+    :map(function(scope)
+      local scope_node = scope:asNode()
+      
+      -- Auto-expand non-expensive scopes by pre-loading their variables
+      if not scope.ref.expensive then
+        local variables = scope:variables()
+        if variables and #variables > 0 then
+          -- Create child nodes for all variables using Collection
+          local children = Collection.create({items = variables})
+            :map(function(variable) return variable:asNode() end)
+            :toArray()
+          
+          -- Create expanded scope node with children
+          scope_node = NuiTree.Node({
+            id = string.format("scope:%s", scope.ref.name),
+            text = "📁 " .. scope.ref.name,
+            type = "scope",
+            expandable = true,
+            _scope = scope,
+            _highlight = "Directory",
+            _children_loaded = true,
+          }, children)
+          scope_node:expand() -- Start in expanded state
+        end
+      end
+      
+      return scope_node
+    end)
+    :toArray()
+end
 
-  for _, scope in ipairs(scopes) do
-    local scope_node = scope:asNode()
-
-    -- Create scope node WITHOUT pre-loaded children
-    -- Children will be loaded dynamically when expanded
-    -- local scope_tree_node = NuiTree.Node({
-    --   id = scope_node.id,
-    --   text = scope_node.text,
-    --   type = "scope",
-    --   expandable = true, -- Mark as expandable even without children
-    --   _scope = scope,    -- Store reference to original scope
-    -- }, {})               -- Start with empty children array
-
-    table.insert(tree_nodes, scope_node)
-  end
-
-  -- Create NUI Popup with Tree
+-- Step 2: Create popup window
+function TreeAssembly.createPopup()
   local Popup = require("nui.popup")
-
   local popup = Popup({
     enter = true,
     focusable = true,
     border = {
       style = "rounded",
-      text = {
-        top = " Variables4 Debug Tree ",
-        top_align = "center",
-      },
+      text = { top = " Variables4 Debug Tree ", top_align = "center" },
     },
     position = "50%",
-    size = {
-      width = "80%",
-      height = "70%",
-    },
-    buf_options = {
-      modifiable = false,
-      readonly = true,
-    },
-    win_options = {
-      wrap = false, -- Prevent line wrapping
-    },
+    size = { width = "80%", height = "70%" },
+    buf_options = { modifiable = false, readonly = true },
+    win_options = { wrap = false },
   })
-
-  -- Mount the popup first
   popup:mount()
+  return popup
+end
 
-  -- Create the actual NUI Tree after mounting
-  local NuiLine = require("nui.line")
-
-  local tree = NuiTree({
+-- Step 3: Create tree widget
+function TreeAssembly.createTree(popup, tree_nodes)
+  local NuiTree = require("nui.tree")
+  return NuiTree({
     bufnr = popup.bufnr,
     nodes = tree_nodes,
   })
+end
 
-  -- Store the true root IDs (all scopes) for hierarchical focus navigation
-  self.true_root_ids = vim.deepcopy(tree.nodes.root_ids)
+-- Step 4: Setup custom rendering
+function TreeAssembly.setupRendering(tree)
+  local NuiLine = require("nui.line")
 
-  -- Create a custom prepare_node function with beautiful UTF-8 indent indicators
-  local function prepare_node_with_utf8_indent(node)
+  tree._.prepare_node = function(node)
     local line = NuiLine()
 
-    -- Calculate relative indentation for focus mode
-    -- Find minimum depth of current root nodes to normalize indentation
+    -- Calculate relative indentation for viewport
     local min_depth = math.huge
     for _, root_id in ipairs(tree.nodes.root_ids) do
       local root_node = tree.nodes.by_id[root_id]
@@ -1078,137 +995,122 @@ function Variables4Plugin:OpenVariablesTree()
         min_depth = math.min(min_depth, root_node:get_depth())
       end
     end
-    
-    -- Use relative depth so focused subtrees start at left edge
     local relative_depth = math.max(0, node:get_depth() - min_depth)
-    
-    -- Add beautiful UTF-8 rounded indent indicators
+
+    -- Add UTF-8 indent indicators
     for i = 1, relative_depth do
       if i == relative_depth then
-        -- Last level - use rounded corner indicator
         line:append("╰─ ", "Comment")
       else
-        -- Intermediate levels - use vertical line
-        line:append("│  ", "Comment") 
+        line:append("│  ", "Comment")
       end
     end
 
-    -- Add expand/collapse indicator with subtle highlight
+    -- Add expand/collapse indicator
     if node:has_children() or node.expandable then
       if node:is_expanded() then
-        line:append("▼ ", "Comment") -- Subtle color for indicators
+        line:append("▼ ", "Comment")
       else
-        line:append("▶ ", "Comment") -- Subtle color for indicators
+        line:append("▶ ", "Comment")
       end
     else
       line:append("  ")
     end
 
-    -- Parse the node text to extract icon, name, and value for highlighting
+    -- Add content with highlighting
     local text = node.text or ""
-
     if node.type == "scope" then
-      -- Scope nodes: highlight the folder icon and name
-      -- Extract the scope name after the emoji (📁 is 4 bytes + 1 space = 5 chars to skip)
       local scope_name = text:match("📁%s+(.+)") or text
-      line:append("📁 ", "Directory") -- Folder icon
-      line:append(scope_name, "Directory") -- Scope name (properly extracted)
+      line:append("📁 ", "Directory")
+      line:append(scope_name, "Directory")
     else
-      -- Variable nodes: parse "icon name: value" format
-      local icon_pos = text:find(" ")
-      local colon_pos = text:find(": ")
-
+      -- Parse "icon name: value" format
+      local icon_pos, colon_pos = text:find(" "), text:find(": ")
       if icon_pos and colon_pos and icon_pos < colon_pos then
         local icon = text:sub(1, icon_pos - 1)
         local name = text:sub(icon_pos + 1, colon_pos - 1)
         local value = text:sub(colon_pos + 2)
 
-        -- Add icon with subtle highlight
         line:append(icon .. " ", "Comment")
-
-        -- Add variable name with normal highlight
         line:append(name .. ": ", "Identifier")
-
-        -- Add value with type-specific highlight
-        local highlight = node._highlight or "Normal"
-        line:append(value, highlight)
+        line:append(value, node._highlight or "Normal")
       else
-        -- Fallback: just append the text normally
         line:append(text)
       end
     end
 
     return line
   end
+end
 
-  -- Override the tree's prepare_node function
-  tree._.prepare_node = prepare_node_with_utf8_indent
+-- Main tree assembly function
+function Variables4Plugin:OpenVariablesTree()
+  local scopes = self:getCurrentScopesAndVariables()
+  if not scopes then return end
 
-  -- Render the tree
-  tree:render()
+  -- Close existing tree if open
+  if self.popup then
+    self.popup:unmount()
+  end
 
-  -- Set initial cursor position to first character of first scope name  
-  local winid = vim.api.nvim_get_current_win()
-  local line_content = vim.api.nvim_buf_get_lines(0, 0, 1, false)[1] or ""
-  local name_start_col = self:findNameStartColumn(line_content)
-  vim.api.nvim_win_set_cursor(winid, { 1, name_start_col })
-  self.logger:debug(string.format("Set initial cursor to line 1, column %d (scope name start)", name_start_col))
+  -- Execute assembly pipeline
+  local tree_nodes = TreeAssembly.prepareData(scopes)
+  local popup = TreeAssembly.createPopup()
+  local tree = TreeAssembly.createTree(popup, tree_nodes)
 
-  -- Set up keymaps for tree interaction
+  -- Store UI state on plugin instance
+  self.popup = popup
+  self.tree = tree
+  self.true_root_ids = vim.deepcopy(tree.nodes.root_ids)
+
+  -- Setup tree appearance and behavior
+  TreeAssembly.setupRendering(tree)
+  
+  -- Initialize with smart cursor positioning
+  self:refreshTreeUI()
+  local line = vim.api.nvim_buf_get_lines(0, 0, 1, false)[1] or ""
+  local col = line:find("[%w_]") or 6
+  vim.api.nvim_win_set_cursor(vim.api.nvim_get_current_win(), { 1, col - 1 })
+
+  -- Setup navigation and controls
+  self:setupTreeKeybindings()
+end
+
+function Variables4Plugin:setupTreeKeybindings()
   local map_options = { noremap = true, silent = true }
 
-  -- Tree-aware navigation with hjkl (primary navigation method)
-  popup:map("n", "h", function()
-    self:navigateToParent(tree, popup)
-  end, map_options)
+  -- Direct method calls using stored UI state
+  self.popup:map("n", "h", function() self:navigateToParentLevel() end, map_options)
+  self.popup:map("n", "j", function() self:navigateToSibling("next") end, map_options)
+  self.popup:map("n", "k", function() self:navigateToSibling("previous") end, map_options)
+  self.popup:map("n", "l", function() self:expandVariableToSeeContents() end, map_options)
+  self.popup:map("n", "<CR>", function() self:expandVariableToSeeContents() end, map_options) -- Add Enter key support
 
-  popup:map("n", "j", function()
-    self:navigateDown(tree, popup)
-  end, map_options)
+  -- Controls
+  self.popup:map("n", "q", function() self:closeTree() end, map_options)
+  self.popup:map("n", "<Esc>", function() self:closeTree() end, map_options)
+  self.popup:map("n", "f", function() self:focusOnCurrentScope() end, map_options)
 
-  popup:map("n", "k", function()
-    self:navigateUp(tree, popup)
-  end, map_options)
-
-  popup:map("n", "l", function()
-    self:navigateToFirstChild(tree, popup)
-  end, map_options)
-
-  -- Quit with q or Escape
-  popup:map("n", "q", function()
-    popup:unmount()
-  end, map_options)
-
-  popup:map("n", "<Esc>", function()
-    popup:unmount()
-  end, map_options)
-
-  -- Simplified focus mode toggle
-  popup:map("n", "f", function()
-    self:toggleSimpleFocus(tree, popup)
-  end, map_options)
-
-  -- Show help
-  popup:map("n", "?", function()
-    print("Variables4 Tree Controls:")
-    print("Navigation:")
-    print("  j/k: Linear navigation through visible nodes")
-    print("  h/l: Tree traversal (jump to parent/drill into children)")
+  -- Help
+  self.popup:map("n", "?", function()
+    print("Variables4 Tree Controls (Use-Case Driven):")
     print("")
-    print("Tree Operations:")  
-    print("  h: Jump to parent while collapsing children")
-    print("  l: Drill down to first child (resolves lazy variables)")
-    print("  f: Simple focus toggle (parent/root)")
+    print("Core Actions:")
+    print("  l: Expand variable to see contents")
+    print("  h: Navigate to parent level")
+    print("  j/k: Navigate to next/previous sibling")
+    print("  f: Focus on current scope")
+    print("")
+    print("Controls:")
     print("  q/Esc: Close popup")
+    print("  ?: Show this help")
     print("")
-    print("Focus mode: Simple parent focus")
-    print("           First f: Focus on parent of current node")
-    print("           Second f: Focus on parent of focused node") 
-    print("           No-op f: Return to root view")
-    print("Beautiful UTF-8 tree indicators: ╰─ and │")
+    print("The interface automatically handles:")
+    print("- Lazy variable resolution")
+    print("- Viewport adjustment for navigation")
+    print("- Node state transitions")
+    print("- Tree rendering and updates")
   end, map_options)
-
-  -- Tree popup is now open and interactive
 end
 
 -- ========================================

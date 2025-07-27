@@ -1,73 +1,82 @@
-local Class = require('neodap.tools.class')
+local Collection = require('neodap.tools.Collection')
 local Location = require("neodap.api.Location")
+local Class = require('neodap.tools.class')
 
----@class api.BreakpointCollectionProps
----@field breakpoints api.Breakpoint[]
-
----@class api.BreakpointCollection: api.BreakpointCollectionProps
----@field new Constructor<api.BreakpointCollectionProps>
-local BreakpointCollection = Class()
+---@class api.BreakpointCollection: Collection<api.Breakpoint>
+local BreakpointCollection = Class(Collection)
 
 ---@return api.BreakpointCollection
 function BreakpointCollection.create()
-  return BreakpointCollection:new({
-    breakpoints = {},
+  -- Use the inherited create pattern from Class(Collection)
+  local instance = BreakpointCollection:new({})
+  instance:_initialize({
+    items = {},
+    indexes = {
+      id = {
+        indexer = function(breakpoint)
+          return breakpoint.id
+        end,
+        unique = true
+      },
+      location_key = {
+        indexer = function(breakpoint)
+          return breakpoint.location.key
+        end,
+        unique = true
+      },
+      source_key = {
+        indexer = function(breakpoint)
+          return breakpoint.location.sourceId:toString()
+        end,
+        unique = false
+      }
+    }
   })
+  
+  return instance
 end
 
----@param breakpoint api.Breakpoint
-function BreakpointCollection:add(breakpoint)
-  table.insert(self.breakpoints, breakpoint)
+
+-- Override createEmpty to return BreakpointCollection instead of Collection
+---@return api.BreakpointCollection
+function BreakpointCollection:createEmpty()
+  return BreakpointCollection.create()
 end
 
----@param breakpoint api.Breakpoint
-function BreakpointCollection:remove(breakpoint)
-  for i, b in ipairs(self.breakpoints) do
-    if b == breakpoint then
-      table.remove(self.breakpoints, i)
-      return
-    end
-  end
-end
-
----@return api.Breakpoint?
-function BreakpointCollection:first()
-  return self.breakpoints[1]
+-- Convenience accessor for backward compatibility
+---@return api.Breakpoint[]
+function BreakpointCollection:breakpoints()
+  return self.items
 end
 
 ---@param id string
 ---@return api.Breakpoint?
 function BreakpointCollection:get(id)
-  for _, breakpoint in ipairs(self.breakpoints) do
-    if breakpoint.id == id then
-      return breakpoint
-    end
-  end
-  return nil
+  return self:getBy("id", id)
 end
 
----@param predicate fun(breakpoint: api.Breakpoint): boolean?
----@return api.BreakpointCollection
-function BreakpointCollection:filter(predicate)
-  local filtered = BreakpointCollection.create()
-  for _, breakpoint in ipairs(self.breakpoints) do
-    if predicate(breakpoint) then
-      filtered:add(breakpoint)
-    end
-  end
-  return filtered
-end
-
----@param location api.Location
+---@param location api.Location|string
 ---@return api.BreakpointCollection
 function BreakpointCollection:atLocation(location)
+  -- Handle case where location might be a string (backward compatibility)
+  local locationKey
+  if type(location) == "string" then
+    locationKey = location
+  elseif location and location.key then
+    locationKey = location.key
+  else
+    error("Invalid location parameter: expected Location object or string, got " .. type(location))
+  end
+  
+  -- First try O(1) exact location lookup
+  local exactMatch = self:getAllBy("location_key", locationKey)
+  if not exactMatch:isEmpty() then
+    return exactMatch
+  end
+  
+  -- Fallback to O(n) search for DAP position adjustments and binding checks
   return self:filter(function(breakpoint)
-    -- First check exact match with original location
-    if breakpoint.location:equals(location) then
-      return true
-    end
-    
-    -- Also check if any binding's actual location matches the requested location
+    -- Check if any binding's actual location matches the requested location
     -- This handles the case where user tries to toggle a breakpoint that was moved by DAP
     local bindings = breakpoint:getBindings()
     for binding in bindings:each() do
@@ -75,15 +84,15 @@ function BreakpointCollection:atLocation(location)
       if actualLocation:equals(location) then
         return true
       end
-      
+
       -- Check if the requested location is between the original and actual positions
       -- This allows clicking anywhere between the requested and adjusted positions
       local originalLocation = binding:getRequestedLocation()
-      if self:_isLocationBetween(location, originalLocation, actualLocation) then
+      if BreakpointCollection._isLocationBetween(location, originalLocation, actualLocation) then
         return true
       end
     end
-    
+
     return false
   end)
 end
@@ -92,22 +101,22 @@ end
 ---@param start api.Location
 ---@param finish api.Location
 ---@return boolean
-function BreakpointCollection:_isLocationBetween(location, start, finish)
+function BreakpointCollection._isLocationBetween(location, start, finish)
   -- Only consider positions in the same source
   local target_id = location.sourceId
   local start_id = start.sourceId
-  
+
   if not target_id:equals(start_id) then
     return false
   end
-  
+
   local targetLine = location.line
   local targetCol = location.column or 0
   local startLine = start.line
   local startCol = start.column or 0
   local finishLine = finish.line
   local finishCol = finish.column or 0
-  
+
   -- Ensure start position is before finish position (swap if needed)
   local minLine, minCol, maxLine, maxCol
   if startLine < finishLine or (startLine == finishLine and startCol <= finishCol) then
@@ -117,61 +126,31 @@ function BreakpointCollection:_isLocationBetween(location, start, finish)
     minLine, minCol = finishLine, finishCol
     maxLine, maxCol = startLine, startCol
   end
-  
+
   -- Check if target position is between start and finish (inclusive)
   if targetLine < minLine or targetLine > maxLine then
     return false
   end
-  
+
   -- If on the minimum line, check column constraint
   if targetLine == minLine and targetCol < minCol then
     return false
   end
-  
+
   -- If on the maximum line, check column constraint
   if targetLine == maxLine and targetCol > maxCol then
     return false
   end
-  
+
   -- Position is within range
   return true
 end
 
-
----Filter breakpoints by source identifier (preferred method)
+---Filter breakpoints by source identifier (preferred method) - O(1) lookup
 ---@param source_identifier SourceIdentifier
 ---@return api.BreakpointCollection
 function BreakpointCollection:atSource(source_identifier)
-  return self:filter(function(breakpoint)
-    return breakpoint.location.sourceId:equals(source_identifier)
-  end)
-end
-
----@return fun(): api.Breakpoint?
-function BreakpointCollection:each()
-  local index = 0
-  return function()
-    index = index + 1
-    if index > #self.breakpoints then
-      return nil
-    end
-    return self.breakpoints[index]
-  end
-end
-
----@return api.Breakpoint[]
-function BreakpointCollection:toArray()
-  return vim.tbl_map(function(b) return b end, self.breakpoints or {})
-end
-
----@return integer
-function BreakpointCollection:count()
-  return #self.breakpoints
-end
-
----@return boolean
-function BreakpointCollection:isEmpty()
-  return #self.breakpoints == 0
+  return self:whereBy("source_key", source_identifier:toString())
 end
 
 return BreakpointCollection

@@ -1,14 +1,11 @@
-local Logger = require("neodap.tools.logger")
-local Class = require("neodap.tools.class")
+local BasePlugin = require("neodap.plugins.BasePlugin")
 local Location = require("neodap.api.Location")
 local NvimAsync = require("neodap.tools.async")
 local StackNavigation = require("neodap.plugins.StackNavigation")
 local DebugOverlay = require("neodap.plugins.DebugOverlay")
 local StackFrameTelescope = require("neodap.plugins.StackFrameTelescope")
 
----@class neodap.plugin.DebugModeProps
----@field api Api
----@field logger Logger
+---@class neodap.plugin.DebugMode: BasePlugin
 ---@field stackNavigation neodap.plugin.StackNavigation
 ---@field debugOverlay neodap.plugin.DebugOverlay
 ---@field stackFrameTelescope neodap.plugin.StackFrameTelescope
@@ -16,20 +13,13 @@ local StackFrameTelescope = require("neodap.plugins.StackFrameTelescope")
 ---@field is_active boolean
 ---@field original_maps table
 ---@field augroup integer
-
----@class neodap.plugin.DebugMode: neodap.plugin.DebugModeProps
----@field new Constructor<neodap.plugin.DebugModeProps>
-local DebugMode = Class()
+local DebugMode = BasePlugin:extend()
 
 DebugMode.name = "DebugMode"
 DebugMode.description = "Custom vim mode for stack navigation using arrow keys (preserves hjkl for normal navigation)"
 
 function DebugMode.plugin(api)
-    local logger = Logger.get("Plugin:DebugMode")
-
-    local instance = DebugMode:new({
-        api = api,
-        logger = logger,
+    return BasePlugin.createPlugin(api, DebugMode, {
         stackNavigation = api:getPluginInstance(StackNavigation),
         debugOverlay = api:getPluginInstance(DebugOverlay),
         stackFrameTelescope = api:getPluginInstance(StackFrameTelescope),
@@ -38,11 +28,6 @@ function DebugMode.plugin(api)
         original_maps = {},
         augroup = vim.api.nvim_create_augroup("NeodapDebugMode", { clear = true })
     })
-
-    instance:listen()
-    instance:setupCommands()
-
-    return instance
 end
 
 -- Set up reactive listeners for auto-activation
@@ -71,17 +56,11 @@ end
 
 -- Set up manual commands for debug mode
 function DebugMode:setupCommands()
-    vim.api.nvim_create_user_command("NeodapDebugModeEnter", function()
-        self:EnterDebugMode()
-    end, { desc = "Enter Neodap debug mode" })
-
-    vim.api.nvim_create_user_command("NeodapDebugModeExit", function()
-        self:ExitDebugMode()
-    end, { desc = "Exit Neodap debug mode" })
-
-    vim.api.nvim_create_user_command("NeodapDebugModeToggle", function()
-        self:ToggleDebugMode()
-    end, { desc = "Toggle Neodap debug mode" })
+    self:registerCommands({
+        {"NeodapDebugModeEnter", function() self:EnterDebugMode() end, {desc = "Enter Neodap debug mode"}},
+        {"NeodapDebugModeExit", function() self:ExitDebugMode() end, {desc = "Exit Neodap debug mode"}},
+        {"NeodapDebugModeToggle", function() self:ToggleDebugMode() end, {desc = "Toggle Neodap debug mode"}}
+    })
 
     -- Add convenient keymap for entering debug mode
     vim.keymap.set("n", "<leader>dm", function()

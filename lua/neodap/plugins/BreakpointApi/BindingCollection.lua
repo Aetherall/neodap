@@ -1,109 +1,82 @@
-local Class = require('neodap.tools.class')
+local Collection = require('neodap.tools.Collection')
 local Logger = require('neodap.tools.logger')
+local Class = require('neodap.tools.class')
 
----@class api.BindingCollectionProps
----@field bindings api.Binding[]
-
----@class api.BindingCollection: api.BindingCollectionProps
----@field new Constructor<api.BindingCollectionProps>
-local BindingCollection = Class()
+---@class api.BindingCollection: Collection<api.Binding>
+local BindingCollection = Class(Collection)
 
 ---@return api.BindingCollection
 function BindingCollection.create()
-  return BindingCollection:new({
-    bindings = {},
+  -- Use the inherited create pattern from Class(Collection)
+  local instance = BindingCollection:new({})
+  instance:_initialize({
+    items = {},
+    indexes = {
+      id = {
+        indexer = function(binding) 
+          return binding.id 
+        end,
+        unique = true
+      },
+      session_key = {
+        indexer = function(binding) 
+          return binding.session.id 
+        end,
+        unique = false
+      },
+      source_key = {
+        indexer = function(binding) 
+          return binding.source.id:toString() 
+        end,
+        unique = false
+      },
+      breakpoint_key = {
+        indexer = function(binding) 
+          return binding.breakpointId 
+        end,
+        unique = false
+      }
+    }
   })
+  
+  return instance
 end
 
----@param binding api.Binding
-function BindingCollection:add(binding)
-  table.insert(self.bindings, binding)
+
+-- Convenience accessor for backward compatibility
+---@return api.Binding[]
+function BindingCollection:bindings()
+  return self.items
 end
 
----@param binding api.Binding
-function BindingCollection:remove(binding)
-  for i, b in ipairs(self.bindings) do
-    if b == binding then
-      table.remove(self.bindings, i)
-      return
-    end
-  end
-end
-
----@return api.Binding?
-function BindingCollection:first()
-  return self.bindings[1]
-end
-
----@param predicate fun(binding: api.Binding): boolean
+-- Override createEmpty to return BindingCollection instead of Collection
 ---@return api.BindingCollection
-function BindingCollection:filter(predicate)
-  local filtered = BindingCollection.create()
-  for _, binding in ipairs(self.bindings) do
-    if predicate(binding) then
-      filtered:add(binding)
-    end
-  end
-  return filtered
+function BindingCollection:createEmpty()
+  return BindingCollection.create()
 end
 
 ---@param session api.Session
 ---@return api.BindingCollection
 function BindingCollection:forSession(session)
-  return self:filter(function(binding)
-    return binding.session.id == session.id
-  end)
+  return self:whereBy("session_key", session.id)
 end
 
 ---@param source api.Source
 ---@return api.BindingCollection
 function BindingCollection:forSource(source)
-  return self:filter(function(binding)
-    return binding.source.id:equals(source.id)
-  end)
+  return self:whereBy("source_key", source.id:toString())
 end
 
 ---@param breakpoint api.Breakpoint
 ---@return api.BindingCollection
 function BindingCollection:forBreakpoint(breakpoint)
-  return self:filter(function(binding)
-    return binding.breakpointId == breakpoint.id
-  end)
+  return self:whereBy("breakpoint_key", breakpoint.id)
 end
 
 ---@param ids integer[]
 ---@return api.BindingCollection
 function BindingCollection:forIds(ids)
-  return self:filter(function(binding)
-    return vim.tbl_contains(ids, binding.id)
-  end)
-end
-
----@return fun(): api.Binding?
-function BindingCollection:each()
-  local index = 0
-  return function()
-    index = index + 1
-    if index > #self.bindings then
-      return nil
-    end
-    return self.bindings[index]
-  end
-end
-
----@return api.Binding[]
-function BindingCollection:toArray()
-  return vim.tbl_map(function(b) return b end, self.bindings or {})
-end
-
----@return integer
-function BindingCollection:count()
-  return #self.bindings
-end
-
----@return boolean
-function BindingCollection:isEmpty()
-  return #self.bindings == 0
+  return self:getByAny("id", ids)
 end
 
 -- DAP synchronization methods
@@ -111,7 +84,7 @@ end
 ---@return dap.SourceBreakpoint[]
 function BindingCollection:toDapSourceBreakpoints()
   local dapBreakpoints = {}
-  for _, binding in ipairs(self.bindings) do
+  for _, binding in ipairs(self.items) do
     local dapBreakpoint = binding:toDapSourceBreakpoint()
     table.insert(dapBreakpoints, dapBreakpoint)
   end
@@ -121,55 +94,17 @@ end
 ---Group bindings by session
 ---@return fun(): api.Session?, api.BindingCollection?
 function BindingCollection:bySession()
-  local groups = {}
-  for _, binding in ipairs(self.bindings) do
-    local sessionId = binding.session.id
-    if not groups[sessionId] then
-      groups[sessionId] = { 
-        session = binding.session, 
-        collection = BindingCollection.create() 
-      }
-    end
-    groups[sessionId].collection:add(binding)
-  end
-
-  local keys = vim.tbl_keys(groups)
-  local index = 0
-  return function()
-    index = index + 1
-    if index > #keys then
-      return nil, nil
-    end
-    local group = groups[keys[index]]
-    return group.session, group.collection
-  end
+  return self:groupBy(function(binding)
+    return binding.session.id
+  end)
 end
 
----Group bindings by source
+---Group bindings by source  
 ---@return fun(): api.FileSource?, api.BindingCollection?
 function BindingCollection:bySource()
-  local groups = {}
-  for _, binding in ipairs(self.bindings) do
-    local sourceId = binding.source.id:toString()
-    if not groups[sourceId] then
-      groups[sourceId] = { 
-        source = binding.source, 
-        collection = BindingCollection.create() 
-      }
-    end
-    groups[sourceId].collection:add(binding)
-  end
-
-  local keys = vim.tbl_keys(groups)
-  local index = 0
-  return function()
-    index = index + 1
-    if index > #keys then
-      return nil, nil
-    end
-    local group = groups[keys[index]]
-    return group.source, group.collection
-  end
+  return self:groupBy(function(binding)
+    return binding.source.id:toString()
+  end)
 end
 
 return BindingCollection

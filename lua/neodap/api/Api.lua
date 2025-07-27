@@ -1,10 +1,11 @@
 local Class = require("neodap.tools.class")
+local Collection = require("neodap.tools.Collection")
 local Session = require("neodap.api.Session.Session")
 local Hookable = require("neodap.transport.hookable")
 local VirtualBuffer = require('neodap.api.VirtualBuffer')
 
 ---@class ApiProps
----@field sessions { [integer]: api.Session }
+---@field sessions Collection Session collection with id indexing
 ---@field listeners { [string]: fun(session: api.Session) }
 ---@field manager Manager
 ---@field hookable Hookable
@@ -20,7 +21,18 @@ function Api.register(manager)
   local registry = VirtualBuffer.createRegistry()
   
   local instance = Api:new({
-    sessions = {},
+    sessions = Collection.create({
+      indexes = {
+        id = {
+          indexer = function(session) return session.id end,
+          unique = true
+        },
+        status = {
+          indexer = function(session) return session.status or "unknown" end,
+          unique = false
+        }
+      }
+    }),
     manager = manager,
     listeners = {},
     hookable = Hookable.create(), -- Top-level hookable for the entire API
@@ -32,9 +44,10 @@ function Api.register(manager)
   VirtualBuffer.Registry.setSingleton(registry)
 
   manager:onSession(function(session)
-    instance.sessions[session.id] = Session.wrap(session, manager, instance.hookable, instance)
+    local wrapped_session = Session.wrap(session, manager, instance.hookable, instance)
+    instance.sessions:add(wrapped_session)
     for _, listener in pairs(instance.listeners) do
-      listener(instance.sessions[session.id])
+      listener(wrapped_session)
     end
   end, { name = "api" })
 
@@ -48,7 +61,7 @@ function Api:onSession(listener, opts)
 
   self.listeners[id] = listener
 
-  for _, session in pairs(self.sessions) do
+  for session in self.sessions:each() do
     -- print("Calling existing session listener for session: " .. session.id)
     listener(session)
   end
@@ -61,16 +74,7 @@ end
 --- Iterable over all sessions
 --- @return fun(): api.Session
 function Api:eachSession()
-  local sessions = self.sessions
-  local keys = vim.tbl_keys(sessions)
-  local index = 0
-
-  return function()
-    index = index + 1
-    if index <= #keys then
-      return sessions[keys[index]]
-    end
-  end
+  return self.sessions:each()
 end
 
 --- Get or create a plugin instance, ensuring single instance per API

@@ -1,7 +1,9 @@
-local Class = require("neodap.tools.class")
+local Class = require('neodap.tools.class')
 local Stack = require("neodap.api.Session.Stack")
 local Hookable = require("neodap.transport.hookable")
 local Logger = require("neodap.tools.logger")
+local Collection = require("neodap.tools.Collection")
+
 
 ---@class api.ThreadProps
 ---@field id integer
@@ -10,11 +12,11 @@ local Logger = require("neodap.tools.logger")
 ---@field stopped boolean
 ---@field public _stack? api.Stack
 
----@class (partial) api.Thread: api.ThreadProps
+---@class api.Thread: api.ThreadProps
 ---@field new Constructor<api.ThreadProps>
 ---@field public _stack? api.Stack
 ---@field stopped boolean
-local Thread = Class();
+local Thread = Class()
 
 local log = Logger.get("DAP:Thread")
 
@@ -26,11 +28,12 @@ function Thread.instanciate(session, id, parentHookable)
     id = id,
     session = session,
     _stack = nil,
-    hookable = Hookable.create(parentHookable),
     stopped = false,
+    hookable = Hookable.create(parentHookable)
   })
 
-  instance:listen() -- Start listening for thread events
+  -- Initialize event listeners
+  instance:listen()
 
   return instance
 end
@@ -192,18 +195,16 @@ end
 --- Destroys this thread and all its child resources
 --- This method ensures complete cleanup of stack and handlers
 function Thread:destroy()
-  -- Clean up stack if it exists
+  -- Clean up stack directly
   if self._stack and self._stack.destroy then
     self._stack:destroy()
+    self._stack = nil
   end
 
-  -- Clean up our hookable (and all handlers registered on it)
+  -- Clean up hookable
   if self.hookable and not self.hookable.destroyed then
     self.hookable:destroy()
   end
-
-  -- Clear references
-  self._stack = nil
 end
 
 return Thread

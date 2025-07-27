@@ -1,47 +1,48 @@
-local Class = require("neodap.tools.class")
+local Class = require('neodap.tools.class')
 local Thread = require("neodap.api.Session.Thread")
 local Source = require('neodap.api.Session.Source')
 local SourceIdentifier = require('neodap.api.Location.SourceIdentifier')
 local Hookable = require("neodap.transport.hookable")
 local Logger = require("neodap.tools.logger")
+local Threads = require("neodap.api.Session.Threads")
+local Sources = require("neodap.api.Session.Sources")
 
 ---@class api.SessionProps
 ---@field id integer
 ---@field ref Session
----@field _threads { [integer]: api.Thread? }
----@field _sources { [string]: api.Source? }
+---@field threads api.Threads
+---@field sources api.Sources
 ---@field hookable Hookable
 ---@field manager Manager
 ---@field api Api
 
 ---@class api.Session: api.SessionProps
 ---@field new Constructor<api.SessionProps>
-local Session = Class();
+local Session = Class()
 
 ---@param ref Session
 ---@param manager Manager
 ---@param parentHookable? Hookable
 ---@param api? Api
 function Session.wrap(ref, manager, parentHookable, api)
-  ---@type api.Session
   local instance = Session:new({
     id = ref.id,
     ref = ref,
-    _threads = {},
-    _sources = {},
-    _sessionBreakpoints = {},
-    hookable = Hookable.create(parentHookable),
+    threads = Threads.create(),
+    sources = Sources.init(),
     manager = manager,
-    api = api
+    api = api,
+    hookable = Hookable.create(parentHookable)
   })
 
+  -- Initialize event listeners
   instance:listen()
-  
+
   -- Register cleanup on session termination and exit
   ref.events:on('terminated', function()
     instance:destroy()
   end, { name = "SessionCleanup_terminated_" .. instance.id, priority = 999, preemptible = false })
-  
+
   ref.events:on('exited', function()
     instance:destroy()
   end, { name = "SessionCleanup_exited_" .. instance.id, priority = 999, preemptible = false })
@@ -58,18 +59,16 @@ function Session:listen()
     if body.reason == 'started' then
       -- print("DEBUG: Session creating thread for threadId:", body.threadId)
       local thread = Thread.instanciate(self, body.threadId, self.hookable)
-      self._threads[body.threadId] = thread
-      -- print("DEBUG: Thread created, stored in _threads[" .. body.threadId .. "]")
+      self.threads:add(thread)
+      -- print("DEBUG: Thread created, stored in threads collection")
     end
   end, { name = "SessionThreadStarted_" .. uniqueId, priority = 2 })
 
   self.ref.events:on('thread', function(body)
     if body.reason == 'exited' then
-      local thread = self._threads[body.threadId]
-      if thread and thread.destroy then
-        thread:destroy()
-      end
-      self._threads[body.threadId] = nil
+      local thread = self.threads:getBy("id", body.threadId)
+      if thread then thread:destroy() end
+      self.threads:removeBy("id", body.threadId)
     end
   end, { name = "SessionThreadExited_" .. uniqueId, priority = 98, preemptible = false })
 
@@ -79,7 +78,7 @@ function Session:listen()
     if not identifier then return end
     local id = identifier:toString()
 
-    local existing = self._sources[id]
+    local existing = self.sources[id]
 
     if existing then
       if not dapSource.checksums then
@@ -100,8 +99,7 @@ function Session:listen()
 
     -- Create a new source instance
     local instance = Source.instanciate(self, dapSource)
-    self._sources[id] = instance
-
+    self.sources:add(instance)
     self.hookable:emit('SourceLoaded', instance)
   end, { name = "SessionLoadedSourceNew_" .. uniqueId, priority = 1 })
 
@@ -110,14 +108,15 @@ function Session:listen()
     if not identifier then return end
     local id = identifier:toString()
 
-    local existing = self._sources[id]
+    local existing = self.sources:getBy("id", id)
     if existing then
       -- TODO: Update existing source with new content
       -- existing:onChanged(source)
     else
       -- If no existing source, just create a new one
-      self._sources[id] = Source.instanciate(self, dapSource)
-      self.hookable:emit('SourceLoaded', self._sources[id])
+      local instance = Source.instanciate(self, dapSource)
+      self.sources:add(instance)
+      self.hookable:emit('SourceLoaded', instance)
     end
   end, { name = "SessionLoadedSourceChanged_" .. uniqueId, priority = 1 })
 
@@ -127,11 +126,11 @@ function Session:listen()
     if not identifier then return end
     local id = identifier:toString()
 
-    local existing = self._sources[id]
+    local existing = self.sources:getBy("id", id)
     if existing then
       -- TODO: Remove local source, trigger its onRemoved event
       -- existing:onRemoved()
-      self._sources[id] = nil
+      self.sources:removeBy("id", id)
     end
   end, { name = "SessionLoadedSourceRemoved_" .. uniqueId, priority = 1 })
 end
@@ -151,9 +150,9 @@ function Session:onThread(listener, opts)
   return self.ref.events:on('thread', function(body)
     if body.reason == 'started' then
       -- print("DEBUG: Session onThread called for threadId:", body.threadId)
-      local thread = self._threads[body.threadId]
+      local thread = self.threads:getBy("id", body.threadId)
       if thread then
-        -- print("DEBUG: Found thread in _threads, calling listener")
+        -- print("DEBUG: Found thread in threads collection, calling listener")
         listener(thread, body)
       else
         -- print("DEBUG: Thread not found in _threads!")
@@ -217,26 +216,12 @@ function Session:onLoadedSourceRemoved(listener, opts)
     , opts)
 end
 
----@generic T
----@param predicate fun(source: api.Source): T?
----@return T
-function Session:findSource(predicate)
-  for _, source in pairs(self._sources) do
-    local result = predicate(source)
-    if result then
-      return source
-    end
-  end
-  return nil
-end
-
 ---Find source by unified source identifier (preferred method)
 ---@param identifier SourceIdentifier | api.Location
 ---@return api.Source?
 function Session:getSource(identifier)
-  return self:findSource(function(source)
-    return source.id:equals(identifier:getSourceId())
-  end)
+  local sourceId = identifier:getSourceId()
+  return self.sources:findBy("id", sourceId:toString())
 end
 
 ---Get or create a source for the given DAP source
@@ -244,32 +229,16 @@ end
 ---@param dapSource dap.Source
 ---@return api.Source|nil
 function Session:getSourceFor(dapSource)
-  -- Initialize the cache if needed
-  if not self._sources then
-    ---@type { [string]: api.Source? }
-    self._sources = {}
-  end
-
   local identifier = SourceIdentifier.fromDapSource(dapSource, self)
-  if not identifier then
-    -- TODO: Should we error here ?
-    return nil
-  end
+  if not identifier then return nil end
 
-  local id = identifier:toString()
-  
-  -- Check if we already have this source cached
-  local existing = self._sources[id]
-  if existing then
-    return existing
-  end
+  local existing = self.sources:findBy("id", identifier:toString())
+  if existing then return existing end
 
-  -- Cache and return the new source
-  self._sources[id] = Source.instanciate(self, dapSource )
-
-  self.hookable:emit('SourceLoaded', self._sources[id])
-
-  return self._sources[id]
+  local source = Source.instanciate(self, dapSource)
+  self.sources:add(source)
+  self.hookable:emit('SourceLoaded', source)
+  return source
 end
 
 ---@param listener fun(body: dap.Breakpoint)
@@ -316,41 +285,6 @@ function Session:onBindingRemoved(listener, opts)
   , opts)
 end
 
---- Destroys this session and all its child resources
---- This method ensures complete cleanup of threads, sources, and handlers
-function Session:destroy()
-  local log = Logger.get("API:Session")
-  log:debug("Session", self.id, "destroy() called - cleaning up child resources")
-  
-  -- Clean up all threads first
-  for threadId, thread in pairs(self._threads) do
-    if thread and thread.destroy then
-      log:debug("Session", self.id, "destroying thread", threadId)
-      thread:destroy()
-    end
-  end
-  
-  -- Clean up all sources (VirtualSource:destroy() handles virtual buffer cleanup)
-  for sourceId, source in pairs(self._sources) do
-    if source and source.destroy then
-      log:debug("Session", self.id, "destroying source", sourceId)
-      source:destroy()
-    end
-  end
-  
-  -- Clean up our hookable (and all handlers registered on it)
-  if self.hookable and not self.hookable.destroyed then
-    log:debug("Session", self.id, "destroying hookable and all handlers")
-    self.hookable:destroy()
-  end
-  
-  -- Clear references
-  self._threads = {}
-  self._sources = {}
-  
-  log:info("Session", self.id, "destroyed successfully")
-end
-
 ---Get valid breakpoint locations for a source range using DAP's breakpointLocations request
 ---@param source api.Source
 ---@param line? integer
@@ -358,42 +292,43 @@ end
 ---@return dap.BreakpointLocation[]|nil locations Array of valid breakpoint locations, or nil if not supported
 function Session:getBreakpointLocations(source, line, column)
   local log = Logger.get("API:Session")
-  
+
   -- Check if adapter supports breakpointLocations
   log:debug("Session", self.id, "- Checking adapter capabilities...")
   log:debug("Session", self.id, "- self.ref.capabilities:", vim.inspect(self.ref.capabilities))
-  
+
   if not self.ref.capabilities or not self.ref.capabilities.supportsBreakpointLocationsRequest then
     log:debug("Session", self.id, "- Adapter does not support breakpointLocations request")
     if not self.ref.capabilities then
       log:debug("Session", self.id, "- No capabilities object found")
     else
-      log:debug("Session", self.id, "- supportsBreakpointLocationsRequest:", self.ref.capabilities.supportsBreakpointLocationsRequest)
+      log:debug("Session", self.id, "- supportsBreakpointLocationsRequest:",
+        self.ref.capabilities.supportsBreakpointLocationsRequest)
     end
     return nil
   end
-  
+
   column = column or 0
-  
+
   local args = {
     source = source.ref,
     line = line or 0,
     -- Only specify line, not column - let adapter return all valid locations on this line
     -- According to DAP spec: "If only the line is specified, the request returns all possible locations in that line"
   }
-  
+
   log:debug("Session", self.id, "- Requesting breakpoint locations for line", line, "column", column)
   log:debug("Session", self.id, "- Request args:", vim.inspect(args))
-  
+
   local success, result = pcall(function()
     return self.ref.calls:breakpointLocations(args):wait()
   end)
-  
+
   if not success then
     log:debug("Session", self.id, "- breakpointLocations request failed:", result)
     return nil
   end
-  
+
   log:debug("Session", self.id, "- breakpointLocations response:", vim.inspect(result))
   if result.breakpoints and #result.breakpoints > 0 then
     log:debug("Session", self.id, "- Valid breakpoint locations:")
@@ -405,79 +340,80 @@ function Session:getBreakpointLocations(source, line, column)
   return result.breakpoints
 end
 
+-- ---@param opts { filter: 'stopped' | 'all' | 'running' }?
+-- ---@return fun(): api.Thread?
+-- function Session:eachThread(opts)
+--   local filter = opts and opts.filter or 'all'
 
----@param opts { filter: 'stopped' | 'all' | 'running' }?
----@return fun(): api.Thread?
-function Session:eachThread(opts)
-  local keys = vim.tbl_keys(self._threads)
-  local index = 0
+--   if filter == 'all' then
+--     return self.threads:each()
+--   elseif filter == 'stopped' then
+--     return self.threads:eachWhere(function(thread) return thread.stopped end)
+--   elseif filter == 'running' then
+--     return self.threads:eachWhere(function(thread) return not thread.stopped end)
+--   else
+--     return self.threads:each()
+--   end
+-- end
 
-  local filter = opts and opts.filter or 'all'
-  return function()
-    index = index + 1
-    if index > #keys then
-      return nil
-    end
+-- ---Find the closest valid breakpoint location to the requested position
+-- ---@param source api.Source
+-- ---@param opts { line?: integer, column?: integer }
+-- ---@return { line: integer, column: integer }|nil closest Closest valid location, or nil if none found
+-- function Session:findClosestBreakpointLocation(source, opts)
+--   local locations = self:getBreakpointLocations(source, opts.line, opts.column)
+--   if not locations or #locations == 0 then
+--     return nil
+--   end
 
-    local threadId = keys[index]
-    local thread = self._threads[threadId]
+--   opts.column = opts.column or 0
 
-    if not thread then
-      return nil -- Thread was removed
-    end
+--   -- Sort locations by column to find the best match
+--   table.sort(locations, function(a, b)
+--     return (a.column or 0) < (b.column or 0)
+--   end)
 
-    if filter == 'stopped' and not thread.stopped then
-      return nil -- Skip running threads
-    elseif filter == 'running' and thread.stopped then
-      return nil -- Skip stopped threads
-    end
+--   -- For better UX, prefer the earliest valid location (beginning of statement)
+--   -- unless the user specifically clicked at a later valid location
+--   local earliest = locations[1]
+--   if not earliest then
+--     return nil
+--   end
 
-    return thread
+--   -- Check if any location is exactly at the requested position
+--   for _, location in ipairs(locations) do
+--     local locColumn = location.column or 0
+--     if locColumn == opts.column then
+--       return {
+--         line = location.line,
+--         column = locColumn
+--       }
+--     end
+--   end
+
+--   -- Default to the earliest (leftmost) valid location
+--   return {
+--     line = earliest.line,
+--     column = earliest.column or 0
+--   }
+-- end
+
+--- Destroys this session and all its child resources
+--- This method ensures complete cleanup of threads, sources and handlers
+function Session:destroy()
+  -- Clean up threads using Collection methods
+
+  for thread in self.threads:each() do
+    thread:destroy()
   end
-end
+  self.threads:clear()
 
+  -- for source in self.sources:each() do
+  --   source:destroy()
+  -- end
+  self.sources:clear()
 
-
----Find the closest valid breakpoint location to the requested position
----@param source api.Source
----@param opts { line?: integer, column?: integer }
----@return { line: integer, column: integer }|nil closest Closest valid location, or nil if none found
-function Session:findClosestBreakpointLocation(source, opts)
-  local locations = self:getBreakpointLocations(source, opts.line, opts.column)
-  if not locations or #locations == 0 then
-    return nil
-  end
-
-  opts.column = opts.column or 0
-  
-  -- Sort locations by column to find the best match
-  table.sort(locations, function(a, b) 
-    return (a.column or 0) < (b.column or 0) 
-  end)
-  
-  -- For better UX, prefer the earliest valid location (beginning of statement)
-  -- unless the user specifically clicked at a later valid location
-  local earliest = locations[1]
-  if not earliest then
-    return nil
-  end
-  
-  -- Check if any location is exactly at the requested position
-  for _, location in ipairs(locations) do
-    local locColumn = location.column or 0
-    if locColumn == opts.column then
-      return {
-        line = location.line,
-        column = locColumn
-      }
-    end
-  end
-  
-  -- Default to the earliest (leftmost) valid location
-  return {
-    line = earliest.line,
-    column = earliest.column or 0
-  }
+  self.hookable:destroy()
 end
 
 return Session

@@ -38,7 +38,7 @@ local LEVEL_NAMES = {
 
 -- Default log level (INFO)
 local DEFAULT_LOG_LEVEL = LOG_LEVELS
-.TRACE                                     -- os.getenv("NEODAP_LOG_LEVEL") and LOG_LEVELS[os.getenv("NEODAP_LOG_LEVEL"):upper()] or
+    .TRACE -- os.getenv("NEODAP_LOG_LEVEL") and LOG_LEVELS[os.getenv("NEODAP_LOG_LEVEL"):upper()] or
 -- LOG_LEVELS.INFO
 
 -- Create namespace-specific instances
@@ -100,10 +100,10 @@ function Logger.get(namespace)
         -- Check if we're in playground mode by looking for specific environment
         -- Use pcall to safely access vim.env in case we're in a fast event context
         local is_playground = false
-        pcall(function()
-            is_playground = vim.env.NEODAP_PLAYGROUND or
-                (vim.fn.argv()[0] and vim.fn.argv()[0]:match("playground%.lua"))
-        end)
+        -- pcall(function()
+        --     is_playground = vim.env.NEODAP_PLAYGROUND or
+        --         (vim.fn.argv()[0] and vim.fn.argv()[0]:match("playground%.lua"))
+        -- end)
 
         instances[namespace] = Logger:new({
             filepath = filepath,

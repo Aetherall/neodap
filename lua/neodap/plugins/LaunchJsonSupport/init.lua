@@ -1,6 +1,5 @@
 -- lua/neodap/plugins/LaunchJsonSupport/init.lua
-local Logger = require("neodap.tools.logger")
-local Class = require("neodap.tools.class")
+local BasePlugin = require("neodap.plugins.BasePlugin")
 local Session = require("neodap.session.session")
 local ExecutableTCPAdapter = require("neodap.adapter.executable_tcp")
 local NvimAsync = require("neodap.tools.async")
@@ -32,31 +31,23 @@ local NvimAsync = require("neodap.tools.async")
 ---@field getAvailableConfigurations fun(workspaceInfo?: WorkspaceInfo): string[]
 ---@field substituteVariables fun(config: table, context: table): table
 
----@class LaunchJsonSupportProps
----@field api Api
----@field logger Logger
+---@class LaunchJsonSupport: BasePlugin
 ---@field cached_workspace_info WorkspaceInfo?
 ---@field cached_configurations table<string, NamespacedConfiguration>?
-
----@class LaunchJsonSupport: LaunchJsonSupportProps
----@field new Constructor<LaunchJsonSupportProps>
-local LaunchJsonSupport = Class()
+local LaunchJsonSupport = BasePlugin:extend()
 
 LaunchJsonSupport.name = "LaunchJsonSupport"
 LaunchJsonSupport.description = "VS Code launch.json configuration support with multi-root workspace support"
 
 function LaunchJsonSupport.plugin(api)
-  local logger = Logger.get("Plugin:LaunchJsonSupport")
-
-  local instance = LaunchJsonSupport:new({
-    api = api,
-    logger = logger,
+  return BasePlugin.createPlugin(api, LaunchJsonSupport, {
     cached_workspace_info = nil,
     cached_configurations = nil,
   })
+end
 
-  instance:registerCommands()
-  return instance
+function LaunchJsonSupport:setupCommands()
+  self:registerCommands()
 end
 
 ---Detect workspace type and structure
@@ -598,7 +589,7 @@ function LaunchJsonSupport:getAvailableConfigurations(workspaceInfo)
 end
 
 ---Register user commands
-function LaunchJsonSupport:registerCommands()
+function LaunchJsonSupport:setupCommands()
   -- Main launch command
   vim.api.nvim_create_user_command("NeodapLaunchJson", function(opts)
     local config_name = opts.args
