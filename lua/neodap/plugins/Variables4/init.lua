@@ -3,7 +3,6 @@
 
 local BasePlugin = require('neodap.plugins.BasePlugin')
 local NvimAsync = require('neodap.tools.async')
-local Collection = require('neodap.tools.Collection')
 local Logger = require('neodap.tools.logger')
 
 -- ========================================
@@ -29,7 +28,7 @@ end
 
 function Variables4Plugin:listen()
   self.logger:info("Initializing Variables4 plugin - asNode() caching strategy")
-  
+
   -- Set up event handlers
   self:setupEventHandlers()
 
@@ -132,9 +131,16 @@ end
 -- ========================================
 
 local Variable = require('neodap.api.Session.Variable')
-local BaseScope = require('neodap.api.Session.Scope.BaseScope')
+local Scope = require('neodap.api.Session.Scope')
 
 local NuiTree = require("nui.tree")
+
+-- Plugin-specific extensions using partial class definitions
+---@class (partial) api.Scope
+---@field _node any UI node cache for Variables4 plugin
+
+---@class (partial) api.Variable
+---@field _node any UI node cache for Variables4 plugin
 
 -- Helper function to validate variable structure
 local function validateVariableRef(variable, method_name)
@@ -208,7 +214,7 @@ function Variable:variables()
   return frame:variables(self.ref.variablesReference)
 end
 
-function BaseScope:asNode()
+function Scope:asNode()
   if self._node then return self._node end
 
   -- Use consistent folder icon and scope-specific highlighting
@@ -226,7 +232,7 @@ function BaseScope:asNode()
   return self._node
 end
 
--- Note: With scope unification, all scope functionality is now in BaseScope
+-- Note: Simplified scope architecture - all functionality in core Scope class
 -- No need to copy methods to individual scope classes since they're unified
 
 -- ========================================
@@ -287,9 +293,9 @@ end
 
 function Variables4Plugin:setupCommands()
   self:registerCommands({
-    {"Variables4Tree", function() self:OpenVariablesTree() end, {desc = "Open Variables4 tree popup"}},
-    {"Variables4UpdateFrame", function() self:UpdateFrameCommand() end, {desc = "Update Variables4 current frame to top of stack"}},
-    {"Variables4ClearFrame", function() self:ClearCurrentFrame() end, {desc = "Clear Variables4 current frame"}}
+    { "Variables4Tree",        function() self:OpenVariablesTree() end,  { desc = "Open Variables4 tree popup" } },
+    { "Variables4UpdateFrame", function() self:UpdateFrameCommand() end, { desc = "Update Variables4 current frame to top of stack" } },
+    { "Variables4ClearFrame",  function() self:ClearCurrentFrame() end,  { desc = "Clear Variables4 current frame" } }
   })
 end
 
@@ -920,19 +926,34 @@ local TreeAssembly = {}
 
 -- Step 1: Prepare debug data for UI with auto-expansion of non-expensive scopes
 function TreeAssembly.prepareData(scopes)
-  return Collection.create({items = scopes})
-    :map(function(scope)
+  if not scopes or type(scopes) ~= "table" or #scopes == 0 then
+    return {}
+  end
+
+  -- Debug logging to see what scopes looks like
+  local logger = Logger.get("Variables4:prepareData")
+  logger:debug("prepareData called with scopes: " .. vim.inspect(scopes))
+  logger:debug("scopes type: " .. type(scopes) .. ", length: " .. #scopes)
+
+  local result = {}
+  for i, scope in ipairs(scopes) do
+    if not scope then
+      logger:warn("Nil scope found in scopes array at index " .. i)
+    else
       local scope_node = scope:asNode()
-      
+
       -- Auto-expand non-expensive scopes by pre-loading their variables
       if not scope.ref.expensive then
         local variables = scope:variables()
         if variables and #variables > 0 then
-          -- Create child nodes for all variables using Collection
-          local children = Collection.create({items = variables})
-            :map(function(variable) return variable:asNode() end)
-            :toArray()
-          
+          -- Create child nodes for all variables using manual loop instead of vim.tbl_map
+          local children = {}
+          for j, variable in ipairs(variables) do
+            if variable then
+              table.insert(children, variable:asNode())
+            end
+          end
+
           -- Create expanded scope node with children
           scope_node = NuiTree.Node({
             id = string.format("scope:%s", scope.ref.name),
@@ -943,13 +964,15 @@ function TreeAssembly.prepareData(scopes)
             _highlight = "Directory",
             _children_loaded = true,
           }, children)
-          scope_node:expand() -- Start in expanded state
+          scope_node:expand()   -- Start in expanded state
         end
       end
-      
-      return scope_node
-    end)
-    :toArray()
+
+      table.insert(result, scope_node)
+    end
+  end
+  
+  return result
 end
 
 -- Step 2: Create popup window
@@ -1065,7 +1088,7 @@ function Variables4Plugin:OpenVariablesTree()
 
   -- Setup tree appearance and behavior
   TreeAssembly.setupRendering(tree)
-  
+
   -- Initialize with smart cursor positioning
   self:refreshTreeUI()
   local line = vim.api.nvim_buf_get_lines(0, 0, 1, false)[1] or ""

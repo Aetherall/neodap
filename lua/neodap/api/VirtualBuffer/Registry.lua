@@ -1,5 +1,4 @@
 local Class = require('neodap.tools.class')
-local VirtualBufferMetadata = require('neodap.api.VirtualBuffer.Metadata')
 local Logger = require('neodap.tools.logger')
 local BufferCollection = require('neodap.api.VirtualBuffer.BufferCollection')
 

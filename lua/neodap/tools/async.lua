@@ -71,7 +71,10 @@ function NvimAsync.run(coroutine_func, event, options)
 
       if not success then
         local error_msg = tostring(yielded[2])
+        local stack_trace = debug.traceback(co)
         logger:error("NvimAsync coroutine error: " .. error_msg)
+        logger:error("Coroutine stack trace:")
+        logger:error(stack_trace)
 
         -- Clean up registry entry on error
         nvim_async_coroutines[co] = nil
@@ -202,7 +205,10 @@ function NvimAsync.defer(func)
 
     -- Create a special truthy value that warns when used
     -- This way `if not result` will be false, but any other usage triggers warning
-    local poison = setmetatable({ __async_poison = true }, {
+
+    local poison = { __async_poison = true, }
+
+    setmetatable(poison, {
       __index = function()
         warn_once(); return nil
       end,

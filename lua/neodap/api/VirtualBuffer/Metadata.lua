@@ -1,6 +1,6 @@
 local Class = require('neodap.tools.class')
 
----@class VirtualBufferMetadata
+---@class VirtualBufferMetadataProps
 ---@field uri string -- neodap-virtual://hash/name
 ---@field bufnr integer -- Neovim buffer number
 ---@field content_hash string -- SHA256 of content for validation
@@ -8,6 +8,9 @@ local Class = require('neodap.tools.class')
 ---@field referencing_sessions table<integer, boolean> -- Session IDs using this buffer
 ---@field last_accessed number -- Timestamp for cleanup decisions
 ---@field source_info table -- Original DAP source info for debugging
+
+---@class VirtualBufferMetadata: VirtualBufferMetadataProps
+---@field new Constructor<VirtualBufferMetadataProps>
 local VirtualBufferMetadata = Class()
 
 ---@param opts { uri: string, bufnr: integer, content_hash: string, stability_hash: string, referencing_sessions?: table<integer, boolean>, source_info?: table }
@@ -54,9 +57,9 @@ end
 ---Get a debug string representation
 ---@return string
 function VirtualBufferMetadata:toString()
-  return string.format("VirtualBuffer(%s, bufnr=%d, sessions=%d)", 
-    self.stability_hash, 
-    self.bufnr, 
+  return string.format("VirtualBuffer(%s, bufnr=%d, sessions=%d)",
+    self.stability_hash,
+    self.bufnr,
     self:getSessionCount()
   )
 end

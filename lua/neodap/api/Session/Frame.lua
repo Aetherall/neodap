@@ -53,11 +53,14 @@ function Frame:scopes()
 
   local response = self.session:Scopes(self.ref.id)
 
-  if not response or not response.scopes then
+  if not response or not response.scopes or type(response.scopes) ~= "table" then
     return nil
   end
 
   self._scopes = vim.tbl_map(function(scope)
+    if not scope then
+      return nil
+    end
     return Scope.instanciate(self, scope)
   end, response.scopes)
 

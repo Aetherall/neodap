@@ -2,9 +2,7 @@ local Class    = require("neodap.tools.class")
 local Events   = require("neodap.transport.events")
 local Calls    = require("neodap.transport.calls")
 local Handlers = require("neodap.transport.handlers")
-local nio      = require("nio")
 local Logger   = require("neodap.tools.logger")
-
 
 ---@class SessionProps
 ---@field id integer
@@ -17,11 +15,9 @@ local Logger   = require("neodap.tools.logger")
 ---@field capabilities? table
 ---@field children { [integer]: Session }
 
-
 ---@class Session: SessionProps
 ---@field new Constructor<SessionProps>
-local Session = Class()
-
+local Session  = Class()
 
 ---@class SessionCreateOptions
 ---@field manager Manager
@@ -36,7 +32,6 @@ function Session.create(opts)
   local events = Events.create()
   local calls = Calls.create()
   local handlers = Handlers.create()
-
 
   local instance = Session:new({
     id = id,
@@ -64,40 +59,11 @@ function Session:Start(opts)
   local send, close = self.adapter:start({
     onMessage = function(message)
       if message.type == "event" then
-        -- Enhanced DAP event tracing
-        local log = Logger.get("DAP:Session")
-        log:debug("Session received DAP event:", message.event)
-        log:trace("DAP event body:", message.body or {})
-
-        -- Special attention to thread events that affect stepping
-        if message.event == "stopped" then
-          log:debug("STOPPED EVENT:", "threadId:", message.body.threadId, "reason:", message.body.reason, "line:",
-            message.body.line)
-          log:trace("STOPPED EVENT FULL BODY:", message.body)
-        elseif message.event == "continued" then
-          log:debug("CONTINUED EVENT:", "threadId:", message.body.threadId, "allThreadsContinued:",
-            message.body.allThreadsContinued)
-        elseif message.event == "breakpoint" then
-          log:debug("BREAKPOINT EVENT:", message.body)
-        end
         self.events:push(message)
       elseif message.type == "request" then
         self.handlers:receive(message)
       elseif message.type == "response" then
-        -- Enhanced DAP response tracing
-        local log = Logger.get("DAP:Session")
-        log:debug("Session received DAP response:", message.command, "seq:", message.seq, "success:", message.success)
-        log:trace("DAP response details:", message)
-
-        -- Special attention to step command responses
-        if message.command == "next" or message.command == "stepIn" or message.command == "stepOut" then
-          log:debug("STEP RESPONSE IN SESSION:", message.command, "success:", message.success, "body:", message.body)
-        end
-
         self.calls:receive(message)
-      else
-        local log = Logger.get("Core:Session")
-        log:warn("Unknown message type:", message.type)
       end
     end,
   })

@@ -1,7 +1,6 @@
 local BasePlugin = require("neodap.plugins.BasePlugin")
 local BreakpointApi = require("neodap.plugins.BreakpointApi")
 local Location = require("neodap.api.Location")
-local NvimAsync = require("neodap.tools.async")
 
 ---@class neodap.plugin.ToggleBreakpoint: BasePlugin
 ---@field breakpointApi BreakpointApiPlugin

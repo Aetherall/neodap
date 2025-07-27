@@ -1,5 +1,4 @@
 local BasePlugin = require("neodap.plugins.BasePlugin")
-local NvimAsync = require("neodap.tools.async")
 local Collection = require("neodap.tools.Collection")
 
 ---@class neodap.plugin.FrameHighlight: BasePlugin

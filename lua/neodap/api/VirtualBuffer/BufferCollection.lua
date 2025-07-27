@@ -1,7 +1,7 @@
 local Class = require('neodap.tools.class')
 local Collection = require("neodap.tools.Collection")
 
----@class api.BufferCollection: Collection<VirtualBufferMetadata>
+---@class api.BufferCollection: Collection<VirtualBufferMetadata, 'uri' | 'stability_hash' | 'validity' | 'reference_status'>
 local BufferCollection = Class(Collection)
 
 ---@return api.BufferCollection

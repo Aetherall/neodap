@@ -373,8 +373,8 @@ function Collection:map(transform_function)
   return mapped
 end
 
----@class (partial) Collection<U>
----@field each fun(self: Collection<U>): fun(): U?, integer?
+---@class (partial) Collection<U, K>
+---@field each fun(self: Collection<U, K>): fun(): U?, integer?
 function Collection:each()
   local index = 0
   return function()
@@ -386,29 +386,20 @@ function Collection:each()
   end
 end
 
----@param callback fun(item: any, position?: integer): any
----@return Collection Self for chaining
-function Collection:forEach(callback)
-  for position, item in ipairs(self.items) do
-    callback(item, position)
-  end
-  return self
-end
-
 ---@class (partial) Collection<U, K>
 ---@field toArray fun(self: Collection<U, K>): U[]
 function Collection:toArray()
   return vim.tbl_map(function(item) return item end, self.items)
 end
 
----@class (partial) Collection<U>
----@field count fun(self: Collection<U>): integer
+---@class (partial) Collection<U, K>
+---@field count fun(self: Collection<U, K>): integer
 function Collection:count()
   return #self.items
 end
 
----@class (partial) Collection<U>
----@field isEmpty fun(self: Collection<U>): boolean
+---@class (partial) Collection<U, K>
+---@field isEmpty fun(self: Collection<U, K>): boolean
 function Collection:isEmpty()
   return #self.items == 0
 end
@@ -433,9 +424,9 @@ function Collection:createEmpty()
   })
 end
 
----@class (partial) Collection<U>
----@field clear fun(self: Collection<U>): Collection<U>
----@return Collection<U>
+---@class (partial) Collection<U, K>
+---@field clear fun(self: Collection<U, K>): Collection<U, K>
+---@return Collection<U, K>
 function Collection:clear()
   ---@type U[]
   self.items = {}
@@ -456,14 +447,14 @@ function Collection:find(predicate)
   return nil
 end
 
----@class (partial) Collection<U>
+---@class (partial) Collection<U, K>
 ---@field any fun(predicate: fun(item: U): boolean): boolean
 function Collection:any(predicate)
   return self:find(predicate) ~= nil
 end
 
----@class (partial) Collection<U>
----@field all fun(self: Collection<U>, predicate: fun(item: U): boolean): boolean
+---@class (partial) Collection<U, K>
+---@field all fun(self: Collection<U, K>, predicate: fun(item: U): boolean): boolean
 function Collection:all(predicate)
   for _, item in ipairs(self.items) do
     if not predicate(item) then
@@ -473,8 +464,8 @@ function Collection:all(predicate)
   return true
 end
 
----@class (partial) Collection<U>
----@field indexOf fun(self: Collection<U>, predicate_or_item: U|fun(item: U): boolean): integer?
+---@class (partial) Collection<U, K>
+---@field indexOf fun(self: Collection<U, K>, predicate_or_item: U|fun(item: U): boolean): integer?
 function Collection:indexOf(predicate_or_item)
   for i, item in ipairs(self.items) do
     if type(predicate_or_item) == "function" then

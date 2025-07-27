@@ -1,6 +1,7 @@
 local Class = require('neodap.tools.class')
 local Logger = require('neodap.tools.logger')
 local nio = require('nio')
+local VirtualBufferRegistry = require('neodap.api.VirtualBuffer.Registry')
 
 ---@class VirtualBufferManager
 ---@field cleanup_scheduled table<string, boolean> -- Instance-specific cleanup tracking
@@ -25,28 +26,28 @@ end
 function VirtualBufferManager:createBuffer(uri, content, filetype)
   local log = Logger.get("API:VirtualBuffer")
   log:debug("VirtualBufferManager: Creating buffer for", uri)
-  
+
   -- Create new scratch buffer
   local bufnr = vim.api.nvim_create_buf(false, true) -- nofile, scratch
-  
+
   -- Configure buffer
   vim.api.nvim_buf_set_name(bufnr, uri)
   vim.api.nvim_buf_set_option(bufnr, 'buftype', 'nofile')
   vim.api.nvim_buf_set_option(bufnr, 'swapfile', false)
   vim.api.nvim_buf_set_option(bufnr, 'bufhidden', 'hide')
   vim.api.nvim_buf_set_option(bufnr, 'buflisted', true)
-  
+
   -- Set filetype if provided
   if filetype then
     log:debug("VirtualBufferManager: Setting filetype to", filetype)
     vim.api.nvim_buf_set_option(bufnr, 'filetype', filetype)
   end
-  
+
   -- Load content
   local lines = vim.split(content, '\n', { plain = true })
   vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
   vim.api.nvim_buf_set_option(bufnr, 'modifiable', false)
-  
+
   -- Set up buffer-local autocmd for tracking
   vim.api.nvim_create_autocmd('BufWipeout', {
     buffer = bufnr,
@@ -57,7 +58,7 @@ function VirtualBufferManager:createBuffer(uri, content, filetype)
       registry:removeBuffer(uri)
     end
   })
-  
+
   log:debug("VirtualBufferManager: Created virtual buffer", bufnr, "for", uri)
   return bufnr
 end
@@ -67,21 +68,21 @@ end
 ---@param registry VirtualBufferRegistry
 function VirtualBufferManager:scheduleCleanup(metadata, registry)
   local log = Logger.get("API:VirtualBuffer")
-  
+
   if self.cleanup_scheduled[metadata.uri] then
     log:debug("VirtualBufferManager: Cleanup already scheduled for", metadata.uri)
     return -- Already scheduled
   end
-  
+
   log:debug("VirtualBufferManager: Scheduling cleanup for", metadata.uri, "in", CLEANUP_GRACE_PERIOD, "seconds")
   self.cleanup_scheduled[metadata.uri] = true
-  
+
   nio.run(function()
     nio.sleep(CLEANUP_GRACE_PERIOD * 1000) -- Convert to milliseconds
-    
+
     -- Check if buffer should still be cleaned up
     local current = registry:getBufferByUri(metadata.uri)
-    
+
     if current and not current:hasReferences() then
       log:debug("VirtualBufferManager: Executing cleanup for", metadata.uri)
       -- Still no references, proceed with cleanup
@@ -95,7 +96,7 @@ function VirtualBufferManager:scheduleCleanup(metadata, registry)
     else
       log:debug("VirtualBufferManager: Cleanup cancelled for", metadata.uri, "(buffer has references or was removed)")
     end
-    
+
     self.cleanup_scheduled[metadata.uri] = nil
   end)
 end
@@ -116,9 +117,9 @@ end
 function VirtualBufferManager:cleanupUnreferenced(registry)
   local log = Logger.get("API:VirtualBuffer")
   local cleaned = 0
-  
+
   log:debug("VirtualBufferManager: Starting manual cleanup of unreferenced buffers")
-  
+
   for uri, metadata in pairs(registry.buffers) do
     if not metadata:hasReferences() and metadata:isValid() then
       log:debug("VirtualBufferManager: Cleaning up unreferenced buffer", uri)
@@ -127,7 +128,7 @@ function VirtualBufferManager:cleanupUnreferenced(registry)
       cleaned = cleaned + 1
     end
   end
-  
+
   log:info("VirtualBufferManager: Manual cleanup completed, removed", cleaned, "buffers")
   vim.notify(string.format("Cleaned up %d unreferenced virtual buffers", cleaned))
   return cleaned
@@ -137,7 +138,7 @@ end
 function VirtualBufferManager:destroy()
   local log = Logger.get("API:VirtualBuffer")
   log:debug("VirtualBufferManager: Destroying manager and cancelling scheduled cleanups")
-  
+
   -- Clear all scheduled cleanups
   self.cleanup_scheduled = {}
 end
@@ -147,13 +148,13 @@ end
 ---@return { total: integer, referenced: integer, unreferenced: integer, invalid: integer, scheduled_cleanup: integer }
 function VirtualBufferManager:getStats(registry)
   local stats = registry:getStats()
-  
+
   -- Add cleanup scheduling info
   local scheduled_cleanup = 0
   for _ in pairs(self.cleanup_scheduled) do
     scheduled_cleanup = scheduled_cleanup + 1
   end
-  
+
   stats.scheduled_cleanup = scheduled_cleanup
   return stats
 end
@@ -172,7 +173,7 @@ function VirtualBufferManager.detectFiletype(name, origin, content)
       return filetype
     end
   end
-  
+
   -- Heuristics based on origin/name patterns
   if name:match("%.js$") or name:match("webpack://") then
     return "javascript"
@@ -187,7 +188,7 @@ function VirtualBufferManager.detectFiletype(name, origin, content)
   elseif name:match("node") then
     return "javascript"
   end
-  
+
   -- Content-based detection as fallback
   if content then
     local first_lines = table.concat(vim.split(content, '\n', { plain = true }), '\n', 1, 10)
@@ -195,7 +196,7 @@ function VirtualBufferManager.detectFiletype(name, origin, content)
       return "javascript"
     end
   end
-  
+
   return nil -- Let Neovim decide
 end
 
