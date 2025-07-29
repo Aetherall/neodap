@@ -219,41 +219,17 @@ local plugin_instance = nil
 ---@param self api.Session
 ---@param node NuiTree.Node
 function Session:ResolveChildren(node)
-  -- Sessions can have existing threads that need to be added
-  if node._children_loaded then return end
-  
-  -- Add any existing threads
-  for thread in self.threads:each() do
-    local thread_node = thread:asNode()
-    if plugin_instance.state_tree then
-      plugin_instance.state_tree:add_node(thread_node, node.id)
-    end
-  end
-  
-  node._children_loaded = true
-  if plugin_instance.state_tree then
-    plugin_instance.state_tree:render()
-  end
+  -- Sessions don't have lazy children - threads are maintained by events
+  -- This is just here for consistency with the expand interface
+  -- The real children (threads) are added via self:onThread() event handler
 end
 
 ---@param self api.Thread
 ---@param node NuiTree.Node
 function Thread:ResolveChildren(node)
-  -- Threads can have a stack if they're stopped
-  if node._children_loaded then return end
-  
-  if self.stopped then
-    local stack = self:stack()
-    if stack and plugin_instance.state_tree then
-      local stack_node = stack:asNode()
-      plugin_instance.state_tree:add_node(stack_node, node.id)
-    end
-  end
-  
-  node._children_loaded = true
-  if plugin_instance.state_tree then
-    plugin_instance.state_tree:render()
-  end
+  -- Threads don't have lazy children - stack is added by onStopped event
+  -- This is just here for consistency with the expand interface
+  -- The real children (stack) are added via self:onStopped() event handler
 end
 
 ---@param self api.Stack
@@ -409,14 +385,11 @@ function Session:asNode()
   addNodeCompatibilityMethods(node, plugin_instance.state_tree)
 
   -- Autonomous: when threads appear, add them directly to tree
-  -- Only if children haven't been manually loaded via ResolveChildren
   self:onThread(function(thread)
-    if not node._children_loaded then
-      local thread_node = thread:asNode()
-      if plugin_instance.state_tree then
-        plugin_instance.state_tree:add_node(thread_node, node.id)
-        plugin_instance.state_tree:render() -- This will render all view trees!
-      end
+    local thread_node = thread:asNode()
+    if plugin_instance.state_tree then
+      plugin_instance.state_tree:add_node(thread_node, node.id)
+      plugin_instance.state_tree:render() -- This will render all view trees!
     end
   end)
   
@@ -467,14 +440,12 @@ function Thread:asNode()
     node.text = getDisplayText()
     node.expandable = true
 
-    -- Add stack when stopped (only if children haven't been manually loaded)
-    if not node._children_loaded then
-      local stack = self:stack()
-      if stack and plugin_instance.state_tree then
-        local stack_node = stack:asNode()
-        plugin_instance.state_tree:add_node(stack_node, node.id)
-        plugin_instance.state_tree:render() -- Update all views
-      end
+    -- Add stack when stopped
+    local stack = self:stack()
+    if stack and plugin_instance.state_tree then
+      local stack_node = stack:asNode()
+      plugin_instance.state_tree:add_node(stack_node, node.id)
+      plugin_instance.state_tree:render() -- Update all views
     end
   end)
 
