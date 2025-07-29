@@ -185,6 +185,26 @@ local function addNodeCompatibilityMethods(node, state_tree)
     end
   end
   
+  -- Async version that waits for lazy loading to complete
+  node.ExpandAndWait = function(self)
+    self._is_expanded = true
+    if self._lazy_load and not self._children_loaded then
+      -- Set a flag that we're waiting for children
+      self._waiting_for_children = true
+      self._lazy_load()
+      
+      -- Wait for children to be loaded (with timeout)
+      local timeout = 5000  -- 5 seconds
+      local start = vim.loop.now()
+      while self._waiting_for_children and not self._children_loaded do
+        if vim.loop.now() - start > timeout then
+          break
+        end
+        require('neodap.tools.async').sleep(50)  -- Check every 50ms
+      end
+    end
+  end
+  
   node.collapse = function(self)
     self._is_expanded = false
   end
@@ -359,6 +379,7 @@ function Stack:asNode()
         plugin_instance.state_tree:add_node(frame_node, node.id)
       end
       node._children_loaded = true
+      node._waiting_for_children = false  -- Clear waiting flag
       plugin_instance.state_tree:render() -- Update all views
     end
   end
@@ -429,9 +450,11 @@ function Frame:asNode(index)
               plugin_instance.state_tree:add_node(scope_node, node.id)
             end
             node._children_loaded = true
+            node._waiting_for_children = false  -- Clear waiting flag
             plugin_instance.state_tree:render() -- Update all views
           else
             plugin_instance.logger:debug("No scopes found or state_tree missing")
+            node._waiting_for_children = false  -- Clear waiting flag even on failure
           end
         end)
       end
@@ -496,6 +519,7 @@ function Scope:asNode()
               plugin_instance.state_tree:add_node(var_node, node.id)
             end
             node._children_loaded = true
+            node._waiting_for_children = false  -- Clear waiting flag
             plugin_instance.state_tree:render() -- Update all views
           else
             plugin_instance.logger:debug("No variables found or state_tree missing")
@@ -580,6 +604,7 @@ function Variable:asNode()
                 plugin_instance.state_tree:add_node(child_node, node.id)
               end
               node._children_loaded = true
+              node._waiting_for_children = false  -- Clear waiting flag
               plugin_instance.state_tree:render() -- Update all views
             else
               plugin_instance.logger:debug("No child variables found or state_tree missing")
@@ -932,7 +957,7 @@ function DebugTree:createViewTree(root_entity, title)
   view_tree:render()
 
   -- Setup keybindings with vim-style navigation
-  local function expandOrDrillIntoNode()
+  local function ExpandOrDrillIntoNode()  -- PascalCase to make it async
     local node = view_tree:get_node()
     if not node then return end
     
@@ -947,14 +972,14 @@ function DebugTree:createViewTree(root_entity, title)
       if node:is_expanded() then
         node:collapse()
       else
-        node:expand()
+        -- Use async expand that waits for lazy loading
+        node:ExpandAndWait()
+        
         -- Move to first child after expanding
         if node:has_children() then
           local child_ids = node:get_child_ids()
           if child_ids and #child_ids > 0 then
-            vim.schedule(function()
-              self:setCursorToNode(view_tree, child_ids[1])
-            end)
+            self:setCursorToNode(view_tree, child_ids[1])
           end
         end
       end
@@ -963,8 +988,8 @@ function DebugTree:createViewTree(root_entity, title)
   end
   
   -- <CR> and l - Expand/drill into node
-  popup:map("n", "<CR>", expandOrDrillIntoNode)
-  popup:map("n", "l", expandOrDrillIntoNode)
+  popup:map("n", "<CR>", ExpandOrDrillIntoNode)
+  popup:map("n", "l", ExpandOrDrillIntoNode)
   
   -- h - Navigate to parent level or collapse current node
   popup:map("n", "h", function()
