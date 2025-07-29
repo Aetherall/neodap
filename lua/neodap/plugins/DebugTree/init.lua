@@ -409,11 +409,14 @@ function Session:asNode()
   addNodeCompatibilityMethods(node, plugin_instance.state_tree)
 
   -- Autonomous: when threads appear, add them directly to tree
+  -- Only if children haven't been manually loaded via ResolveChildren
   self:onThread(function(thread)
-    local thread_node = thread:asNode()
-    if plugin_instance.state_tree then
-      plugin_instance.state_tree:add_node(thread_node, node.id)
-      plugin_instance.state_tree:render() -- This will render all view trees!
+    if not node._children_loaded then
+      local thread_node = thread:asNode()
+      if plugin_instance.state_tree then
+        plugin_instance.state_tree:add_node(thread_node, node.id)
+        plugin_instance.state_tree:render() -- This will render all view trees!
+      end
     end
   end)
   
@@ -464,12 +467,14 @@ function Thread:asNode()
     node.text = getDisplayText()
     node.expandable = true
 
-    -- Add stack when stopped
-    local stack = self:stack()
-    if stack and plugin_instance.state_tree then
-      local stack_node = stack:asNode()
-      plugin_instance.state_tree:add_node(stack_node, node.id)
-      plugin_instance.state_tree:render() -- Update all views
+    -- Add stack when stopped (only if children haven't been manually loaded)
+    if not node._children_loaded then
+      local stack = self:stack()
+      if stack and plugin_instance.state_tree then
+        local stack_node = stack:asNode()
+        plugin_instance.state_tree:add_node(stack_node, node.id)
+        plugin_instance.state_tree:render() -- Update all views
+      end
     end
   end)
 
