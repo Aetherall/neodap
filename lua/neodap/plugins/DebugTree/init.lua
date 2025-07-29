@@ -293,30 +293,17 @@ end
 ---@param node NuiTree.Node
 function Frame:ResolveChildren(node)
   -- Frames have lazy-loaded scopes
-  if node._children_loaded then 
-    plugin_instance.logger:debug("Frame already has children loaded: " .. node.id)
-    return 
-  end
-  
-  -- Direct async call - no wrapping needed since we're in PascalCase context
-  plugin_instance.logger:debug("Frame:ResolveChildren START for: " .. node.id)
+  if node._children_loaded then return end
   
   local scopes = self:scopes()
-  
-  plugin_instance.logger:debug("Frame:ResolveChildren got " .. (scopes and #scopes or 0) .. " scopes")
   
   if scopes and plugin_instance.state_tree then
     for i, scope in ipairs(scopes) do
       local scope_node = scope:asNode()
-      plugin_instance.logger:debug("Frame:ResolveChildren adding scope[" .. i .. "]: " .. scope_node.id)
       plugin_instance.state_tree:add_node(scope_node, node.id)
     end
     -- CRITICAL: Update the state tree node, not the parameter node
     plugin_instance.state_tree.nodes.by_id[node.id]._children_loaded = true
-    -- Don't render here - let the caller do it after we return
-    plugin_instance.logger:debug("Frame:ResolveChildren DONE - added " .. #scopes .. " children")
-  else
-    plugin_instance.logger:debug("Frame:ResolveChildren DONE - no scopes found")
   end
 end
 
@@ -326,25 +313,15 @@ function Scope:ResolveChildren(node)
   -- Scopes have lazy-loaded variables
   if node._children_loaded then return end
   
-  -- Direct async call - no wrapping needed since we're in PascalCase context
-  plugin_instance.logger:debug("Scope resolving children for: " .. node.id)
-  
   local variables = self:variables()
   
-  plugin_instance.logger:debug("Scope variables result: " .. vim.inspect(variables))
-  
   if variables and plugin_instance.state_tree then
-    plugin_instance.logger:debug("Adding " .. #variables .. " variables to scope " .. node.id)
     for i, variable in ipairs(variables) do
       local var_node = variable:asNode()
-      plugin_instance.logger:debug("Adding variable[" .. i .. "] node: " .. var_node.id .. " text: " .. var_node.text)
       plugin_instance.state_tree:add_node(var_node, node.id)
     end
     -- CRITICAL: Update the state tree node, not the parameter node
     plugin_instance.state_tree.nodes.by_id[node.id]._children_loaded = true
-    -- Don't render here - let the caller do it after we return
-  else
-    plugin_instance.logger:debug("No variables found or state_tree missing")
   end
 end
 
@@ -358,25 +335,15 @@ function Variable:ResolveChildren(node)
   local var_ref = (self.ref and self.ref.variablesReference) or 0
   if var_ref == 0 then return end
   
-  -- Direct async call - no wrapping needed since we're in PascalCase context
-  plugin_instance.logger:debug("Variable resolving children for: " .. node.id)
-  
   local children = self:variables()
   
-  plugin_instance.logger:debug("Variable children result: " .. vim.inspect(children))
-  
   if children and plugin_instance.state_tree then
-    plugin_instance.logger:debug("Adding " .. #children .. " child variables to " .. node.id)
     for i, child in ipairs(children) do
       local child_node = child:asNode()
-      plugin_instance.logger:debug("Adding child[" .. i .. "] node: " .. child_node.id .. " text: " .. child_node.text)
       plugin_instance.state_tree:add_node(child_node, node.id)
     end
     -- CRITICAL: Update the state tree node, not the parameter node
     plugin_instance.state_tree.nodes.by_id[node.id]._children_loaded = true
-    -- Don't render here - let the caller do it after we return
-  else
-    plugin_instance.logger:debug("No child variables found or state_tree missing")
   end
 end
 
@@ -483,7 +450,6 @@ function Thread:asNode()
   if self.stopped then
     local stack = self:stack()
     if stack and plugin_instance.state_tree then
-      plugin_instance.logger:debug("Thread " .. self.id .. " is already stopped, adding existing stack")
       local stack_node = stack:asNode()
       plugin_instance.state_tree:add_node(stack_node, node.id)
     end
@@ -713,8 +679,6 @@ function DebugTree.plugin(api)
 end
 
 function DebugTree:listen()
-  self.logger:info("Initializing DebugTree plugin - shared-node reactive architecture")
-
   -- Initialize instance properties
   self.active_view_trees = {}
   
@@ -726,8 +690,6 @@ function DebugTree:listen()
 
   -- Setup commands
   self:setupCommands()
-
-  self.logger:info("DebugTree plugin initialized")
 end
 
 -- ========================================
@@ -748,11 +710,9 @@ function DebugTree:setupSessionHandlers()
       -- Add as child of parent session
       local parent_id = "session:" .. tostring(session.parent.id)
       self.state_tree:add_node(session_node, parent_id)
-      self.logger:info("Added session " .. session.id .. " as child of session " .. session.parent.id)
     else
       -- Add as root session
       self.state_tree:add_node(session_node)
-      self.logger:info("Added session " .. session.id .. " as root session")
     end
 
     -- Add any existing threads to the state tree
@@ -777,8 +737,6 @@ function DebugTree:initializeStateTree()
       -- Store the node
       state_tree.nodes.by_id[node.id] = node
       
-      plugin_instance.logger:debug("add_node: Adding " .. node.id .. " with parent: " .. (parent_id or "none"))
-      
       if parent_id then
         -- Add as child to parent
         local parent = state_tree.nodes.by_id[parent_id]
@@ -789,9 +747,8 @@ function DebugTree:initializeStateTree()
           table.insert(parent._child_ids, node.id)
           -- CRITICAL: Store parent relationship in the state tree node
           state_tree.nodes.by_id[node.id]._parent_id = parent_id
-          plugin_instance.logger:debug("add_node: Set parent relationship " .. node.id .. " -> " .. parent_id)
         else
-          plugin_instance.logger:warn("add_node: Parent " .. parent_id .. " not found for node " .. node.id .. " - deferring add")
+          -- Parent not found - defer add
           -- CRITICAL: Don't add as root! Store pending nodes to add later
           if not state_tree._pending_nodes then
             state_tree._pending_nodes = {}
@@ -801,7 +758,6 @@ function DebugTree:initializeStateTree()
       else
         -- Add as root node
         table.insert(state_tree.nodes.root_ids, node.id)
-        plugin_instance.logger:debug("add_node: Added " .. node.id .. " as root node")
       end
       
       -- After adding any node, check if pending nodes can now be processed
@@ -853,7 +809,6 @@ function DebugTree:initializeStateTree()
         local parent = state_tree.nodes.by_id[pending.parent_id]
         if parent then
           -- Parent now exists, add the pending node
-          plugin_instance.logger:debug("Processing pending node " .. node_id .. " - parent " .. pending.parent_id .. " now exists")
           
           if not parent._child_ids then
             parent._child_ids = {}
@@ -1021,9 +976,6 @@ function DebugTree:createViewTree(root_entity, title)
   -- Mount popup
   popup:mount()
 
-  -- Debug logging
-  self.logger:debug("State tree has " .. vim.tbl_count(self.state_tree.nodes.by_id) .. " nodes")
-  self.logger:debug("State tree root_ids: " .. vim.inspect(self.state_tree.nodes.root_ids))
   
   -- Create view tree with initial empty nodes
   local view_tree = NuiTree({
@@ -1032,17 +984,9 @@ function DebugTree:createViewTree(root_entity, title)
     get_node_id = function(node) return node.id end,
   })
   
-  -- Debug the state tree structure
-  self.logger:info("State tree structure before view creation:")
-  self.logger:info("  Root IDs: " .. vim.inspect(self.state_tree.nodes.root_ids))
-  for id, node in pairs(self.state_tree.nodes.by_id) do
-    self.logger:info("  Node " .. id .. " parent: " .. (node._parent_id or "none") .. " children: " .. vim.inspect(node._child_ids or {}))
-  end
   
   -- Share the state tree's nodes structure
   view_tree.nodes = self.state_tree.nodes
-  
-  self.logger:debug("Shared nodes - view_tree.nodes === state_tree.nodes: " .. tostring(view_tree.nodes == self.state_tree.nodes))
   
   -- Store the original root_ids for this view
   if root_entity then
@@ -1071,7 +1015,6 @@ function DebugTree:createViewTree(root_entity, title)
   end
   
   -- Set the view's root_ids
-  self.logger:debug("View tree root_ids: " .. vim.inspect(view_tree._view_root_ids))
   view_tree.nodes.root_ids = view_tree._view_root_ids
   
   -- Store reference for dynamic updates
@@ -1170,18 +1113,13 @@ function DebugTree:createViewTree(root_entity, title)
     else
       -- Navigate to parent and collapse it
       local parent_id = node:get_parent_id()
-      self.logger:debug("h navigation: current node=" .. node.id .. " parent_id=" .. (parent_id or "nil"))
-      
       if parent_id then
         local parent_node = view_tree.nodes.by_id[parent_id]
         if parent_node then
-          self.logger:debug("h navigation: found parent node, text=" .. (parent_node.text or "nil"))
           -- Collapse the parent node
           parent_node:collapse()
           -- Render first to update the tree structure
           view_tree:render()
-        else
-          self.logger:warn("h navigation: parent node not found in tree for id=" .. parent_id)
         end
         -- Set cursor after render to ensure correct line calculation
         self:setCursorToNode(view_tree, parent_id)
@@ -1273,7 +1211,6 @@ function DebugTree:createViewTree(root_entity, title)
   -- r - Refresh tree
   popup:map("n", "r", function()
     view_tree:render()
-    vim.notify("Tree refreshed", vim.log.levels.INFO)
   end)
   
   -- q - Quit
@@ -1647,14 +1584,10 @@ end
 -- Smart cursor positioning using stored cursor column
 function DebugTree:setCursorToNode(tree, node_id, window)
   local node, line = tree:get_node(node_id)
-  self.logger:debug("setCursorToNode: node_id=" .. node_id .. " found=" .. tostring(node ~= nil) .. " line=" .. tostring(line))
   if node and line then
     -- Use the stored cursor position if available
     local col = node._cursor_col or 0
-    self.logger:debug("setCursorToNode: setting cursor to line=" .. line .. " col=" .. col .. " node.text=" .. (node.text or "nil"))
     vim.api.nvim_win_set_cursor(window or 0, {line, col})
-  else
-    self.logger:warn("setCursorToNode: could not find node or line for id=" .. node_id)
   end
 end
 
