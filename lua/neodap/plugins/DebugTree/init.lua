@@ -394,6 +394,40 @@ function Variable:ResolveChildren(node)
   end)
 end
 
+---@param self api.Session
+---@param node NuiTree.Node
+function Session:ResolveChildren(node)
+  -- Sessions don't need lazy loading - threads are added reactively
+  -- This is here for consistency with the API
+end
+
+---@param self api.Thread  
+---@param node NuiTree.Node
+function Thread:ResolveChildren(node)
+  -- Threads don't need lazy loading - stacks are added reactively
+  -- This is here for consistency with the API
+end
+
+---@param self api.Stack
+---@param node NuiTree.Node
+function Stack:ResolveChildren(node)
+  -- Stacks load frames on demand
+  if node._children_loaded then return end
+  
+  -- Get frames using the Stack API
+  local frames = self:getFrames()
+  if frames and plugin_instance.state_tree then
+    local index = 0
+    for frame in frames:each() do
+      index = index + 1
+      local frame_node = frame:asNode(index)
+      plugin_instance.state_tree:add_node(frame_node, node.id)
+    end
+    node._children_loaded = true
+    plugin_instance.state_tree:render()
+  end
+end
+
 -- ========================================
 -- SESSION NODE
 -- ========================================
@@ -422,12 +456,33 @@ function Session:asNode()
 
   -- Autonomous: when threads appear, add them directly to tree
   self:onThread(function(thread)
+    plugin_instance.logger:debug("Session " .. self.id .. " got thread event for thread " .. thread.id)
     local thread_node = thread:asNode()
     if plugin_instance.state_tree then
       plugin_instance.state_tree:add_node(thread_node, node.id)
       plugin_instance.state_tree:render() -- This will render all view trees!
     end
   end)
+  
+  -- IMPORTANT: Also check for existing threads that won't trigger onThread events
+  -- This handles threads that already exist when we create the session node
+  if self.threads then
+    local existing_count = 0
+    for thread in self.threads:each() do
+      existing_count = existing_count + 1
+      plugin_instance.logger:debug("Session " .. self.id .. " has existing thread " .. thread.id)
+      local thread_node = thread:asNode()
+      if plugin_instance.state_tree then
+        plugin_instance.state_tree:add_node(thread_node, node.id)
+      end
+    end
+    if existing_count > 0 then
+      plugin_instance.logger:debug("Added " .. existing_count .. " existing threads to session " .. self.id)
+      if plugin_instance.state_tree then
+        plugin_instance.state_tree:render()
+      end
+    end
+  end
   
   -- Autonomous: when child sessions are created via startDebugging
   -- Note: This requires the session to have a way to notify about child sessions
@@ -471,16 +526,32 @@ function Thread:asNode()
   
   addNodeCompatibilityMethods(node, plugin_instance.state_tree)
 
+  -- Check if thread is already stopped and has a stack
+  if self.stopped then
+    local stack = self:stack()
+    if stack and plugin_instance.state_tree then
+      plugin_instance.logger:debug("Thread " .. self.id .. " is already stopped, adding existing stack")
+      local stack_node = stack:asNode()
+      plugin_instance.state_tree:add_node(stack_node, node.id)
+    end
+  end
+
   -- Autonomous: update when stopped/continued
   self:onStopped(function()
+    plugin_instance.logger:debug("Thread " .. self.id .. " stopped event")
     node.text = getDisplayText()
     node.expandable = true
 
-    -- Add stack when stopped
+    -- Add stack when stopped (if not already added)
     local stack = self:stack()
     if stack and plugin_instance.state_tree then
-      local stack_node = stack:asNode()
-      plugin_instance.state_tree:add_node(stack_node, node.id)
+      -- Check if stack already exists to avoid duplicates
+      local stack_id = "stack:" .. tostring(self.id)
+      if not plugin_instance.state_tree.nodes.by_id[stack_id] then
+        plugin_instance.logger:debug("Adding stack for newly stopped thread " .. self.id)
+        local stack_node = stack:asNode()
+        plugin_instance.state_tree:add_node(stack_node, node.id)
+      end
       plugin_instance.state_tree:render() -- Update all views
     end
   end)
@@ -1479,48 +1550,19 @@ end
 -- ========================================
 
 function DebugTree:addExistingChildren(root_entity)
-  self.logger:info("addExistingChildren called for entity type: " .. (root_entity._node_type or "unknown"))
+  -- This method is now mostly deprecated since we use reactive/autonomous nodes
+  -- that add their own children via event handlers.
+  -- We only keep it for child sessions which might not have events.
   
-  -- Handle different entity types to add their existing children
-  if root_entity.threads then
-    self.logger:info("Processing session with threads")
-    -- Session: add existing threads
-    local thread_count = 0
-    for thread in root_entity.threads:each() do
-      thread_count = thread_count + 1
-      self.logger:info("Adding thread " .. thread.id .. " to session " .. root_entity.id)
-      local thread_node = thread:asNode()
-      self.state_tree:add_node(thread_node, "session:" .. tostring(root_entity.id))
-
-      -- If thread is stopped, also add its stack
-      if thread.stopped then
-        local stack = thread:stack()
-        if stack then
-          self.logger:info("Adding stack for stopped thread " .. thread.id)
-          local stack_node = stack:asNode()
-          self.state_tree:add_node(stack_node, "thread:" .. tostring(thread.id))
-        end
-      end
-    end
-    self.logger:info("Added " .. thread_count .. " threads to session " .. root_entity.id)
-    
-    -- Also add existing child sessions if any
-    if root_entity.children then
-      for child_id, child_session in pairs(root_entity.children) do
-        local child_node = child_session:asNode()
-        self.state_tree:add_node(child_node, "session:" .. tostring(root_entity.id))
-        -- Recursively add children of child session
-        self:addExistingChildren(child_session)
-      end
-    end
-  elseif root_entity.frames then
-    -- Stack: add existing frames
-    for index, frame in ipairs(root_entity.frames) do
-      local frame_node = frame:asNode(index)
-      self.state_tree:add_node(frame_node, "stack:" .. tostring(root_entity.thread.id))
+  if root_entity.children then
+    -- Handle child sessions created via startDebugging
+    for child_id, child_session in pairs(root_entity.children) do
+      local child_node = child_session:asNode()
+      self.state_tree:add_node(child_node, "session:" .. tostring(root_entity.id))
+      -- Recursively check for grandchild sessions
+      self:addExistingChildren(child_session)
     end
   end
-  -- Frame and deeper levels use lazy loading, so no need to pre-populate
 end
 
 -- ========================================
