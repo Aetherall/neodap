@@ -972,8 +972,12 @@ function DebugTree:createViewTree(root_entity, title)
       if node:is_expanded() then
         node:collapse()
       else
-        -- Use async expand that waits for lazy loading
-        node:ExpandAndWait()
+        -- Use async expand if available, otherwise regular expand
+        if node.ExpandAndWait then
+          node:ExpandAndWait()
+        else
+          node:expand()
+        end
         
         -- Move to first child after expanding
         if node:has_children() then
