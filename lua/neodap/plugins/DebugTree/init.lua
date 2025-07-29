@@ -179,10 +179,6 @@ local function addNodeCompatibilityMethods(node, state_tree)
   
   node.expand = function(self)
     self._is_expanded = true
-    if self._lazy_load and not self._children_loaded then
-      -- Trigger lazy loading when expanding
-      self._lazy_load()
-    end
   end
   
   
@@ -238,67 +234,126 @@ end
 ---@param node NuiTree.Node
 function Stack:ResolveChildren(node)
   -- Stack frames are loaded synchronously
-  -- Nothing to resolve
+  if node._children_loaded then return end
+  
+  local frames = self:getFrames()
+  if frames and plugin_instance.state_tree then
+    local index = 0
+    for frame in frames:each() do
+      index = index + 1
+      -- Pass the index to frame:asNode
+      local frame_node = frame:asNode(index)
+      plugin_instance.state_tree:add_node(frame_node, node.id)
+    end
+    node._children_loaded = true
+    plugin_instance.state_tree:render() -- Update all views
+  end
 end
 
 ---@param self api.Frame
 ---@param node NuiTree.Node
 function Frame:ResolveChildren(node)
   -- Frames have lazy-loaded scopes
-  if node and node._lazy_load and not node._children_loaded then
-    node._waiting_for_children = true
-    node._lazy_load()
-    
-    -- Wait for children to be loaded
-    local timeout = 5000
-    local start = vim.loop.now()
-    while node._waiting_for_children and not node._children_loaded do
-      if vim.loop.now() - start > timeout then
-        break
-      end
-      require('neodap.tools.async').sleep(50)
-    end
+  if node._children_loaded then 
+    plugin_instance.logger:debug("Frame already has children loaded: " .. node.id)
+    return 
   end
+  
+  -- Wrap in async context to call Frame:scopes()
+  require('neodap.tools.async').run(function()
+    plugin_instance.logger:debug("Frame resolving children for: " .. node.id)
+    
+    local ok, scopes = pcall(function() return self:scopes() end)
+    if not ok then
+      plugin_instance.logger:error("Failed to get scopes: " .. tostring(scopes))
+      return
+    end
+    
+    plugin_instance.logger:debug("Frame scopes result: " .. vim.inspect(scopes))
+    
+    if scopes and plugin_instance.state_tree then
+      plugin_instance.logger:debug("Adding " .. #scopes .. " scopes to frame " .. node.id)
+      for i, scope in ipairs(scopes) do
+        local scope_node = scope:asNode()
+        plugin_instance.logger:debug("Adding scope[" .. i .. "] node: " .. scope_node.id .. " text: " .. scope_node.text)
+        plugin_instance.state_tree:add_node(scope_node, node.id)
+      end
+      node._children_loaded = true
+      plugin_instance.state_tree:render() -- Update all views
+    else
+      plugin_instance.logger:debug("No scopes found or state_tree missing")
+    end
+  end)
 end
 
 ---@param self api.Scope
 ---@param node NuiTree.Node
 function Scope:ResolveChildren(node)
   -- Scopes have lazy-loaded variables
-  if node and node._lazy_load and not node._children_loaded then
-    node._waiting_for_children = true
-    node._lazy_load()
+  if node._children_loaded then return end
+  
+  -- Wrap in async context to call Scope:variables()
+  require('neodap.tools.async').run(function()
+    plugin_instance.logger:debug("Scope resolving children for: " .. node.id)
     
-    -- Wait for children to be loaded
-    local timeout = 5000
-    local start = vim.loop.now()
-    while node._waiting_for_children and not node._children_loaded do
-      if vim.loop.now() - start > timeout then
-        break
-      end
-      require('neodap.tools.async').sleep(50)
+    local ok, variables = pcall(function() return self:variables() end)
+    if not ok then
+      plugin_instance.logger:error("Failed to get variables: " .. tostring(variables))
+      return
     end
-  end
+    
+    plugin_instance.logger:debug("Scope variables result: " .. vim.inspect(variables))
+    
+    if variables and plugin_instance.state_tree then
+      plugin_instance.logger:debug("Adding " .. #variables .. " variables to scope " .. node.id)
+      for i, variable in ipairs(variables) do
+        local var_node = variable:asNode()
+        plugin_instance.logger:debug("Adding variable[" .. i .. "] node: " .. var_node.id .. " text: " .. var_node.text)
+        plugin_instance.state_tree:add_node(var_node, node.id)
+      end
+      node._children_loaded = true
+      plugin_instance.state_tree:render() -- Update all views
+    else
+      plugin_instance.logger:debug("No variables found or state_tree missing")
+    end
+  end)
 end
 
 ---@param self api.Variable
 ---@param node NuiTree.Node
 function Variable:ResolveChildren(node)
   -- Variables with variablesReference > 0 have lazy-loaded children
-  if node and node._lazy_load and not node._children_loaded then
-    node._waiting_for_children = true
-    node._lazy_load()
+  if node._children_loaded then return end
+  
+  -- Only resolve if this variable has children
+  local var_ref = (self.ref and self.ref.variablesReference) or 0
+  if var_ref == 0 then return end
+  
+  -- Wrap in async context to call Variable:variables()
+  require('neodap.tools.async').run(function()
+    plugin_instance.logger:debug("Variable resolving children for: " .. node.id)
     
-    -- Wait for children to be loaded
-    local timeout = 5000
-    local start = vim.loop.now()
-    while node._waiting_for_children and not node._children_loaded do
-      if vim.loop.now() - start > timeout then
-        break
-      end
-      require('neodap.tools.async').sleep(50)
+    local ok, children = pcall(function() return self:variables() end)
+    if not ok then
+      plugin_instance.logger:error("Failed to get child variables: " .. tostring(children))
+      return
     end
-  end
+    
+    plugin_instance.logger:debug("Variable children result: " .. vim.inspect(children))
+    
+    if children and plugin_instance.state_tree then
+      plugin_instance.logger:debug("Adding " .. #children .. " child variables to " .. node.id)
+      for i, child in ipairs(children) do
+        local child_node = child:asNode()
+        plugin_instance.logger:debug("Adding child[" .. i .. "] node: " .. child_node.id .. " text: " .. child_node.text)
+        plugin_instance.state_tree:add_node(child_node, node.id)
+      end
+      node._children_loaded = true
+      plugin_instance.state_tree:render() -- Update all views
+    else
+      plugin_instance.logger:debug("No child variables found or state_tree missing")
+    end
+  end)
 end
 
 -- ========================================
@@ -433,24 +488,6 @@ function Stack:asNode()
   
   addNodeCompatibilityMethods(node, plugin_instance.state_tree)
 
-  -- Autonomous: lazy load frames when first expanded
-  node._lazy_load = function()
-    if node._children_loaded then return end
-    
-    local frames = self:getFrames()
-    if frames and plugin_instance.state_tree then
-      local index = 0
-      for frame in frames:each() do
-        index = index + 1
-        -- Pass the index to frame:asNode
-        local frame_node = frame:asNode(index)
-        plugin_instance.state_tree:add_node(frame_node, node.id)
-      end
-      node._children_loaded = true
-      node._waiting_for_children = false  -- Clear waiting flag
-      plugin_instance.state_tree:render() -- Update all views
-    end
-  end
 
   self._cached_node = node
   return node
@@ -490,42 +527,6 @@ function Frame:asNode(index)
   
   addNodeCompatibilityMethods(node, plugin_instance.state_tree)
 
-      -- Autonomous: lazy load scopes when first expanded
-      node._lazy_load = function()
-        if node._children_loaded then 
-          plugin_instance.logger:debug("Frame already has children loaded: " .. node.id)
-          return 
-        end
-        
-        -- Wrap in async context to call Frame:scopes()
-        require('neodap.tools.async').run(function()
-          plugin_instance.logger:debug("Frame lazy load starting for: " .. node.id)
-          plugin_instance.logger:debug("Frame object: " .. vim.inspect(self))
-          
-          local ok, scopes = pcall(function() return self:scopes() end)
-          if not ok then
-            plugin_instance.logger:error("Failed to get scopes: " .. tostring(scopes))
-            return
-          end
-          
-          plugin_instance.logger:debug("Frame scopes result: " .. vim.inspect(scopes))
-          
-          if scopes and plugin_instance.state_tree then
-            plugin_instance.logger:debug("Adding " .. #scopes .. " scopes to frame " .. node.id)
-            for i, scope in ipairs(scopes) do
-              local scope_node = scope:asNode()
-              plugin_instance.logger:debug("Adding scope[" .. i .. "] node: " .. scope_node.id .. " text: " .. scope_node.text)
-              plugin_instance.state_tree:add_node(scope_node, node.id)
-            end
-            node._children_loaded = true
-            node._waiting_for_children = false  -- Clear waiting flag
-            plugin_instance.state_tree:render() -- Update all views
-          else
-            plugin_instance.logger:debug("No scopes found or state_tree missing")
-            node._waiting_for_children = false  -- Clear waiting flag even on failure
-          end
-        end)
-      end
 
   self[cache_key] = node
   return node
@@ -563,37 +564,6 @@ function Scope:asNode()
   
   addNodeCompatibilityMethods(node, plugin_instance.state_tree)
 
-      -- Autonomous: lazy load variables when first expanded
-      node._lazy_load = function()
-        if node._children_loaded then return end
-        
-        -- Wrap in async context to call Scope:variables()
-        require('neodap.tools.async').run(function()
-          plugin_instance.logger:debug("Scope lazy load starting for: " .. node.id)
-          
-          local ok, variables = pcall(function() return self:variables() end)
-          if not ok then
-            plugin_instance.logger:error("Failed to get variables: " .. tostring(variables))
-            return
-          end
-          
-          plugin_instance.logger:debug("Scope variables result: " .. vim.inspect(variables))
-          
-          if variables and plugin_instance.state_tree then
-            plugin_instance.logger:debug("Adding " .. #variables .. " variables to scope " .. node.id)
-            for i, variable in ipairs(variables) do
-              local var_node = variable:asNode()
-              plugin_instance.logger:debug("Adding variable[" .. i .. "] node: " .. var_node.id .. " text: " .. var_node.text)
-              plugin_instance.state_tree:add_node(var_node, node.id)
-            end
-            node._children_loaded = true
-            node._waiting_for_children = false  -- Clear waiting flag
-            plugin_instance.state_tree:render() -- Update all views
-          else
-            plugin_instance.logger:debug("No variables found or state_tree missing")
-          end
-        end)
-      end
 
   self._cached_node = node
   return node
@@ -647,39 +617,6 @@ function Variable:asNode()
   
   addNodeCompatibilityMethods(node, plugin_instance.state_tree)
 
-      -- Autonomous: lazy load child variables when expanded
-      if expandable then
-        node._lazy_load = function()
-          if node._children_loaded then return end
-          
-          -- Wrap in async context to call Variable:variables()
-          require('neodap.tools.async').run(function()
-            plugin_instance.logger:debug("Variable lazy load starting for: " .. node.id)
-            
-            local ok, children = pcall(function() return self:variables() end)
-            if not ok then
-              plugin_instance.logger:error("Failed to get child variables: " .. tostring(children))
-              return
-            end
-            
-            plugin_instance.logger:debug("Variable children result: " .. vim.inspect(children))
-            
-            if children and plugin_instance.state_tree then
-              plugin_instance.logger:debug("Adding " .. #children .. " child variables to " .. node.id)
-              for i, child in ipairs(children) do
-                local child_node = child:asNode()
-                plugin_instance.logger:debug("Adding child[" .. i .. "] node: " .. child_node.id .. " text: " .. child_node.text)
-                plugin_instance.state_tree:add_node(child_node, node.id)
-              end
-              node._children_loaded = true
-              node._waiting_for_children = false  -- Clear waiting flag
-              plugin_instance.state_tree:render() -- Update all views
-            else
-              plugin_instance.logger:debug("No child variables found or state_tree missing")
-            end
-          end)
-        end
-      end
 
   self._cached_node = node
   return node
@@ -1033,7 +970,7 @@ function DebugTree:createViewTree(root_entity, title)
     end
     
     -- For all expandable nodes, toggle expansion
-    if node:has_children() or node.expandable or node._lazy_load then
+    if node:has_children() or node.expandable then
       if node:is_expanded() then
         node:collapse()
       else
