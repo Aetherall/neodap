@@ -6,6 +6,7 @@ local Class = require('neodap.tools.class')
 ---@field ref dap.Variable
 
 ---@class (partial) api.Variable: api.VariableProps
+---@field name string The variable name
 ---@field new Constructor<api.VariableProps>
 local Variable = Class()
 
@@ -16,6 +17,7 @@ function Variable.instanciate(scope, variable)
   local instance = Variable:new({
     scope = scope,
     ref = variable,
+    name = variable.name,  -- Add name directly as a field
   })
   return instance
 end
@@ -77,6 +79,27 @@ function Variable:resolve()
   
   -- Return success indicator (the variable data may not have changed for Chrome case)
   return true
+end
+
+---@return { [integer]: api.Variable }?
+function Variable:variables()
+  -- Only variables with a variablesReference > 0 have children
+  if not self.ref.variablesReference or self.ref.variablesReference == 0 then
+    return nil
+  end
+
+  -- Get variables from the session using the reference
+  local response = self.scope.frame.session:Variables(self.ref.variablesReference, self.scope.frame.ref.id)
+  if not response or not response.variables then
+    return {}
+  end
+
+  -- Wrap each raw variable into a Variable instance
+  local variables = vim.tbl_map(function(variable)
+    return Variable.instanciate(self.scope, variable)
+  end, response.variables)
+
+  return variables
 end
 
 function Variable:toString()

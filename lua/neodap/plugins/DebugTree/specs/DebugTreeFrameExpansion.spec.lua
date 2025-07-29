@@ -51,6 +51,7 @@ T.Scenario(function(api)
 end)
 
 
+
 --[[ TERMINAL SNAPSHOT: stack_expanded_with_frames
 Size: 24x80
 Cursor: [4, 0] (line 4, col 0)
@@ -70,8 +71,8 @@ Mode: n
 12| ated wh││  │  ╰─ ▶ 🖼   Module.load                                      │
 13|        ││  │  ╰─ ▶ 🖼   Module._load                                     │
 14|     // ││  │  ╰─ ▶ 🖼   function Module(id = '', parent) {.executeUserEnt│
-15|     let│ryPoint                                                         │
-16|     let││  │  ╰─ ▶ 🖼   <anonymous>                                      │
+15|     let││  │  ╰─ ▶ 🖼   <anonymous>                                      │
+16|     let│                                                                │
 17|        │                                                                │
 18|        │                                                                │
 19|        ╰────────────────────────────────────────────────────────────────╯
@@ -81,6 +82,7 @@ Mode: n
 23| lua/testing/fixtures/variables/complex.js                     7,1            Top
 24|                                                               4,1           All
 ]]
+
 
 
 --[[ TERMINAL SNAPSHOT: frame_expanded_should_show_scopes
@@ -104,8 +106,8 @@ Mode: n
 14|     // ││  │  ╰─ ▶ 🖼   Module.load                                      │
 15|     let││  │  ╰─ ▶ 🖼   Module._load                                     │
 16|     let││  │  ╰─ ▶ 🖼   function Module(id = '', parent) {.executeUserEnt│
-17|        │ryPoint                                                         │
-18|        ││  │  ╰─ ▶ 🖼   <anonymous>                                      │
+17|        ││  │  ╰─ ▶ 🖼   <anonymous>                                      │
+18|        │                                                                │
 19|        ╰────────────────────────────────────────────────────────────────╯
 20|             level: 2,
 21|             data: ["a", "b", "c"]
@@ -113,6 +115,10 @@ Mode: n
 23| lua/testing/fixtures/variables/complex.js                     7,1            Top
 24|                                                               5,1           All
 ]]
+
+
+
+
 
 
 
@@ -133,12 +139,12 @@ Mode: n
 10|     let││  │  │  │  ╰─ ▶ 📝  arrayVar: (5) [1, 2, 3, 'four', {…}]        │lue";
 11|     let││  │  │  │  ╰─   📝  booleanVar: true                            │e trunc
 12| ated wh││  │  │  │  ╰─   📝  dateVar: Mon Jan 01 2024 01:00:00 GMT+0100 (│
-13|        │Central Euro...                                                 │
-14|     // ││  │  │  │  ╰─ ▶ 📝  functionVar: ƒ (x) { return x * 2; }        │
-15|     let││  │  │  │  ╰─   📝  longStringValue: 'This is a very long string│
-16|     let│ value that should b...                                         │
-17|        ││  │  │  │  ╰─ ▶ 📝  mapVar: Map(2) {size: 2, key1 => value1, key│
-18|        │2 => value2}                                                    │
+13|        ││  │  │  │  ╰─ ▶ 📝  functionVar: ƒ (x) { return x * 2; }        │
+14|     // ││  │  │  │  ╰─   📝  longStringValue: 'This is a very long string│
+15|     let││  │  │  │  ╰─ ▶ 📝  mapVar: Map(2) {size: 2, key1 => value1, key│
+16|     let││  │  │  │  ╰─   📝  nullVar: null                               │
+17|        ││  │  │  │  ╰─   📝  numberVar: 42                               │
+18|        ││  │  │  │  ╰─ ▶ 📝  objectVar: {name: 'Test Object', count: 100,│
 19|        ╰────────────────────────────────────────────────────────────────╯
 20|             level: 2,
 21|             data: ["a", "b", "c"]

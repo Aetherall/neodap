@@ -8,7 +8,6 @@ T.Scenario(function(api)
   api:getPluginInstance(require('neodap.plugins.LaunchJsonSupport'))
   api:getPluginInstance(require('neodap.plugins.BreakpointApi'))
   api:getPluginInstance(require('neodap.plugins.ToggleBreakpoint'))
-  api:getPluginInstance(require('neodap.plugins.Variables4'))
   api:getPluginInstance(require('neodap.plugins.DebugTree'))
 
   -- Set up debugging session with complex variables
@@ -222,6 +221,7 @@ Mode: n
 
 
 
+
 --[[ TERMINAL SNAPSHOT: 05_frame_expanded_scopes
 Size: 24x80
 Cursor: [4, 0] (line 4, col 0)
@@ -241,8 +241,8 @@ Mode: n
 12| ated wh││  │  ╰─ ▶ 🖼   Module.load                                      │
 13|        ││  │  ╰─ ▶ 🖼   Module._load                                     │
 14|     // ││  │  ╰─ ▶ 🖼   function Module(id = '', parent) {.executeUserEnt│
-15|     let│ryPoint                                                         │
-16|     let││  │  ╰─ ▶ 🖼   <anonymous>                                      │
+15|     let││  │  ╰─ ▶ 🖼   <anonymous>                                      │
+16|     let│                                                                │
 17|        │                                                                │
 18|        │                                                                │
 19|        ╰────────────────────────────────────────────────────────────────╯
@@ -252,6 +252,8 @@ Mode: n
 23| lua/testing/fixtures/variables/complex.js                     7,1            Top
 24|                                                               4,1           All
 ]]
+
+
 
 
 
@@ -269,15 +271,15 @@ Mode: n
  7|     let││  ╰─ ▼ 📚  Stack (8 frames)                                     │
  8|     let││  │  ╰─ ▼ 🖼   global.testVariables                             │
  9|     let││  │  │  ╰─ ▶ 📁  Local: testVariables                           │
-10|     let││  │  │  ╰─ ▶ 📁  Global                                         │lue";
+10|     let││  │  │  ╰─ ▶ 🌍  Global                                         │lue";
 11|     let││  │  ╰─ ▶ 🖼   <anonymous>                                      │e trunc
 12| ated wh││  │  ╰─ ▶ 🖼   Module._compile                                  │
 13|        ││  │  ╰─ ▶ 🖼   Module._extensions..js                           │
 14|     // ││  │  ╰─ ▶ 🖼   Module.load                                      │
 15|     let││  │  ╰─ ▶ 🖼   Module._load                                     │
 16|     let││  │  ╰─ ▶ 🖼   function Module(id = '', parent) {.executeUserEnt│
-17|        │ryPoint                                                         │
-18|        ││  │  ╰─ ▶ 🖼   <anonymous>                                      │
+17|        ││  │  ╰─ ▶ 🖼   <anonymous>                                      │
+18|        │                                                                │
 19|        ╰────────────────────────────────────────────────────────────────╯
 20|             level: 2,
 21|             data: ["a", "b", "c"]
@@ -285,6 +287,9 @@ Mode: n
 23| lua/testing/fixtures/variables/complex.js                     7,1            Top
 24|                                                               5,1           All
 ]]
+
+
+
 
 
 
@@ -302,22 +307,23 @@ Mode: n
  7|     let││  ╰─ ▼ 📚  Stack (8 frames)                                     │
  8|     let││  │  ╰─ ▼ 🖼   global.testVariables                             │
  9|     let││  │  │  ╰─ ▶ 📁  Local: testVariables                           │
-10|     let││  │  │  ╰─ ▼ 📁  Global                                         │lue";
-11|     let││  │  ╰─ ▶ 🖼   <anonymous>                                      │e trunc
-12| ated wh││  │  ╰─ ▶ 🖼   Module._compile                                  │
-13|        ││  │  ╰─ ▶ 🖼   Module._extensions..js                           │
-14|     // ││  │  ╰─ ▶ 🖼   Module.load                                      │
-15|     let││  │  ╰─ ▶ 🖼   Module._load                                     │
-16|     let││  │  ╰─ ▶ 🖼   function Module(id = '', parent) {.executeUserEnt│
-17|        │ryPoint                                                         │
-18|        ││  │  ╰─ ▶ 🖼   <anonymous>                                      │
+10|     let││  │  │  ╰─ ▼ 🌍  Global                                         │lue";
+11|     let││  │  │  │  ╰─ ▶ 📝  AbortController: ƒ () { mod ??= require(id);│e trunc
+12| ated wh││  │  │  │  ╰─ ▶ 📝  AbortSignal: ƒ () { mod ??= require(id); if │
+13|        ││  │  │  │  ╰─ ▶ 📝  atob: ƒ () { mod ??= require(id); if (lazyLo│
+14|     // ││  │  │  │  ╰─ ▶ 📝  Blob: ƒ () { mod ??= require(id); if (lazyLo│
+15|     let││  │  │  │  ╰─ ▶ 📝  BroadcastChannel: ƒ () { mod ??= require(id)│
+16|     let││  │  │  │  ╰─ ▶ 📝  btoa: ƒ () { mod ??= require(id); if (lazyLo│
+17|        ││  │  │  │  ╰─ ▶ 📝  Buffer: ƒ get() { return _Buffer; }         │
+18|        ││  │  │  │  ╰─ ▶ 📝  ByteLengthQueuingStrategy: ƒ () { mod ??= re│
 19|        ╰────────────────────────────────────────────────────────────────╯
 20|             level: 2,
 21|             data: ["a", "b", "c"]
 22|         },
 23| lua/testing/fixtures/variables/complex.js                     7,1            Top
-24|                                                               7,1           All
+24|                                                               7,1           Top
 ]]
+
 
 
 
@@ -335,15 +341,15 @@ Mode: n
  7|     let││  ╰─ ▼ 📚  Stack (8 frames)                                     │
  8|     let││  │  ╰─ ▼ 🖼   global.testVariables                             │
  9|     let││  │  │  ╰─ ▶ 📁  Local: testVariables                           │
-10|     let││  │  │  ╰─ ▶ 📁  Global                                         │lue";
-11|     let││  │  ╰─ ▼ 🖼   <anonymous>                                      │e trunc
-12| ated wh││  │  │  ╰─ ▶ 📁  Local                                          │
-13|        ││  │  │  ╰─ ▶ 📁  Global                                         │
-14|     // ││  │  ╰─ ▶ 🖼   Module._compile                                  │
-15|     let││  │  ╰─ ▶ 🖼   Module._extensions..js                           │
-16|     let││  │  ╰─ ▶ 🖼   Module.load                                      │
-17|        ││  │  ╰─ ▶ 🖼   Module._load                                     │
-18|        ││  │  ╰─ ▶ 🖼   function Module(id = '', parent) {.executeUser@@@│
+10|     let││  │  │  ╰─ ▼ 🌍  Global                                         │lue";
+11|     let││  │  │  │  ╰─ ▼ 📝  AbortController: ƒ () { mod ??= require(id);│e trunc
+12| ated wh││  │  │  │  │  ╰─ ▶ 📝  AbortController: class AbortController {\│
+13|        ││  │  │  │  ╰─ ▶ 📝  AbortSignal: ƒ () { mod ??= require(id); if │
+14|     // ││  │  │  │  ╰─ ▶ 📝  atob: ƒ () { mod ??= require(id); if (lazyLo│
+15|     let││  │  │  │  ╰─ ▶ 📝  Blob: ƒ () { mod ??= require(id); if (lazyLo│
+16|     let││  │  │  │  ╰─ ▶ 📝  BroadcastChannel: ƒ () { mod ??= require(id)│
+17|        ││  │  │  │  ╰─ ▶ 📝  btoa: ƒ () { mod ??= require(id); if (lazyLo│
+18|        ││  │  │  │  ╰─ ▶ 📝  Buffer: ƒ get() { return _Buffer; }         │
 19|        ╰────────────────────────────────────────────────────────────────╯
 20|             level: 2,
 21|             data: ["a", "b", "c"]
@@ -351,6 +357,7 @@ Mode: n
 23| lua/testing/fixtures/variables/complex.js                     7,1            Top
 24|                                                               8,1           Top
 ]]
+
 
 
 
@@ -368,15 +375,15 @@ Mode: n
  7|     let││  ╰─ ▼ 📚  Stack (8 frames)                                     │
  8|     let││  │  ╰─ ▼ 🖼   global.testVariables                             │
  9|     let││  │  │  ╰─ ▶ 📁  Local: testVariables                           │
-10|     let││  │  │  ╰─ ▶ 📁  Global                                         │lue";
-11|     let││  │  ╰─ ▼ 🖼   <anonymous>                                      │e trunc
-12| ated wh││  │  │  ╰─ ▶ 📁  Local                                          │
-13|        ││  │  │  ╰─ ▶ 📁  Global                                         │
-14|     // ││  │  ╰─ ▶ 🖼   Module._compile                                  │
-15|     let││  │  ╰─ ▶ 🖼   Module._extensions..js                           │
-16|     let││  │  ╰─ ▶ 🖼   Module.load                                      │
-17|        ││  │  ╰─ ▶ 🖼   Module._load                                     │
-18|        ││  │  ╰─ ▶ 🖼   function Module(id = '', parent) {.executeUser@@@│
+10|     let││  │  │  ╰─ ▼ 🌍  Global                                         │lue";
+11|     let││  │  │  │  ╰─ ▼ 📝  AbortController: ƒ () { mod ??= require(id);│e trunc
+12| ated wh││  │  │  │  │  ╰─ ▶ 📝  AbortController: class AbortController {\│
+13|        ││  │  │  │  ╰─ ▶ 📝  AbortSignal: ƒ () { mod ??= require(id); if │
+14|     // ││  │  │  │  ╰─ ▶ 📝  atob: ƒ () { mod ??= require(id); if (lazyLo│
+15|     let││  │  │  │  ╰─ ▶ 📝  Blob: ƒ () { mod ??= require(id); if (lazyLo│
+16|     let││  │  │  │  ╰─ ▶ 📝  BroadcastChannel: ƒ () { mod ??= require(id)│
+17|        ││  │  │  │  ╰─ ▶ 📝  btoa: ƒ () { mod ??= require(id); if (lazyLo│
+18|        ││  │  │  │  ╰─ ▶ 📝  Buffer: ƒ get() { return _Buffer; }         │
 19|        ╰────────────────────────────────────────────────────────────────╯
 20|             level: 2,
 21|             data: ["a", "b", "c"]
@@ -384,6 +391,7 @@ Mode: n
 23| lua/testing/fixtures/variables/complex.js                     7,1            Top
 24|                                                               5,1           Top
 ]]
+
 
 
 
@@ -400,16 +408,16 @@ Mode: n
  6|     let│╰─ ▼ ⏸  Thread 0 (stopped)                                      │
  7|     let││  ╰─ ▼ 📚  Stack (8 frames)                                     │
  8|     let││  │  ╰─ ▶ 🖼   global.testVariables                             │
- 9|     let││  │  ╰─ ▼ 🖼   <anonymous>                                      │
-10|     let││  │  │  ╰─ ▶ 📁  Local                                          │lue";
-11|     let││  │  │  ╰─ ▶ 📁  Global                                         │e trunc
-12| ated wh││  │  ╰─ ▶ 🖼   Module._compile                                  │
-13|        ││  │  ╰─ ▶ 🖼   Module._extensions..js                           │
-14|     // ││  │  ╰─ ▶ 🖼   Module.load                                      │
-15|     let││  │  ╰─ ▶ 🖼   Module._load                                     │
-16|     let││  │  ╰─ ▶ 🖼   function Module(id = '', parent) {.executeUserEnt│
-17|        │ryPoint                                                         │
-18|        ││  │  ╰─ ▶ 🖼   <anonymous>                                      │
+ 9|     let││  │  ╰─ ▶ 🖼   <anonymous>                                      │
+10|     let││  │  ╰─ ▶ 🖼   Module._compile                                  │lue";
+11|     let││  │  ╰─ ▶ 🖼   Module._extensions..js                           │e trunc
+12| ated wh││  │  ╰─ ▶ 🖼   Module.load                                      │
+13|        ││  │  ╰─ ▶ 🖼   Module._load                                     │
+14|     // ││  │  ╰─ ▶ 🖼   function Module(id = '', parent) {.executeUserEnt│
+15|     let││  │  ╰─ ▶ 🖼   <anonymous>                                      │
+16|     let│                                                                │
+17|        │                                                                │
+18|        │                                                                │
 19|        ╰────────────────────────────────────────────────────────────────╯
 20|             level: 2,
 21|             data: ["a", "b", "c"]
@@ -417,6 +425,7 @@ Mode: n
 23| lua/testing/fixtures/variables/complex.js                     7,1            Top
 24|                                                               5,1           All
 ]]
+
 
 
 
@@ -434,15 +443,15 @@ Mode: n
  7|     let││  ╰─ ▼ 📚  Stack (8 frames)                                     │
  8|     let││  │  ╰─ ▼ 🖼   global.testVariables                             │
  9|     let││  │  │  ╰─ ▶ 📁  Local: testVariables                           │
-10|     let││  │  │  ╰─ ▶ 📁  Global                                         │lue";
-11|     let││  │  ╰─ ▼ 🖼   <anonymous>                                      │e trunc
-12| ated wh││  │  │  ╰─ ▶ 📁  Local                                          │
-13|        ││  │  │  ╰─ ▶ 📁  Global                                         │
-14|     // ││  │  ╰─ ▶ 🖼   Module._compile                                  │
-15|     let││  │  ╰─ ▶ 🖼   Module._extensions..js                           │
-16|     let││  │  ╰─ ▶ 🖼   Module.load                                      │
-17|        ││  │  ╰─ ▶ 🖼   Module._load                                     │
-18|        ││  │  ╰─ ▶ 🖼   function Module(id = '', parent) {.executeUser@@@│
+10|     let││  │  │  ╰─ ▼ 🌍  Global                                         │lue";
+11|     let││  │  │  │  ╰─ ▼ 📝  AbortController: ƒ () { mod ??= require(id);│e trunc
+12| ated wh││  │  │  │  │  ╰─ ▶ 📝  AbortController: class AbortController {\│
+13|        ││  │  │  │  ╰─ ▶ 📝  AbortSignal: ƒ () { mod ??= require(id); if │
+14|     // ││  │  │  │  ╰─ ▶ 📝  atob: ƒ () { mod ??= require(id); if (lazyLo│
+15|     let││  │  │  │  ╰─ ▶ 📝  Blob: ƒ () { mod ??= require(id); if (lazyLo│
+16|     let││  │  │  │  ╰─ ▶ 📝  BroadcastChannel: ƒ () { mod ??= require(id)│
+17|        ││  │  │  │  ╰─ ▶ 📝  btoa: ƒ () { mod ??= require(id); if (lazyLo│
+18|        ││  │  │  │  ╰─ ▶ 📝  Buffer: ƒ get() { return _Buffer; }         │
 19|        ╰────────────────────────────────────────────────────────────────╯
 20|             level: 2,
 21|             data: ["a", "b", "c"]
@@ -450,6 +459,7 @@ Mode: n
 23| lua/testing/fixtures/variables/complex.js                     7,1            Top
 24|                                                               5,1           Top
 ]]
+
 
 
 
@@ -467,15 +477,15 @@ Mode: n
  7|     let││  ╰─ ▼ 📚  Stack (8 frames)                                     │
  8|     let││  │  ╰─ ▼ 🖼   global.testVariables                             │
  9|     let││  │  │  ╰─ ▶ 📁  Local: testVariables                           │
-10|     let││  │  │  ╰─ ▶ 📁  Global                                         │lue";
-11|     let││  │  ╰─ ▼ 🖼   <anonymous>                                      │e trunc
-12| ated wh││  │  │  ╰─ ▶ 📁  Local                                          │
-13|        ││  │  │  ╰─ ▶ 📁  Global                                         │
-14|     // ││  │  ╰─ ▶ 🖼   Module._compile                                  │
-15|     let││  │  ╰─ ▶ 🖼   Module._extensions..js                           │
-16|     let││  │  ╰─ ▶ 🖼   Module.load                                      │
-17|        ││  │  ╰─ ▶ 🖼   Module._load                                     │
-18|        ││  │  ╰─ ▶ 🖼   function Module(id = '', parent) {.executeUser@@@│
+10|     let││  │  │  ╰─ ▼ 🌍  Global                                         │lue";
+11|     let││  │  │  │  ╰─ ▼ 📝  AbortController: ƒ () { mod ??= require(id);│e trunc
+12| ated wh││  │  │  │  │  ╰─ ▶ 📝  AbortController: class AbortController {\│
+13|        ││  │  │  │  ╰─ ▶ 📝  AbortSignal: ƒ () { mod ??= require(id); if │
+14|     // ││  │  │  │  ╰─ ▶ 📝  atob: ƒ () { mod ??= require(id); if (lazyLo│
+15|     let││  │  │  │  ╰─ ▶ 📝  Blob: ƒ () { mod ??= require(id); if (lazyLo│
+16|     let││  │  │  │  ╰─ ▶ 📝  BroadcastChannel: ƒ () { mod ??= require(id)│
+17|        ││  │  │  │  ╰─ ▶ 📝  btoa: ƒ () { mod ??= require(id); if (lazyLo│
+18|        ││  │  │  │  ╰─ ▶ 📝  Buffer: ƒ get() { return _Buffer; }         │
 19|        ╰────────────────────────────────────────────────────────────────╯
 20|             level: 2,
 21|             data: ["a", "b", "c"]
@@ -483,6 +493,7 @@ Mode: n
 23| lua/testing/fixtures/variables/complex.js                     7,1            Top
 24|                                                               5,1           Top
 ]]
+
 
 
 
@@ -500,15 +511,15 @@ Mode: n
  7|     let││  ╰─ ▼ 📚  Stack (8 frames)                                     │
  8|     let││  │  ╰─ ▼ 🖼   global.testVariables                             │
  9|     let││  │  │  ╰─ ▶ 📁  Local: testVariables                           │
-10|     let││  │  │  ╰─ ▶ 📁  Global                                         │lue";
-11|     let││  │  ╰─ ▼ 🖼   <anonymous>                                      │e trunc
-12| ated wh││  │  │  ╰─ ▶ 📁  Local                                          │
-13|        ││  │  │  ╰─ ▶ 📁  Global                                         │
-14|     // ││  │  ╰─ ▶ 🖼   Module._compile                                  │
-15|     let││  │  ╰─ ▶ 🖼   Module._extensions..js                           │
-16|     let││  │  ╰─ ▶ 🖼   Module.load                                      │
-17|        ││  │  ╰─ ▶ 🖼   Module._load                                     │
-18|        ││  │  ╰─ ▶ 🖼   function Module(id = '', parent) {.executeUser@@@│
+10|     let││  │  │  ╰─ ▼ 🌍  Global                                         │lue";
+11|     let││  │  │  │  ╰─ ▼ 📝  AbortController: ƒ () { mod ??= require(id);│e trunc
+12| ated wh││  │  │  │  │  ╰─ ▶ 📝  AbortController: class AbortController {\│
+13|        ││  │  │  │  ╰─ ▶ 📝  AbortSignal: ƒ () { mod ??= require(id); if │
+14|     // ││  │  │  │  ╰─ ▶ 📝  atob: ƒ () { mod ??= require(id); if (lazyLo│
+15|     let││  │  │  │  ╰─ ▶ 📝  Blob: ƒ () { mod ??= require(id); if (lazyLo│
+16|     let││  │  │  │  ╰─ ▶ 📝  BroadcastChannel: ƒ () { mod ??= require(id)│
+17|        ││  │  │  │  ╰─ ▶ 📝  btoa: ƒ () { mod ??= require(id); if (lazyLo│
+18|        ││  │  │  │  ╰─ ▶ 📝  Buffer: ƒ get() { return _Buffer; }         │
 19|        ╰────────────────────────────────────────────────────────────────╯
 20|             level: 2,
 21|             data: ["a", "b", "c"]

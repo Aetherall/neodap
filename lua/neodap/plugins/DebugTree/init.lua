@@ -22,6 +22,38 @@ DebugTree.name = "DebugTree"
 -- AUTONOMOUS NODE EXTENSIONS
 -- ========================================
 
+-- Forward declarations for DAP classes
+local Session = require('neodap.api.Session.Session')
+local Thread = require('neodap.api.Session.Thread')
+local Stack = require('neodap.api.Session.Stack')
+local Frame = require('neodap.api.Session.Frame')
+local Scope = require('neodap.api.Session.Scope')
+local Variable = require('neodap.api.Session.Variable')
+
+---@class (partial) api.Session
+---@field asNode fun(self: api.Session): NuiTree.Node Create a tree node for this session
+---@field _cached_node NuiTree.Node|nil Cached tree node
+
+---@class (partial) api.Thread  
+---@field asNode fun(self: api.Thread): NuiTree.Node Create a tree node for this thread
+---@field _cached_node NuiTree.Node|nil Cached tree node
+
+---@class (partial) api.Stack
+---@field asNode fun(self: api.Stack): NuiTree.Node Create a tree node for this stack
+---@field _cached_node NuiTree.Node|nil Cached tree node
+
+---@class (partial) api.Frame
+---@field asNode fun(self: api.Frame): NuiTree.Node Create a tree node for this frame
+---@field _cached_node NuiTree.Node|nil Cached tree node
+
+---@class (partial) api.Scope
+---@field asNode fun(self: api.Scope): NuiTree.Node Create a tree node for this scope
+---@field _cached_node NuiTree.Node|nil Cached tree node
+
+---@class (partial) api.Variable
+---@field asNode fun(self: api.Variable): NuiTree.Node Create a tree node for this variable
+---@field _cached_node NuiTree.Node|nil Cached tree node
+
 -- Helper function to add compatibility methods to nodes
 local function addNodeCompatibilityMethods(node, state_tree)
   -- Map our node structure to NUI Tree's expected structure
@@ -85,225 +117,243 @@ local function addNodeCompatibilityMethods(node, state_tree)
   end
 end
 
-local function extendDAPEntitiesWithAsNode(plugin)
-  local Session = require('neodap.api.Session.Session')
-  local Thread = require('neodap.api.Session.Thread')
-  local Stack = require('neodap.api.Session.Stack')
-  local Frame = require('neodap.api.Session.Frame')
-  local Scope = require('neodap.api.Session.Scope')
-  local Variable = require('neodap.api.Session.Variable')
+-- Store plugin instance for asNode methods
+local plugin_instance = nil
 
-  -- Session.asNode() - Autonomous session node
-  if not Session.asNode then
-    Session.asNode = function(self)
-      if self._cached_node then return self._cached_node end
+-- ========================================
+-- SESSION NODE
+-- ========================================
 
-      local node = NuiTree.Node({
-        id = "session:" .. tostring(self.id),
-        text = "📡 Session " .. tostring(self.id),
-        type = "session",
-        expandable = true,
-        _session = self,
-      })
-      
-      -- Add compatibility methods for our custom state tree
-      addNodeCompatibilityMethods(node, plugin.state_tree)
+---@param self api.Session
+---@return NuiTree.Node
+function Session:asNode()
+  if self._cached_node then return self._cached_node end
 
-      -- Autonomous: when threads appear, add them directly to tree
-      self:onThread(function(thread)
-        local thread_node = thread:asNode()
-        if plugin.state_tree then
-          plugin.state_tree:add_node(thread_node, node.id)
-          plugin.state_tree:render() -- This will render all view trees!
-        end
-      end)
+  local node = NuiTree.Node({
+    id = "session:" .. tostring(self.id),
+    text = "📡 Session " .. tostring(self.id),
+    type = "session",
+    expandable = true,
+    _session = self,
+  })
+  
+  -- Add compatibility methods for our custom state tree
+  addNodeCompatibilityMethods(node, plugin_instance.state_tree)
 
-      -- Autonomous cleanup
-      self:onTerminated(function()
-        if plugin.state_tree then
-          plugin.state_tree:remove_node(node.id)
-          plugin.state_tree:render() -- Update all views
-        end
-        self._cached_node = nil
-      end)
-
-      self._cached_node = node
-      return node
+  -- Autonomous: when threads appear, add them directly to tree
+  self:onThread(function(thread)
+    local thread_node = thread:asNode()
+    if plugin_instance.state_tree then
+      plugin_instance.state_tree:add_node(thread_node, node.id)
+      plugin_instance.state_tree:render() -- This will render all view trees!
     end
+  end)
+
+  -- Autonomous cleanup
+  self:onTerminated(function()
+    if plugin_instance.state_tree then
+      plugin_instance.state_tree:remove_node(node.id)
+      plugin_instance.state_tree:render() -- Update all views
+    end
+    self._cached_node = nil
+  end)
+
+  self._cached_node = node
+  return node
+end
+
+-- ========================================
+-- THREAD NODE
+-- ========================================
+
+---@param self api.Thread
+---@return NuiTree.Node
+function Thread:asNode()
+  if self._cached_node then return self._cached_node end
+
+  local function getDisplayText()
+    local status_icon = self.stopped and "⏸️" or "▶️"
+    local status_text = self.stopped and "stopped" or "running"
+    return status_icon .. " Thread " .. tostring(self.id) .. " (" .. status_text .. ")"
   end
 
-  -- Thread.asNode() - Autonomous thread node
-  if not Thread.asNode then
-    Thread.asNode = function(self)
-      if self._cached_node then return self._cached_node end
+  local node = NuiTree.Node({
+    id = "thread:" .. tostring(self.id),
+    text = getDisplayText(),
+    type = "thread",
+    expandable = self.stopped,
+    _thread = self,
+  })
+  
+  addNodeCompatibilityMethods(node, plugin_instance.state_tree)
 
-      local function getDisplayText()
-        local status_icon = self.stopped and "⏸️" or "▶️"
-        local status_text = self.stopped and "stopped" or "running"
-        return status_icon .. " Thread " .. tostring(self.id) .. " (" .. status_text .. ")"
+  -- Autonomous: update when stopped/continued
+  self:onStopped(function()
+    node.text = getDisplayText()
+    node.expandable = true
+
+    -- Add stack when stopped
+    local stack = self:stack()
+    if stack and plugin_instance.state_tree then
+      local stack_node = stack:asNode()
+      plugin_instance.state_tree:add_node(stack_node, node.id)
+      plugin_instance.state_tree:render() -- Update all views
+    end
+  end)
+
+  self:onContinued(function()
+    node.text = getDisplayText()
+    node.expandable = false
+
+    -- Remove stack children when running
+    if plugin_instance.state_tree and node._child_ids then
+      for _, child_id in ipairs(node._child_ids) do
+        plugin_instance.state_tree:remove_node(child_id)
       end
-
-      local node = NuiTree.Node({
-        id = "thread:" .. tostring(self.id),
-        text = getDisplayText(),
-        type = "thread",
-        expandable = self.stopped,
-        _thread = self,
-      })
-      
-      addNodeCompatibilityMethods(node, plugin.state_tree)
-
-      -- Autonomous: update when stopped/continued
-      self:onStopped(function()
-        node.text = getDisplayText()
-        node.expandable = true
-
-        -- Add stack when stopped
-        local stack = self:stack()
-        if stack and plugin.state_tree then
-          local stack_node = stack:asNode()
-          plugin.state_tree:add_node(stack_node, node.id)
-          plugin.state_tree:render() -- Update all views
-        end
-      end)
-
-      self:onContinued(function()
-        node.text = getDisplayText()
-        node.expandable = false
-
-        -- Remove stack children when running
-        if plugin.state_tree and node._child_ids then
-          for _, child_id in ipairs(node._child_ids) do
-            plugin.state_tree:remove_node(child_id)
-          end
-          node._child_ids = nil
-          plugin.state_tree:render() -- Update all views
-        end
-      end)
-
-      self._cached_node = node
-      return node
+      node._child_ids = nil
+      plugin_instance.state_tree:render() -- Update all views
     end
-  end
+  end)
 
-  -- Stack.asNode() - Autonomous stack node
-  if not Stack.asNode then
-    Stack.asNode = function(self)
-      if self._cached_node then return self._cached_node end
+  self._cached_node = node
+  return node
+end
 
-      -- Use the proper API method to get frames
-      local frames = self:getFrames()
-      local frame_count = frames and frames:count() or 0
+-- ========================================
+-- STACK NODE
+-- ========================================
 
+---@param self api.Stack
+---@return NuiTree.Node
+function Stack:asNode()
+  if self._cached_node then return self._cached_node end
 
-      local node = NuiTree.Node({
-        id = "stack:" .. tostring(self.thread.id),
-        text = "📚 Stack (" .. frame_count .. " frames)",
-        type = "stack",
-        expandable = true,
-        _stack = self,
-      })
-      
-      addNodeCompatibilityMethods(node, plugin.state_tree)
+  -- Use the proper API method to get frames
+  local frames = self:getFrames()
+  local frame_count = frames and frames:count() or 0
 
-      -- Autonomous: lazy load frames when first expanded
-      node._lazy_load = function()
-        if node._children_loaded then return end
-        
-        local frames = self:getFrames()
-        if frames and plugin.state_tree then
-          for frame in frames:each() do
-            plugin.state_tree:add_node(frame:asNode(), node.id)
-          end
-          node._children_loaded = true
-          plugin.state_tree:render() -- Update all views
-        end
+  local node = NuiTree.Node({
+    id = "stack:" .. tostring(self.thread.id),
+    text = "📚 Stack (" .. frame_count .. " frames)",
+    type = "stack",
+    expandable = true,
+    _stack = self,
+  })
+  
+  addNodeCompatibilityMethods(node, plugin_instance.state_tree)
+
+  -- Autonomous: lazy load frames when first expanded
+  node._lazy_load = function()
+    if node._children_loaded then return end
+    
+    local frames = self:getFrames()
+    if frames and plugin_instance.state_tree then
+      for frame in frames:each() do
+        plugin_instance.state_tree:add_node(frame:asNode(), node.id)
       end
-
-      self._cached_node = node
-      return node
+      node._children_loaded = true
+      plugin_instance.state_tree:render() -- Update all views
     end
   end
 
-  -- Frame.asNode() - Autonomous frame node
-  if not Frame.asNode then
-    Frame.asNode = function(self)
-      if self._cached_node then return self._cached_node end
+  self._cached_node = node
+  return node
+end
 
-      local node = NuiTree.Node({
-        id = "frame:" .. tostring(self.ref.id),
-        text = "🖼️  " .. (self.ref.name or "Frame " .. tostring(self.ref.id)),
-        type = "frame",
-        expandable = true,
-        _frame = self,
-      })
-      
-      addNodeCompatibilityMethods(node, plugin.state_tree)
+-- ========================================
+-- FRAME NODE
+-- ========================================
+
+---@param self api.Frame
+---@return NuiTree.Node
+function Frame:asNode()
+  if self._cached_node then return self._cached_node end
+
+  -- Clean up frame name to remove newlines and control characters
+  local frame_name = self.ref.name or "Frame " .. tostring(self.ref.id)
+  -- Replace newlines and tabs with spaces, trim whitespace
+  frame_name = frame_name:gsub("[\n\r\t]+", " "):gsub("%s+", " "):match("^%s*(.-)%s*$")
+  
+  local node = NuiTree.Node({
+    id = "frame:" .. tostring(self.ref.id),
+    text = "🖼️  " .. frame_name,
+    type = "frame",
+    expandable = true,
+    _frame = self,
+  })
+  
+  addNodeCompatibilityMethods(node, plugin_instance.state_tree)
 
       -- Autonomous: lazy load scopes when first expanded
       node._lazy_load = function()
         if node._children_loaded then 
-          plugin.logger:debug("Frame already has children loaded: " .. node.id)
+          plugin_instance.logger:debug("Frame already has children loaded: " .. node.id)
           return 
         end
         
         -- Wrap in async context to call Frame:scopes()
         require('neodap.tools.async').run(function()
-          plugin.logger:debug("Frame lazy load starting for: " .. node.id)
-          plugin.logger:debug("Frame object: " .. vim.inspect(self))
+          plugin_instance.logger:debug("Frame lazy load starting for: " .. node.id)
+          plugin_instance.logger:debug("Frame object: " .. vim.inspect(self))
           
           local ok, scopes = pcall(function() return self:scopes() end)
           if not ok then
-            plugin.logger:error("Failed to get scopes: " .. tostring(scopes))
+            plugin_instance.logger:error("Failed to get scopes: " .. tostring(scopes))
             return
           end
           
-          plugin.logger:debug("Frame scopes result: " .. vim.inspect(scopes))
+          plugin_instance.logger:debug("Frame scopes result: " .. vim.inspect(scopes))
           
-          if scopes and plugin.state_tree then
-            plugin.logger:debug("Adding " .. #scopes .. " scopes to frame " .. node.id)
+          if scopes and plugin_instance.state_tree then
+            plugin_instance.logger:debug("Adding " .. #scopes .. " scopes to frame " .. node.id)
             for i, scope in ipairs(scopes) do
               local scope_node = scope:asNode()
-              plugin.logger:debug("Adding scope[" .. i .. "] node: " .. scope_node.id .. " text: " .. scope_node.text)
-              plugin.state_tree:add_node(scope_node, node.id)
+              plugin_instance.logger:debug("Adding scope[" .. i .. "] node: " .. scope_node.id .. " text: " .. scope_node.text)
+              plugin_instance.state_tree:add_node(scope_node, node.id)
             end
             node._children_loaded = true
-            plugin.state_tree:render() -- Update all views
+            plugin_instance.state_tree:render() -- Update all views
           else
-            plugin.logger:debug("No scopes found or state_tree missing")
+            plugin_instance.logger:debug("No scopes found or state_tree missing")
           end
         end)
       end
 
-      self._cached_node = node
-      return node
-    end
+  self._cached_node = node
+  return node
+end
+
+-- ========================================
+-- SCOPE NODE
+-- ========================================
+
+---@param self api.Scope
+---@return NuiTree.Node
+function Scope:asNode()
+  if self._cached_node then return self._cached_node end
+
+  local scope_name = self.name or (self.ref and self.ref.name) or "Unknown"
+  -- Clean scope name of newlines
+  scope_name = scope_name:gsub("[\n\r\t]+", " "):gsub("%s+", " "):match("^%s*(.-)%s*$")
+  
+  local scope_icon = "📁"
+  if scope_name == "Local" then
+    scope_icon = "📁"
+  elseif scope_name == "Global" then
+    scope_icon = "🌍"
+  elseif scope_name == "Closure" then
+    scope_icon = "🔒"
   end
 
-  -- Scope.asNode() - Autonomous scope node
-  if not Scope.asNode then
-    Scope.asNode = function(self)
-      if self._cached_node then return self._cached_node end
-
-      local scope_name = self.name or (self.ref and self.ref.name) or "Unknown"
-      local scope_icon = "📁"
-      if scope_name == "Local" then
-        scope_icon = "📁"
-      elseif scope_name == "Global" then
-        scope_icon = "🌍"
-      elseif scope_name == "Closure" then
-        scope_icon = "🔒"
-      end
-
-      local node = NuiTree.Node({
-        id = "scope:" .. tostring(self.variablesReference or self.ref.variablesReference),
-        text = scope_icon .. " " .. (self.name or self.ref.name or "Unknown"),
-        type = "scope",
-        expandable = true,
-        _scope = self,
-      })
-      
-      addNodeCompatibilityMethods(node, plugin.state_tree)
+  local node = NuiTree.Node({
+    id = "scope:" .. tostring(self.variablesReference or self.ref.variablesReference),
+    text = scope_icon .. " " .. scope_name,
+    type = "scope",
+    expandable = true,
+    _scope = self,
+  })
+  
+  addNodeCompatibilityMethods(node, plugin_instance.state_tree)
 
       -- Autonomous: lazy load variables when first expanded
       node._lazy_load = function()
@@ -311,76 +361,90 @@ local function extendDAPEntitiesWithAsNode(plugin)
         
         -- Wrap in async context to call Scope:variables()
         require('neodap.tools.async').run(function()
-          plugin.logger:debug("Scope lazy load starting for: " .. node.id)
+          plugin_instance.logger:debug("Scope lazy load starting for: " .. node.id)
           
           local ok, variables = pcall(function() return self:variables() end)
           if not ok then
-            plugin.logger:error("Failed to get variables: " .. tostring(variables))
+            plugin_instance.logger:error("Failed to get variables: " .. tostring(variables))
             return
           end
           
-          plugin.logger:debug("Scope variables result: " .. vim.inspect(variables))
+          plugin_instance.logger:debug("Scope variables result: " .. vim.inspect(variables))
           
-          if variables and plugin.state_tree then
-            plugin.logger:debug("Adding " .. #variables .. " variables to scope " .. node.id)
+          if variables and plugin_instance.state_tree then
+            plugin_instance.logger:debug("Adding " .. #variables .. " variables to scope " .. node.id)
             for i, variable in ipairs(variables) do
               local var_node = variable:asNode()
-              plugin.logger:debug("Adding variable[" .. i .. "] node: " .. var_node.id .. " text: " .. var_node.text)
-              plugin.state_tree:add_node(var_node, node.id)
+              plugin_instance.logger:debug("Adding variable[" .. i .. "] node: " .. var_node.id .. " text: " .. var_node.text)
+              plugin_instance.state_tree:add_node(var_node, node.id)
             end
             node._children_loaded = true
-            plugin.state_tree:render() -- Update all views
+            plugin_instance.state_tree:render() -- Update all views
           else
-            plugin.logger:debug("No variables found or state_tree missing")
+            plugin_instance.logger:debug("No variables found or state_tree missing")
           end
         end)
       end
 
-      self._cached_node = node
-      return node
+  self._cached_node = node
+  return node
+end
+
+-- ========================================
+-- VARIABLE NODE
+-- ========================================
+
+---@param self api.Variable
+---@return NuiTree.Node
+function Variable:asNode()
+  if self._cached_node then return self._cached_node end
+
+  -- Use Variables4's sophisticated variable rendering
+  local icon = "📄"
+  local expandable = (self.ref and self.ref.variablesReference and self.ref.variablesReference > 0)
+
+  -- Determine icon based on type
+  local value_type = type(self.ref and self.ref.value)
+  if value_type == "table" then
+    icon = "📋"
+  elseif value_type == "function" then
+    icon = "⚡"
+  elseif value_type == "boolean" then
+    icon = "🔘"
+  elseif value_type == "number" then
+    icon = "🔢"
+  elseif value_type == "string" then
+    icon = "📝"
+  end
+
+  local display_value = self.ref and self.ref.value or ""
+  if type(display_value) == "string" then
+    -- Clean newlines and trim to 50 chars
+    display_value = display_value:gsub("[\n\r\t]+", " "):gsub("%s+", " ")
+    if #display_value > 50 then
+      display_value = string.sub(display_value, 1, 47) .. "..."
     end
   end
 
-  -- Variable.asNode() - Autonomous variable node (from Variables4)
-  if not Variable.asNode then
-    Variable.asNode = function(self)
-      if self._cached_node then return self._cached_node end
-
-      -- Use Variables4's sophisticated variable rendering
-      local icon = "📄"
-      local expandable = (self.ref and self.ref.variablesReference and self.ref.variablesReference > 0)
-
-      -- Determine icon based on type
-      local value_type = type(self.ref and self.ref.value)
-      if value_type == "table" then
-        icon = "📋"
-      elseif value_type == "function" then
-        icon = "⚡"
-      elseif value_type == "boolean" then
-        icon = "🔘"
-      elseif value_type == "number" then
-        icon = "🔢"
-      elseif value_type == "string" then
-        icon = "📝"
-      end
-
-      local display_value = self.ref and self.ref.value or ""
-      if type(display_value) == "string" and #display_value > 50 then
-        display_value = string.sub(display_value, 1, 47) .. "..."
-      end
-
-      local var_name = self.name or (self.ref and self.ref.name) or "unknown"
-      local var_ref = (self.ref and self.ref.variablesReference) or 0
-      
-      local node = NuiTree.Node({
-        id = "variable:" .. var_name .. ":" .. tostring(var_ref),
-        text = icon .. " " .. var_name .. ": " .. tostring(display_value),
-        type = "variable",
-        expandable = expandable,
-        _variable = self,
-      })
-      
-      addNodeCompatibilityMethods(node, plugin.state_tree)
+  local var_name = self.name or (self.ref and self.ref.name) or "unknown"
+  -- Clean variable name of newlines
+  var_name = tostring(var_name):gsub("[\n\r\t]+", " "):gsub("%s+", " "):match("^%s*(.-)%s*$")
+  
+  local var_ref = (self.ref and self.ref.variablesReference) or 0
+  
+  -- Ensure the entire text has no newlines
+  local text = icon .. " " .. var_name .. ": " .. tostring(display_value)
+  text = text:gsub("[\n\r]+", " ")
+  
+  local node = NuiTree.Node({
+    id = "variable:" .. var_name .. ":" .. tostring(var_ref),
+    text = text,
+    type = "variable",
+    expandable = expandable,
+    _variable = self,
+  })
+  
+  addNodeCompatibilityMethods(node, plugin_instance.state_tree)
 
       -- Autonomous: lazy load child variables when expanded
       if expandable then
@@ -389,36 +453,34 @@ local function extendDAPEntitiesWithAsNode(plugin)
           
           -- Wrap in async context to call Variable:variables()
           require('neodap.tools.async').run(function()
-            plugin.logger:debug("Variable lazy load starting for: " .. node.id)
+            plugin_instance.logger:debug("Variable lazy load starting for: " .. node.id)
             
             local ok, children = pcall(function() return self:variables() end)
             if not ok then
-              plugin.logger:error("Failed to get child variables: " .. tostring(children))
+              plugin_instance.logger:error("Failed to get child variables: " .. tostring(children))
               return
             end
             
-            plugin.logger:debug("Variable children result: " .. vim.inspect(children))
+            plugin_instance.logger:debug("Variable children result: " .. vim.inspect(children))
             
-            if children and plugin.state_tree then
-              plugin.logger:debug("Adding " .. #children .. " child variables to " .. node.id)
+            if children and plugin_instance.state_tree then
+              plugin_instance.logger:debug("Adding " .. #children .. " child variables to " .. node.id)
               for i, child in ipairs(children) do
                 local child_node = child:asNode()
-                plugin.logger:debug("Adding child[" .. i .. "] node: " .. child_node.id .. " text: " .. child_node.text)
-                plugin.state_tree:add_node(child_node, node.id)
+                plugin_instance.logger:debug("Adding child[" .. i .. "] node: " .. child_node.id .. " text: " .. child_node.text)
+                plugin_instance.state_tree:add_node(child_node, node.id)
               end
               node._children_loaded = true
-              plugin.state_tree:render() -- Update all views
+              plugin_instance.state_tree:render() -- Update all views
             else
-              plugin.logger:debug("No child variables found or state_tree missing")
+              plugin_instance.logger:debug("No child variables found or state_tree missing")
             end
           end)
         end
       end
 
-      self._cached_node = node
-      return node
-    end
-  end
+  self._cached_node = node
+  return node
 end
 
 function DebugTree.plugin(api)
@@ -431,8 +493,8 @@ function DebugTree:listen()
   -- Initialize instance properties
   self.active_view_trees = {}
   
-  -- Extend all DAP entities with asNode methods, passing plugin instance
-  extendDAPEntitiesWithAsNode(self)
+  -- Set the plugin instance for asNode methods
+  plugin_instance = self
 
   -- Setup session event handlers to initialize reactive nodes
   self:setupSessionHandlers()
@@ -469,8 +531,6 @@ end
 
 function DebugTree:initializeStateTree()
   if self.state_tree then return end -- Already initialized
-
-  local plugin_instance = self -- Capture reference to plugin
   
   -- Create state tree without NUI Tree - just use plain node storage
   -- NUI Tree requires a bufnr, so we'll use a custom data structure
@@ -678,6 +738,7 @@ function DebugTree:createViewTree(root_entity, title)
     },
     win_options = {
       winhighlight = "Normal:Normal,FloatBorder:FloatBorder",
+      wrap = false,  -- Prevent line wrapping, let long lines overflow
     },
   })
 
@@ -867,8 +928,9 @@ function DebugTree:setupTreeRendering(tree)
       line:append("  ")
     end
 
-    -- Add content
+    -- Add content (ensure no newlines)
     local text = node.text or ""
+    text = text:gsub("[\n\r]+", " ")
     line:append(text)
 
     return line
