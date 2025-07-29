@@ -341,8 +341,12 @@ function Stack:asNode()
     
     local frames = self:getFrames()
     if frames and plugin_instance.state_tree then
+      local index = 0
       for frame in frames:each() do
-        plugin_instance.state_tree:add_node(frame:asNode(), node.id)
+        index = index + 1
+        -- Pass the index to frame:asNode
+        local frame_node = frame:asNode(index)
+        plugin_instance.state_tree:add_node(frame_node, node.id)
       end
       node._children_loaded = true
       plugin_instance.state_tree:render() -- Update all views
@@ -358,21 +362,31 @@ end
 -- ========================================
 
 ---@param self api.Frame
+---@param index? number The frame's position in the stack (1-based)
 ---@return NuiTree.Node
-function Frame:asNode()
-  if self._cached_node then return self._cached_node end
+function Frame:asNode(index)
+  -- For frames with index, we need unique nodes per position
+  local cache_key = index and ("_cached_node_" .. index) or "_cached_node"
+  if self[cache_key] then return self[cache_key] end
 
   -- Clean up frame name to remove newlines and control characters
   local frame_name = self.ref.name or "Frame " .. tostring(self.ref.id)
   -- Replace newlines and tabs with spaces, trim whitespace
   frame_name = frame_name:gsub("[\n\r\t]+", " "):gsub("%s+", " "):match("^%s*(.-)%s*$")
   
+  -- Include index in ID to make frames unique even if same function appears multiple times
+  local frame_id = index and ("frame:" .. tostring(self.ref.id) .. ":" .. index) or ("frame:" .. tostring(self.ref.id))
+  
+  -- Add frame number prefix if index is provided
+  local display_text = index and ("#" .. index .. " 🖼️  " .. frame_name) or ("🖼️  " .. frame_name)
+  
   local node = NuiTree.Node({
-    id = "frame:" .. tostring(self.ref.id),
-    text = "🖼️  " .. frame_name,
+    id = frame_id,
+    text = display_text,
     type = "frame",
     expandable = true,
     _frame = self,
+    _frame_index = index,
   })
   
   addNodeCompatibilityMethods(node, plugin_instance.state_tree)
@@ -412,7 +426,7 @@ function Frame:asNode()
         end)
       end
 
-  self._cached_node = node
+  self[cache_key] = node
   return node
 end
 
@@ -920,10 +934,7 @@ function DebugTree:createViewTree(root_entity, title)
           local child_ids = node:get_child_ids()
           if child_ids and #child_ids > 0 then
             vim.schedule(function()
-              local child_node, line = view_tree:get_node(child_ids[1])
-              if child_node and line then
-                vim.api.nvim_win_set_cursor(0, {line, 0})
-              end
+              self:setCursorToNode(view_tree, child_ids[1])
             end)
           end
         end
@@ -949,10 +960,7 @@ function DebugTree:createViewTree(root_entity, title)
       -- Navigate to parent
       local parent_id = node:get_parent_id()
       if parent_id then
-        local parent_node, line = view_tree:get_node(parent_id)
-        if parent_node and line then
-          vim.api.nvim_win_set_cursor(0, {line, 0})
-        end
+        self:setCursorToNode(view_tree, parent_id)
       end
     end
   end)
@@ -971,11 +979,8 @@ function DebugTree:createViewTree(root_entity, title)
     
     for i, node_id in ipairs(visible_nodes) do
       if node_id == current_id and i < #visible_nodes then
-        local next_node, line = view_tree:get_node(visible_nodes[i + 1])
-        if next_node and line then
-          vim.api.nvim_win_set_cursor(0, {line, 0})
-          return
-        end
+        self:setCursorToNode(view_tree, visible_nodes[i + 1])
+        return
       end
     end
     
@@ -997,11 +1002,8 @@ function DebugTree:createViewTree(root_entity, title)
     
     for i, node_id in ipairs(visible_nodes) do
       if node_id == current_id and i > 1 then
-        local prev_node, line = view_tree:get_node(visible_nodes[i - 1])
-        if prev_node and line then
-          vim.api.nvim_win_set_cursor(0, {line, 0})
-          return
-        end
+        self:setCursorToNode(view_tree, visible_nodes[i - 1])
+        return
       end
     end
     
@@ -1210,8 +1212,8 @@ function DebugTree:addExistingChildren(root_entity)
     end
   elseif root_entity.frames then
     -- Stack: add existing frames
-    for _, frame in ipairs(root_entity.frames) do
-      local frame_node = frame:asNode()
+    for index, frame in ipairs(root_entity.frames) do
+      local frame_node = frame:asNode(index)
       self.state_tree:add_node(frame_node, "stack:" .. tostring(root_entity.thread.id))
     end
   end
@@ -1245,6 +1247,51 @@ function DebugTree:getVisibleNodes(tree)
   end
   
   return visible_nodes
+end
+
+-- Smart cursor positioning that finds the first meaningful character
+function DebugTree:setCursorToNode(tree, node_id, window)
+  local node, line = tree:get_node(node_id)
+  if node and line then
+    -- Get the line content
+    local lines = vim.api.nvim_buf_get_lines(tree.bufnr, line - 1, line, false)
+    if lines and lines[1] then
+      local line_text = lines[1]
+      
+      -- Skip past tree structure characters to find actual content
+      local pos = 1
+      local len = #line_text
+      
+      -- Skip tree drawing characters and spaces
+      while pos <= len do
+        local char = line_text:sub(pos, pos)
+        local utf8_char = line_text:sub(pos, pos + 2)
+        
+        -- Check for tree structure characters
+        if char == "│" or char == " " or char == "─" then
+          pos = pos + 1
+        elseif utf8_char == "╰" or utf8_char == "├" then
+          pos = pos + 3
+        elseif utf8_char == "▶" or utf8_char == "▼" then
+          -- Found expand/collapse indicator, position after it + space
+          pos = pos + 4  -- Skip the indicator and following space
+          break
+        else
+          -- Found content
+          break
+        end
+      end
+      
+      -- Ensure we don't go past the line
+      if pos > len then pos = len end
+      if pos < 1 then pos = 1 end
+      
+      vim.api.nvim_win_set_cursor(window or 0, {line, pos - 1})
+    else
+      -- Fallback
+      vim.api.nvim_win_set_cursor(window or 0, {line, 0})
+    end
+  end
 end
 
 -- Resolve lazy variable by fetching its actual value

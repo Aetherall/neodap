@@ -118,6 +118,8 @@ Mode: n
 
 
 
+
+
 --[[ TERMINAL SNAPSHOT: 02_local_scope_expanded_rich_types
 Size: 24x80
 Cursor: [2, 0] (line 2, col 0)
@@ -148,6 +150,8 @@ Mode: n
 23| lua/testing/fixtures/variables/complex.js                     7,1            Top
 24|                                                               2,1           Top
 ]]
+
+
 
 
 
@@ -186,6 +190,8 @@ Mode: n
 
 
 
+
+
 --[[ TERMINAL SNAPSHOT: 04_object_expanded_with_l
 Size: 24x80
 Cursor: [10, 3] (line 10, col 3)
@@ -216,6 +222,8 @@ Mode: n
 23| lua/testing/fixtures/variables/complex.js                     7,1            Top
 24|                                                               10,4-2        Top
 ]]
+
+
 
 
 
@@ -254,6 +262,8 @@ Mode: n
 
 
 
+
+
 --[[ TERMINAL SNAPSHOT: 06_navigated_back_with_h
 Size: 24x80
 Cursor: [12, 3] (line 12, col 3)
@@ -284,6 +294,8 @@ Mode: n
 23| lua/testing/fixtures/variables/complex.js                     7,1            Top
 24|                                                               12,4-2        Top
 ]]
+
+
 
 
 
@@ -322,6 +334,8 @@ Mode: n
 
 
 
+
+
 --[[ TERMINAL SNAPSHOT: 08_unfocused_view
 Size: 24x80
 Cursor: [11, 3] (line 11, col 3)
@@ -352,6 +366,8 @@ Mode: n
 23| lua/testing/fixtures/variables/complex.js                     7,1            Top
 24|                                                               11,4-2        Top
 ]]
+
+
 
 
 
@@ -390,6 +406,8 @@ Mode: n
 
 
 
+
+
 --[[ TERMINAL SNAPSHOT: 10_help_displayed
 Size: 24x80
 Cursor: [9, 3] (line 9, col 3)
@@ -420,6 +438,8 @@ Mode: n
 23| lua/testing/fixtures/variables/complex.js                     7,1            Top
 24|                                                               9,4-2         Top
 ]]
+
+
 
 
 

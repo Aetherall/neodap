@@ -57,6 +57,14 @@
     //     "FILE": "${workspaceFolder}/run-integration-test.lua",
     //   },
     //   // "verbose": true
-    // }
+    // },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Recursive [recursive]",
+      "program": "${workspaceFolder}/lua/testing/fixtures/stack/recursive.js",
+      "skipFiles": ["<node_internals>/**"],
+      "console": "integratedTerminal"
+    }
   ]
 }
