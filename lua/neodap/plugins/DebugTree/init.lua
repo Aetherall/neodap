@@ -185,24 +185,6 @@ local function addNodeCompatibilityMethods(node, state_tree)
     end
   end
   
-  -- Resolve children if they haven't been loaded yet
-  node.ResolveChildren = function(self)
-    if self._lazy_load and not self._children_loaded then
-      -- Set a flag that we're waiting for children
-      self._waiting_for_children = true
-      self._lazy_load()
-      
-      -- Wait for children to be loaded (with timeout)
-      local timeout = 5000  -- 5 seconds
-      local start = vim.loop.now()
-      while self._waiting_for_children and not self._children_loaded do
-        if vim.loop.now() - start > timeout then
-          break
-        end
-        require('neodap.tools.async').sleep(50)  -- Check every 50ms
-      end
-    end
-  end
   
   node.collapse = function(self)
     self._is_expanded = false
@@ -231,6 +213,90 @@ end
 
 -- Store plugin instance for asNode methods
 local plugin_instance = nil
+
+-- ========================================
+-- API RESOURCE EXTENSIONS
+-- ========================================
+
+-- Extend API resources with ResolveChildren method
+
+---@param self api.Session
+function Session:ResolveChildren()
+  -- Sessions don't have lazy children - threads are added via events
+  -- Nothing to resolve
+end
+
+---@param self api.Thread
+function Thread:ResolveChildren()
+  -- Threads don't have lazy children - stack is fetched synchronously
+  -- Nothing to resolve
+end
+
+---@param self api.Stack
+function Stack:ResolveChildren()
+  -- Stack frames are loaded synchronously
+  -- Nothing to resolve
+end
+
+---@param self api.Frame
+function Frame:ResolveChildren()
+  -- Frames have lazy-loaded scopes
+  local node = self._cached_node or self._cached_node_1 or self._cached_node_2
+  if node and node._lazy_load and not node._children_loaded then
+    node._waiting_for_children = true
+    node._lazy_load()
+    
+    -- Wait for children to be loaded
+    local timeout = 5000
+    local start = vim.loop.now()
+    while node._waiting_for_children and not node._children_loaded do
+      if vim.loop.now() - start > timeout then
+        break
+      end
+      require('neodap.tools.async').sleep(50)
+    end
+  end
+end
+
+---@param self api.Scope
+function Scope:ResolveChildren()
+  -- Scopes have lazy-loaded variables
+  local node = self._cached_node
+  if node and node._lazy_load and not node._children_loaded then
+    node._waiting_for_children = true
+    node._lazy_load()
+    
+    -- Wait for children to be loaded
+    local timeout = 5000
+    local start = vim.loop.now()
+    while node._waiting_for_children and not node._children_loaded do
+      if vim.loop.now() - start > timeout then
+        break
+      end
+      require('neodap.tools.async').sleep(50)
+    end
+  end
+end
+
+---@param self api.Variable
+function Variable:ResolveChildren()
+  -- Variables with variablesReference > 0 have lazy-loaded children
+  local node = self._cached_node
+  if node and node._lazy_load and not node._children_loaded then
+    node._waiting_for_children = true
+    node._lazy_load()
+    
+    -- Wait for children to be loaded
+    local timeout = 5000
+    local start = vim.loop.now()
+    while node._waiting_for_children and not node._children_loaded do
+      if vim.loop.now() - start > timeout then
+        break
+      end
+      require('neodap.tools.async').sleep(50)
+    end
+  end
+end
 
 -- ========================================
 -- SESSION NODE
@@ -971,9 +1037,10 @@ function DebugTree:createViewTree(root_entity, title)
       if node:is_expanded() then
         node:collapse()
       else
-        -- Resolve children first if needed (async wait for lazy loading)
-        if node.ResolveChildren then
-          node:ResolveChildren()
+        -- Resolve children first if the DAP resource has lazy children
+        local dap_resource = node._session or node._thread or node._stack or node._frame or node._scope or node._variable
+        if dap_resource and dap_resource.ResolveChildren then
+          dap_resource:ResolveChildren()
         end
         
         -- Now expand the node
