@@ -709,8 +709,14 @@ function Variable:asNode()
   local var_ref = (self.ref and self.ref.variablesReference) or 0
   local expandable = var_ref > 0
   
+  -- Include parent scope in ID to ensure uniqueness across different scopes
+  local parent_scope_id = ""
+  if self.parent and self.parent.variablesReference then
+    parent_scope_id = tostring(self.parent.variablesReference) .. ":"
+  end
+  
   local node = NuiTree.Node({
-    id = "variable:" .. var_name .. ":" .. tostring(var_ref),
+    id = "variable:" .. parent_scope_id .. var_name .. ":" .. tostring(var_ref),
     text = text,
     type = "variable",
     expandable = expandable,
@@ -1168,14 +1174,21 @@ function DebugTree:createViewTree(root_entity, title)
     else
       -- Navigate to parent and collapse it
       local parent_id = node:get_parent_id()
+      self.logger:debug("h navigation: current node=" .. node.id .. " parent_id=" .. (parent_id or "nil"))
+      
       if parent_id then
         local parent_node = view_tree.nodes.by_id[parent_id]
         if parent_node then
+          self.logger:debug("h navigation: found parent node, text=" .. (parent_node.text or "nil"))
           -- Collapse the parent node
           parent_node:collapse()
+          -- Render first to update the tree structure
+          view_tree:render()
+        else
+          self.logger:warn("h navigation: parent node not found in tree for id=" .. parent_id)
         end
+        -- Set cursor after render to ensure correct line calculation
         self:setCursorToNode(view_tree, parent_id)
-        view_tree:render()
       end
     end
   end)
@@ -1638,10 +1651,14 @@ end
 -- Smart cursor positioning using stored cursor column
 function DebugTree:setCursorToNode(tree, node_id, window)
   local node, line = tree:get_node(node_id)
+  self.logger:debug("setCursorToNode: node_id=" .. node_id .. " found=" .. tostring(node ~= nil) .. " line=" .. tostring(line))
   if node and line then
     -- Use the stored cursor position if available
     local col = node._cursor_col or 0
+    self.logger:debug("setCursorToNode: setting cursor to line=" .. line .. " col=" .. col .. " node.text=" .. (node.text or "nil"))
     vim.api.nvim_win_set_cursor(window or 0, {line, col})
+  else
+    self.logger:warn("setCursorToNode: could not find node or line for id=" .. node_id)
   end
 end
 
