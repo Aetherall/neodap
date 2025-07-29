@@ -59,6 +59,32 @@ local EntityHighlights = {
   variable = "@variable",
 }
 
+-- PresentationHint kind to highlight mapping
+local KindHighlights = {
+  property = "@property",
+  method = "@method",
+  class = "@type.builtin",
+  data = "@variable",
+  event = "@function.builtin",
+}
+
+-- Visibility modifiers
+local VisibilityPrefixes = {
+  private = "🔒",
+  protected = "🔐",
+  public = "🌐",
+  internal = "🏠",
+}
+
+-- Attribute indicators
+local AttributeIndicators = {
+  static = "𝑺",
+  constant = "𝑪",
+  readOnly = "𝑹",
+  rawString = "𝑹",
+  hasObjectId = "𝑶",
+}
+
 -- Get presentation style for a variable type
 local function getVariableStyle(var_type)
   if not var_type then return VariablePresentation.styles.default end
@@ -602,6 +628,12 @@ function Variable:asNode()
   -- Check for lazy variables
   local is_lazy = self.ref and self.ref.presentationHint and self.ref.presentationHint.lazy
   
+  -- Extract presentation hints
+  local hint = self.ref and self.ref.presentationHint
+  local kind = hint and hint.kind
+  local visibility = hint and hint.visibility
+  local attributes = hint and hint.attributes or {}
+  
   -- Format the value using sophisticated formatting
   local formatted_value = formatVariableValue(self.ref, style)
   
@@ -609,9 +641,26 @@ function Variable:asNode()
   local var_name = self.name or (self.ref and self.ref.name) or "unknown"
   var_name = tostring(var_name):gsub("[\n\r\t]+", " "):gsub("%s+", " "):match("^%s*(.-)%s*$")
   
-  -- Build node text with icon
+  -- Build prefix with visibility and attributes
+  local prefix = ""
+  
+  -- Add visibility prefix
+  if visibility and VisibilityPrefixes[visibility] then
+    prefix = prefix .. VisibilityPrefixes[visibility] .. " "
+  end
+  
+  -- Add attribute indicators
+  for _, attr in ipairs(attributes) do
+    if AttributeIndicators[attr] then
+      prefix = prefix .. AttributeIndicators[attr] .. " "
+    end
+  end
+  
+  -- Choose icon based on kind or type
   local icon = is_lazy and "⏳" or style.icon  -- Show loading icon for lazy vars
-  local text = icon .. " " .. var_name .. ": " .. formatted_value
+  
+  -- Build node text with all information
+  local text = prefix .. icon .. " " .. var_name .. ": " .. formatted_value
   text = text:gsub("[\n\r]+", " ")  -- Final safety check
   
   local var_ref = (self.ref and self.ref.variablesReference) or 0
@@ -625,6 +674,11 @@ function Variable:asNode()
     _dap = self,
     _highlight = style.highlight,  -- Store highlight group for rendering
     _is_lazy = is_lazy,           -- Track lazy status
+    _kind = kind,                 -- Store presentationHint.kind
+    _visibility = visibility,     -- Store visibility
+    _attributes = attributes,     -- Store attributes
+    _has_memory = self.ref and self.ref.memoryReference ~= nil,
+    _evaluateName = self.ref and self.ref.evaluateName,
   })
   
   addNodeCompatibilityMethods(node, plugin_instance.state_tree)
@@ -1257,8 +1311,13 @@ function DebugTree:setupTreeRendering(tree)
     local highlight_group = EntityHighlights[node.type] or "@text"
     
     -- For variables, use more specific highlighting based on the stored highlight
-    if node.type == "variable" and node._highlight then
-      highlight_group = node._highlight
+    if node.type == "variable" then
+      -- Use kind-based highlighting if available
+      if node._kind and KindHighlights[node._kind] then
+        highlight_group = KindHighlights[node._kind]
+      elseif node._highlight then
+        highlight_group = node._highlight
+      end
     end
     
     -- Parse variable nodes for better syntax highlighting
@@ -1276,14 +1335,47 @@ function DebugTree:setupTreeRendering(tree)
         -- Add icon with default highlighting
         line:append(icon, "@text.note")
         
-        -- Add variable name
-        line:append(var_name, "@variable")
+        -- Add variable name with appropriate highlighting
+        local name_highlight = "@variable"
+        
+        -- Use specific highlights based on kind
+        if node._kind == "method" then
+          name_highlight = "@method"
+        elseif node._kind == "property" then
+          name_highlight = "@property"
+        elseif node._kind == "class" then
+          name_highlight = "@type"
+        elseif node._kind == "event" then
+          name_highlight = "@function.builtin"
+        end
+        
+        -- Check for special attributes
+        if node._attributes then
+          for _, attr in ipairs(node._attributes) do
+            if attr == "constant" then
+              name_highlight = "@constant"
+              break
+            elseif attr == "static" then
+              -- Could use a different highlight for static
+              name_highlight = "@variable.builtin"
+              break
+            end
+          end
+        end
+        
+        line:append(var_name, name_highlight)
         
         -- Add colon
         line:append(":", "@punctuation.delimiter")
         
         -- Add value with type-specific highlighting
         line:append(colon_and_value:sub(2), highlight_group) -- Remove colon, already added
+        
+        -- Add memory reference if available
+        if node._has_memory and node._dap.ref.memoryReference then
+          line:append(" @", "@comment")
+          line:append(node._dap.ref.memoryReference, "@number")
+        end
       else
         -- Fallback: just highlight the whole thing
         line:append(text, highlight_group)
