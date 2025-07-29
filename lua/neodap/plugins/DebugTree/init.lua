@@ -954,6 +954,8 @@ function DebugTree:setupViewTreeKeybindings(view_tree, popup, title)
   -- Focus controls
   popup:map("n", "f", function() self:FocusIn(view_tree, popup) end)
   popup:map("n", "F", function() self:FocusOut(view_tree, popup, title) end)
+  popup:map("n", ">", function() self:FocusDeeper(view_tree, popup) end)
+  popup:map("n", "<", function() self:FocusShallower(view_tree, popup, title) end)
   
   -- Utility keys
   popup:map("n", "r", function() view_tree:render() end)
@@ -967,6 +969,107 @@ function DebugTree:setupViewTreeKeybindings(view_tree, popup, title)
       end
     end
     popup:unmount()
+  end)
+  
+  -- Debug info
+  popup:map("n", "!", function()
+    local node = view_tree:get_node()
+    if not node then
+      vim.notify("No node under cursor", vim.log.levels.WARN)
+      return
+    end
+    
+    local debug_info = {}
+    table.insert(debug_info, "=== Node Debug Info ===")
+    table.insert(debug_info, "")
+    table.insert(debug_info, "Node ID: " .. (node.id or "nil"))
+    table.insert(debug_info, "Text: " .. (node.text or "nil"))
+    table.insert(debug_info, "Type: " .. (node.type or "nil"))
+    table.insert(debug_info, "")
+    
+    -- Node state
+    table.insert(debug_info, "=== Node State ===")
+    table.insert(debug_info, "Expandable: " .. tostring(node.expandable))
+    table.insert(debug_info, "Expanded: " .. tostring(node:is_expanded()))
+    table.insert(debug_info, "Has Children: " .. tostring(node:has_children()))
+    table.insert(debug_info, "Depth: " .. tostring(node:get_depth()))
+    table.insert(debug_info, "Parent ID: " .. (node:get_parent_id() or "nil"))
+    
+    -- Child info
+    if node._child_ids then
+      table.insert(debug_info, "Child Count: " .. #node._child_ids)
+    end
+    table.insert(debug_info, "")
+    
+    -- DAP reference
+    if node._dap then
+      table.insert(debug_info, "=== DAP Reference ===")
+      table.insert(debug_info, "Has _dap: true")
+      table.insert(debug_info, "Type: " .. type(node._dap))
+      
+      if node._dap.ref then
+        table.insert(debug_info, "")
+        table.insert(debug_info, "=== _dap.ref content ===")
+        local ref_str = vim.inspect(node._dap.ref, {
+          depth = 3,
+          indent = "  "
+        })
+        for line in ref_str:gmatch("[^\n]+") do
+          table.insert(debug_info, line)
+        end
+      else
+        table.insert(debug_info, "No ref field")
+      end
+      
+      -- Check for other useful DAP methods
+      if node._dap.ResolveChildren then
+        table.insert(debug_info, "")
+        table.insert(debug_info, "Has ResolveChildren method")
+      end
+    else
+      table.insert(debug_info, "=== DAP Reference ===")
+      table.insert(debug_info, "No _dap reference")
+    end
+    
+    -- Special flags
+    table.insert(debug_info, "")
+    table.insert(debug_info, "=== Special Flags ===")
+    table.insert(debug_info, "Is Lazy: " .. tostring(node._is_lazy or false))
+    table.insert(debug_info, "Children Loaded: " .. tostring(node._children_loaded or false))
+    
+    -- Display in a floating window
+    local width = 60
+    local height = math.min(#debug_info + 2, 40)
+    
+    local debug_popup = NuiPopup({
+      position = "50%",
+      size = {
+        width = width,
+        height = height,
+      },
+      enter = true,
+      focusable = true,
+      border = {
+        style = "rounded",
+        text = {
+          top = " Node Debug Info ",
+          top_align = "center",
+        },
+      },
+    })
+    
+    debug_popup:mount()
+    
+    -- Set content
+    vim.api.nvim_buf_set_lines(debug_popup.bufnr, 0, -1, false, debug_info)
+    
+    -- Make it read-only
+    vim.api.nvim_buf_set_option(debug_popup.bufnr, "modifiable", false)
+    vim.api.nvim_buf_set_option(debug_popup.bufnr, "buftype", "nofile")
+    
+    -- Close on q or Esc
+    debug_popup:map("n", "q", function() debug_popup:unmount() end)
+    debug_popup:map("n", "<Esc>", function() debug_popup:unmount() end)
   end)
   
   -- Help
@@ -989,13 +1092,16 @@ Smart Navigation:
   gj      - Down (child, next sibling, or parent's next)
   
 Focus Controls:
-  f       - Focus on current subtree
+  f       - Focus on current node's subtree
   F       - Unfocus (restore full view)
+  >       - Focus deeper (zoom in one level)
+  <       - Focus shallower (zoom out one level)
   
 Other:
   r       - Refresh tree
   q       - Quit
   ?       - Show this help
+  !       - Show debug info for current node
   
 Indicators:
   ⏳      - Lazy variable (click to load)
@@ -1527,6 +1633,100 @@ function DebugTree:FocusTop(tree, popup, original_title)
   end
   
   tree:render()
+end
+
+function DebugTree:FocusDeeper(tree, popup)
+  local node = tree:get_node()
+  if not node then return end
+  
+  -- Store original roots if not already stored
+  if not tree._original_root_ids then
+    tree._original_root_ids = vim.deepcopy(tree._view_root_ids)
+  end
+  
+  -- Get current focus level - find common ancestor of current roots
+  local current_roots = tree.nodes.root_ids
+  if #current_roots == 1 then
+    -- Already focused on single node, try to focus on cursor position
+    local focused_root = tree.nodes.by_id[current_roots[1]]
+    if focused_root and node:get_id() ~= current_roots[1] then
+      -- Focus on current cursor node instead
+      tree._view_root_ids = { node:get_id() }
+      tree.nodes.root_ids = tree._view_root_ids
+      
+      if popup then
+        local title = " DebugTree - Focused: " .. (node.text or "Unknown") .. " "
+        popup.border:set_text("top", title, "center")
+      end
+      
+      tree:render()
+    end
+  else
+    -- Multiple roots - focus on the one containing cursor
+    for _, root_id in ipairs(current_roots) do
+      if self:isNodeAncestorOf(root_id, node:get_id(), tree) then
+        tree._view_root_ids = { root_id }
+        tree.nodes.root_ids = tree._view_root_ids
+        
+        if popup then
+          local root_node = tree.nodes.by_id[root_id]
+          local title = " DebugTree - Focused: " .. (root_node and root_node.text or "Unknown") .. " "
+          popup.border:set_text("top", title, "center")
+        end
+        
+        tree:render()
+        break
+      end
+    end
+  end
+end
+
+function DebugTree:FocusShallower(tree, popup, original_title)
+  -- If we have no focus history, nothing to do
+  if not tree._original_root_ids then return end
+  
+  local current_roots = tree.nodes.root_ids
+  if #current_roots == 1 then
+    local current_root_id = current_roots[1]
+    local current_root = tree.nodes.by_id[current_root_id]
+    
+    if current_root then
+      local parent_id = current_root:get_parent_id()
+      if parent_id then
+        -- Focus on parent
+        tree._view_root_ids = { parent_id }
+        tree.nodes.root_ids = tree._view_root_ids
+        
+        if popup then
+          local parent_node = tree.nodes.by_id[parent_id]
+          local title = " DebugTree - Focused: " .. (parent_node and parent_node.text or "Unknown") .. " "
+          popup.border:set_text("top", title, "center")
+        end
+        
+        tree:render()
+      else
+        -- No parent - restore original view
+        self:FocusOut(tree, popup, original_title)
+      end
+    end
+  else
+    -- Multiple roots - shouldn't happen with our focus model, but restore original
+    self:FocusOut(tree, popup, original_title)
+  end
+end
+
+-- Helper to check if one node is ancestor of another
+function DebugTree:isNodeAncestorOf(ancestor_id, descendant_id, tree)
+  if ancestor_id == descendant_id then return true end
+  
+  local current = tree.nodes.by_id[descendant_id]
+  while current do
+    local parent_id = current:get_parent_id()
+    if not parent_id then return false end
+    if parent_id == ancestor_id then return true end
+    current = tree.nodes.by_id[parent_id]
+  end
+  return false
 end
 
 -- Composite Navigation Methods
