@@ -653,6 +653,11 @@ function DebugTree:setupSessionHandlers()
   end)
 end
 
+--- Initialize the state tree that holds all DAP nodes
+-- The state tree is a central NUI Tree instance that stores all debug adapter
+-- protocol nodes (sessions, threads, stacks, frames, scopes, variables).
+-- View trees share references to these nodes but can display different subsets.
+-- This architecture allows multiple views of the same debug state without duplication.
 function DebugTree:initializeStateTree()
   if self.state_tree then return end -- Already initialized
   
@@ -660,7 +665,11 @@ function DebugTree:initializeStateTree()
   local state_bufnr = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_buf_set_name(state_bufnr, "[DebugTree-State]")
   
-  -- Use real NUI Tree for state - it's just better
+  -- Use real NUI Tree for state management
+  -- Benefits over custom implementation:
+  -- - Battle-tested tree operations
+  -- - Efficient node management
+  -- - Proper parent-child relationships
   self.state_tree = NuiTree({
     bufnr = state_bufnr,
     nodes = {},
@@ -668,6 +677,7 @@ function DebugTree:initializeStateTree()
   })
   
   -- Override render to update all view trees instead
+  -- When state changes, all active views are re-rendered
   self.state_tree.render = function(state_tree)
     -- State tree render -> render all active view trees
     for _, view_tree in ipairs(self.active_view_trees) do
@@ -866,104 +876,26 @@ function DebugTree:createViewTree(root_entity, title)
   -- Initial render
   view_tree:render()
 
-  -- Setup keybindings with vim-style navigation
-  local function ExpandOrDrillIntoNode()  -- PascalCase to make it async
-    local node = view_tree:get_node()
-    if not node then return end
-    
-    -- Handle lazy variables
-    if node._is_lazy then
-      self:resolveLazyVariable(node, view_tree)
-      return
-    end
-    
-    -- For all expandable nodes, toggle expansion
-    if node:has_children() or node.expandable then
-      if node:is_expanded() then
-        node:collapse()
-        view_tree:render()
-      else
-        -- Check if we need to load children
-        local state_node = self.state_tree.nodes.by_id[node.id]
-        local needs_loading = node._dap and node._dap.ResolveChildren and state_node and not state_node._children_loaded
-        
-        if needs_loading then
-          self.logger:debug("ExpandOrDrillIntoNode: Loading children for " .. node.id)
-          
-          -- Expand first to show loading state
-          node:expand()
-          view_tree:render()
-          
-          -- Load children
-          node._dap:ResolveChildren(node)
-          
-          -- CRITICAL: After adding children, we need to collapse and re-expand
-          -- because NUI Tree already rendered with no children when we first expanded
-          self.logger:debug("Before collapse/expand: node._is_expanded=" .. tostring(node._is_expanded))
-          self.logger:debug("Before collapse/expand: #node._child_ids=" .. tostring(node._child_ids and #node._child_ids or "nil"))
-          
-          node:collapse()
-          node:expand()
-          
-          self.logger:debug("After collapse/expand: node._is_expanded=" .. tostring(node._is_expanded))
-          self.logger:debug("After collapse/expand: #node._child_ids=" .. tostring(node._child_ids and #node._child_ids or "nil"))
-          
-          self.logger:debug("ExpandOrDrillIntoNode: Children loaded and node re-expanded")
-        else
-          -- Just expand normally if children already exist
-          node:expand()
-        end
-        
-        -- Render to show the expanded state and children
-        view_tree:render()
-        
-        self.logger:debug("After render: checking what's visible")
-        
-        -- Move cursor to first child if available
-        local updated_node = self.state_tree.nodes.by_id[node.id]
-        if updated_node and updated_node._child_ids and #updated_node._child_ids > 0 then
-          self.logger:debug("ExpandOrDrillIntoNode: Moving cursor to first child: " .. updated_node._child_ids[1])
-          self:setCursorToNode(view_tree, updated_node._child_ids[1])
-        else
-          self.logger:debug("ExpandOrDrillIntoNode: No children found for " .. node.id)
-        end
-      end
-    end
-  end
-  
-  -- <CR> and l - Expand/drill into node
-  -- Wrap in async context so PascalCase methods work properly
+  -- Setup keybindings
+  self:setupViewTreeKeybindings(view_tree, popup, title)
+end
+
+
+-- ========================================
+-- VIEW TREE KEYBINDINGS
+-- ========================================
+
+function DebugTree:setupViewTreeKeybindings(view_tree, popup, title)
   local async = require('neodap.tools.async')
-  popup:map("n", "<CR>", function() async.run(ExpandOrDrillIntoNode) end)
-  popup:map("n", "l", function() async.run(ExpandOrDrillIntoNode) end)
   
-  -- h - Navigate to parent level or collapse current node
-  popup:map("n", "h", function()
-    local node = view_tree:get_node()
-    if not node then return end
-    
-    if node:is_expanded() then
-      -- Collapse current node
-      node:collapse()
-      view_tree:render()
-    else
-      -- Navigate to parent and collapse it
-      local parent_id = node:get_parent_id()
-      if parent_id then
-        local parent_node = view_tree.nodes.by_id[parent_id]
-        if parent_node then
-          -- Collapse the parent node
-          parent_node:collapse()
-          -- Render first to update the tree structure
-          view_tree:render()
-        end
-        -- Set cursor after render to ensure correct line calculation
-        self:setCursorToNode(view_tree, parent_id)
-      end
-    end
-  end)
+  -- Primary navigation (vim-like)
+  popup:map("n", "l", function() async.run(function() self:Open(view_tree) end) end)     -- Right: open/enter
+  popup:map("n", "h", function() self:Close(view_tree) end)                             -- Left: close/back
+  popup:map("n", "<CR>", function() self:Toggle(view_tree) end)                         -- Enter: toggle
+  popup:map("n", "<Space>", function() self:Toggle(view_tree) end)                      -- Space: toggle (alternative)
+  popup:map("n", "o", function() async.run(function() self:Expand(view_tree) end) end)  -- o: expand only
   
-  -- j - Navigate to next sibling or next visible node
+  -- Vertical navigation with smart node awareness
   popup:map("n", "j", function()
     local node = view_tree:get_node()
     if not node then 
@@ -986,7 +918,6 @@ function DebugTree:createViewTree(root_entity, title)
     vim.cmd("normal! j")
   end)
   
-  -- k - Navigate to previous sibling or previous visible node
   popup:map("n", "k", function()
     local node = view_tree:get_node()
     if not node then
@@ -1009,47 +940,24 @@ function DebugTree:createViewTree(root_entity, title)
     vim.cmd("normal! k")
   end)
   
-  -- f - Focus on current node (show only its subtree)
-  popup:map("n", "f", function()
-    local node = view_tree:get_node()
-    if not node then return end
-    
-    -- Store the original root_ids if not already stored
-    if not view_tree._original_root_ids then
-      view_tree._original_root_ids = vim.deepcopy(view_tree._view_root_ids)
-    end
-    
-    -- Focus on this node by making it the only root
-    view_tree._view_root_ids = { node:get_id() }
-    view_tree.nodes.root_ids = view_tree._view_root_ids
-    
-    -- Update popup title to show focus
-    local title = " DebugTree - Focused: " .. (node.text or "Unknown") .. " "
-    popup.border:set_text("top", title, "center")
-    
-    view_tree:render()
-  end)
+  -- Sibling navigation
+  popup:map("n", "H", function() self:PreviousSibling(view_tree) end)
+  popup:map("n", "L", function() self:NextSibling(view_tree) end)
   
-  -- F - Unfocus (restore original view)
-  popup:map("n", "F", function()
-    if view_tree._original_root_ids then
-      view_tree._view_root_ids = view_tree._original_root_ids
-      view_tree.nodes.root_ids = view_tree._view_root_ids
-      view_tree._original_root_ids = nil
-      
-      -- Restore original title
-      popup.border:set_text("top", " " .. title .. " ", "center")
-      
-      view_tree:render()
-    end
-  end)
+  -- Smart up/down navigation
+  popup:map("n", "gk", function() self:Up(view_tree) end)
+  popup:map("n", "gj", function() self:Down(view_tree) end)
   
-  -- r - Refresh tree
-  popup:map("n", "r", function()
-    view_tree:render()
-  end)
+  popup:map("n", "J", function() self:LastSibling(view_tree) end)   -- Jump to last sibling
+  popup:map("n", "K", function() self:FirstSibling(view_tree) end)  -- Jump to first sibling
   
-  -- q - Quit
+  -- Focus controls
+  popup:map("n", "f", function() self:FocusIn(view_tree, popup) end)
+  popup:map("n", "F", function() self:FocusOut(view_tree, popup, title) end)
+  
+  -- Utility keys
+  popup:map("n", "r", function() view_tree:render() end)
+  
   popup:map("n", "q", function()
     -- Remove from active view trees
     for i, vt in ipairs(self.active_view_trees) do
@@ -1061,30 +969,41 @@ function DebugTree:createViewTree(root_entity, title)
     popup:unmount()
   end)
   
-  -- ? - Help
+  -- Help
   popup:map("n", "?", function()
     local help_text = [[
 DebugTree Navigation:
-  h       - Navigate to parent (collapses it) / Collapse current
-  j       - Navigate to next node
-  k       - Navigate to previous node  
-  l/<CR>  - Expand node / Drill into
+  h       - Close (collapse or go to parent)
+  l       - Open (expand and enter)
+  j/k     - Next/Previous visible node
+  <CR>    - Toggle expand/collapse
+  <Space> - Toggle expand/collapse
+  o       - Expand only (no navigation)
   
-Controls:
+Sibling Navigation:
+  H/L     - Previous/Next sibling
+  K/J     - First/Last sibling
+  
+Smart Navigation:
+  gk      - Up (prev sibling, then parent)
+  gj      - Down (child, next sibling, or parent's next)
+  
+Focus Controls:
   f       - Focus on current subtree
   F       - Unfocus (restore full view)
+  
+Other:
   r       - Refresh tree
   q       - Quit
   ?       - Show this help
   
-Features:
-  ⏳      - Lazy variable (not yet loaded)
-  ▶/▼    - Expandable/Expanded node]]
+Indicators:
+  ⏳      - Lazy variable (click to load)
+  ▶/▼    - Collapsed/Expanded node]]
     
     vim.notify(help_text, vim.log.levels.INFO)
   end)
 end
-
 
 -- ========================================
 -- VIEW TREE HELPERS
@@ -1392,6 +1311,273 @@ function DebugTree:setCursorToNode(tree, node_id, window)
     -- Use the stored cursor position if available
     local col = node._cursor_col or 0
     vim.api.nvim_win_set_cursor(window or 0, {line, col})
+  end
+end
+
+-- ========================================
+-- TREE NAVIGATION API
+-- ========================================
+
+-- Basic Navigation Methods
+
+function DebugTree:NextSibling(tree)
+  local node = tree:get_node()
+  if not node then return false end
+  
+  local parent_id = node:get_parent_id()
+  if not parent_id then return false end
+  
+  local parent = tree.nodes.by_id[parent_id]
+  if not parent or not parent._child_ids then return false end
+  
+  local current_index
+  for i, child_id in ipairs(parent._child_ids) do
+    if child_id == node:get_id() then
+      current_index = i
+      break
+    end
+  end
+  
+  if current_index and current_index < #parent._child_ids then
+    self:setCursorToNode(tree, parent._child_ids[current_index + 1])
+    return true
+  end
+  return false
+end
+
+function DebugTree:PreviousSibling(tree)
+  local node = tree:get_node()
+  if not node then return false end
+  
+  local parent_id = node:get_parent_id()
+  if not parent_id then return false end
+  
+  local parent = tree.nodes.by_id[parent_id]
+  if not parent or not parent._child_ids then return false end
+  
+  local current_index
+  for i, child_id in ipairs(parent._child_ids) do
+    if child_id == node:get_id() then
+      current_index = i
+      break
+    end
+  end
+  
+  if current_index and current_index > 1 then
+    self:setCursorToNode(tree, parent._child_ids[current_index - 1])
+    return true
+  end
+  return false
+end
+
+function DebugTree:FirstSibling(tree)
+  local node = tree:get_node()
+  if not node then return false end
+  
+  local parent_id = node:get_parent_id()
+  if not parent_id then return false end
+  
+  local parent = tree.nodes.by_id[parent_id]
+  if not parent or not parent._child_ids or #parent._child_ids == 0 then return false end
+  
+  self:setCursorToNode(tree, parent._child_ids[1])
+  return true
+end
+
+function DebugTree:LastSibling(tree)
+  local node = tree:get_node()
+  if not node then return false end
+  
+  local parent_id = node:get_parent_id()
+  if not parent_id then return false end
+  
+  local parent = tree.nodes.by_id[parent_id]
+  if not parent or not parent._child_ids or #parent._child_ids == 0 then return false end
+  
+  self:setCursorToNode(tree, parent._child_ids[#parent._child_ids])
+  return true
+end
+
+function DebugTree:Expand(tree, node)
+  node = node or tree:get_node()
+  if not node then return end
+  
+  -- Handle lazy variables
+  if node._is_lazy then
+    self:resolveLazyVariable(node, tree)
+    return
+  end
+  
+  if node.expandable and not node:is_expanded() then
+    -- Check if we need to load children
+    local state_node = self.state_tree.nodes.by_id[node.id]
+    local needs_loading = node._dap and node._dap.ResolveChildren and state_node and not state_node._children_loaded
+    
+    if needs_loading then
+      -- Load children asynchronously
+      node._dap:ResolveChildren(node)
+      -- NUI Tree needs collapse/expand cycle to see new children
+      node:collapse()
+    end
+    
+    node:expand()
+    tree:render()
+  end
+end
+
+function DebugTree:Collapse(tree, node)
+  node = node or tree:get_node()
+  if not node then return end
+  
+  if node:is_expanded() then
+    node:collapse()
+    tree:render()
+  end
+end
+
+function DebugTree:Toggle(tree, node)
+  node = node or tree:get_node()
+  if not node then return end
+  
+  if node:is_expanded() then
+    self:Collapse(tree, node)
+  else
+    self:Expand(tree, node)
+  end
+end
+
+function DebugTree:In(tree)
+  local node = tree:get_node()
+  if not node then return false end
+  
+  -- Move to first child if available
+  if node:has_children() and node:is_expanded() then
+    local child_ids = node:get_child_ids()
+    if child_ids and child_ids[1] then
+      self:setCursorToNode(tree, child_ids[1])
+      return true
+    end
+  end
+  return false
+end
+
+function DebugTree:Out(tree)
+  local node = tree:get_node()
+  if not node then return false end
+  
+  local parent_id = node:get_parent_id()
+  if parent_id then
+    self:setCursorToNode(tree, parent_id)
+    return true
+  end
+  return false
+end
+
+-- Focus Management Methods
+
+function DebugTree:FocusIn(tree, popup)
+  local node = tree:get_node()
+  if not node then return end
+  
+  -- Store original roots if not already stored
+  if not tree._original_root_ids then
+    tree._original_root_ids = vim.deepcopy(tree._view_root_ids)
+  end
+  
+  -- Focus on this node by making it the only root
+  tree._view_root_ids = { node:get_id() }
+  tree.nodes.root_ids = tree._view_root_ids
+  
+  -- Update popup title to show focus
+  if popup then
+    local title = " DebugTree - Focused: " .. (node.text or "Unknown") .. " "
+    popup.border:set_text("top", title, "center")
+  end
+  
+  tree:render()
+end
+
+function DebugTree:FocusOut(tree, popup, original_title)
+  if tree._original_root_ids then
+    tree._view_root_ids = tree._original_root_ids
+    tree.nodes.root_ids = tree._view_root_ids
+    tree._original_root_ids = nil
+    
+    -- Restore original title
+    if popup and original_title then
+      popup.border:set_text("top", " " .. original_title .. " ", "center")
+    end
+    
+    tree:render()
+  end
+end
+
+function DebugTree:FocusTop(tree, popup, original_title)
+  -- Reset to original view roots
+  if tree._original_root_ids then
+    tree._view_root_ids = tree._original_root_ids
+    tree._original_root_ids = nil
+  end
+  
+  -- Use the default root ids for this view
+  tree.nodes.root_ids = tree._view_root_ids
+  
+  if popup and original_title then
+    popup.border:set_text("top", " " .. original_title .. " ", "center")
+  end
+  
+  tree:render()
+end
+
+-- Composite Navigation Methods
+
+function DebugTree:Open(tree)
+  local node = tree:get_node()
+  if not node then return end
+  
+  -- First expand the node
+  self:Expand(tree, node)
+  
+  -- Then move into it
+  vim.schedule(function()
+    self:In(tree)
+  end)
+end
+
+function DebugTree:Close(tree)
+  local node = tree:get_node()
+  if not node then return end
+  
+  -- If node is expanded, just collapse it
+  if node:is_expanded() then
+    self:Collapse(tree, node)
+  else
+    -- Otherwise, go out and collapse parent
+    local parent_id = node:get_parent_id()
+    if parent_id then
+      self:Out(tree)
+      local parent = tree.nodes.by_id[parent_id]
+      if parent then
+        self:Collapse(tree, parent)
+      end
+    end
+  end
+end
+
+function DebugTree:Up(tree)
+  -- Try previous sibling first, then parent
+  if self:PreviousSibling(tree) then return end
+  self:Out(tree)
+end
+
+function DebugTree:Down(tree)
+  -- Try: child -> next sibling -> parent's next sibling (recursively)
+  if self:In(tree) then return end
+  if self:NextSibling(tree) then return end
+  
+  -- Go up until we find a parent with a next sibling
+  while self:Out(tree) do
+    if self:NextSibling(tree) then return end
   end
 end
 
