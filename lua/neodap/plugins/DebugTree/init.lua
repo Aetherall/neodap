@@ -979,21 +979,21 @@ function DebugTree:createViewTree(root_entity, title)
     -- Single entity view - ensure the entity's node exists
     local root_node = root_entity:asNode()
     
-    -- For frames, we need to add scopes as children
-    if root_entity.scopes then
-      -- It's a frame - add its scopes
-      local scopes = root_entity:scopes()
-      if scopes then
-        for _, scope in ipairs(scopes) do
-          local scope_node = scope:asNode()
-          self.state_tree:add_node(scope_node, root_node.id)
-        end
-      end
-    end
+    -- Note: For frames, scopes will be loaded lazily when the frame is expanded
+    -- This prevents duplicate scopes from appearing
     
     -- Make sure the node is in the state tree
     if not self.state_tree.nodes.by_id[root_node.id] then
       self.state_tree:add_node(root_node)
+    end
+    
+    -- For frame-level trees, pre-expand the frame to show scopes
+    if root_entity.scopes and not root_node._children_loaded then
+      -- Trigger the lazy load and mark as expanded
+      root_node:expand()
+      if root_node._lazy_load then
+        root_node._lazy_load()
+      end
     end
     
     view_tree._view_root_ids = { root_node.id }
