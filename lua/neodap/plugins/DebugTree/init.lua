@@ -1183,10 +1183,16 @@ function DebugTree:createViewTree(root_entity, title)
       node:collapse()
       view_tree:render()
     else
-      -- Navigate to parent
+      -- Navigate to parent and collapse it
       local parent_id = node:get_parent_id()
       if parent_id then
+        local parent_node = view_tree.nodes.by_id[parent_id]
+        if parent_node then
+          -- Collapse the parent node
+          parent_node:collapse()
+        end
         self:setCursorToNode(view_tree, parent_id)
+        view_tree:render()
       end
     end
   end)
@@ -1294,7 +1300,7 @@ function DebugTree:createViewTree(root_entity, title)
   popup:map("n", "?", function()
     local help_text = [[
 DebugTree Navigation:
-  h       - Navigate to parent / Collapse node
+  h       - Navigate to parent (collapses it) / Collapse current
   j       - Navigate to next node
   k       - Navigate to previous node  
   l/<CR>  - Expand node / Drill into
