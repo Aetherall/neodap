@@ -221,27 +221,30 @@ local plugin_instance = nil
 -- Extend API resources with ResolveChildren method
 
 ---@param self api.Session
-function Session:ResolveChildren()
+---@param node NuiTree.Node
+function Session:ResolveChildren(node)
   -- Sessions don't have lazy children - threads are added via events
   -- Nothing to resolve
 end
 
 ---@param self api.Thread
-function Thread:ResolveChildren()
+---@param node NuiTree.Node
+function Thread:ResolveChildren(node)
   -- Threads don't have lazy children - stack is fetched synchronously
   -- Nothing to resolve
 end
 
 ---@param self api.Stack
-function Stack:ResolveChildren()
+---@param node NuiTree.Node
+function Stack:ResolveChildren(node)
   -- Stack frames are loaded synchronously
   -- Nothing to resolve
 end
 
 ---@param self api.Frame
-function Frame:ResolveChildren()
+---@param node NuiTree.Node
+function Frame:ResolveChildren(node)
   -- Frames have lazy-loaded scopes
-  local node = self._cached_node or self._cached_node_1 or self._cached_node_2
   if node and node._lazy_load and not node._children_loaded then
     node._waiting_for_children = true
     node._lazy_load()
@@ -259,9 +262,9 @@ function Frame:ResolveChildren()
 end
 
 ---@param self api.Scope
-function Scope:ResolveChildren()
+---@param node NuiTree.Node
+function Scope:ResolveChildren(node)
   -- Scopes have lazy-loaded variables
-  local node = self._cached_node
   if node and node._lazy_load and not node._children_loaded then
     node._waiting_for_children = true
     node._lazy_load()
@@ -279,9 +282,9 @@ function Scope:ResolveChildren()
 end
 
 ---@param self api.Variable
-function Variable:ResolveChildren()
+---@param node NuiTree.Node
+function Variable:ResolveChildren(node)
   -- Variables with variablesReference > 0 have lazy-loaded children
-  local node = self._cached_node
   if node and node._lazy_load and not node._children_loaded then
     node._waiting_for_children = true
     node._lazy_load()
@@ -1040,7 +1043,7 @@ function DebugTree:createViewTree(root_entity, title)
         -- Resolve children first if the DAP resource has lazy children
         local dap_resource = node._session or node._thread or node._stack or node._frame or node._scope or node._variable
         if dap_resource and dap_resource.ResolveChildren then
-          dap_resource:ResolveChildren()
+          dap_resource:ResolveChildren(node)
         end
         
         -- Now expand the node
