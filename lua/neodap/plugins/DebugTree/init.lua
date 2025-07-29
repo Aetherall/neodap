@@ -832,14 +832,21 @@ function DebugTree:initializeStateTree()
           state_tree.nodes.by_id[node.id]._parent_id = parent_id
           plugin_instance.logger:debug("add_node: Set parent relationship " .. node.id .. " -> " .. parent_id)
         else
-          plugin_instance.logger:debug("add_node: Parent " .. parent_id .. " not found, adding as root")
-          table.insert(state_tree.nodes.root_ids, node.id)
+          plugin_instance.logger:warn("add_node: Parent " .. parent_id .. " not found for node " .. node.id .. " - deferring add")
+          -- CRITICAL: Don't add as root! Store pending nodes to add later
+          if not state_tree._pending_nodes then
+            state_tree._pending_nodes = {}
+          end
+          state_tree._pending_nodes[node.id] = { node = node, parent_id = parent_id }
         end
       else
         -- Add as root node
         table.insert(state_tree.nodes.root_ids, node.id)
         plugin_instance.logger:debug("add_node: Added " .. node.id .. " as root node")
       end
+      
+      -- After adding any node, check if pending nodes can now be processed
+      state_tree:_processPendingNodes()
     end,
     remove_node = function(state_tree, node_id)
       local node = state_tree.nodes.by_id[node_id]
@@ -877,6 +884,37 @@ function DebugTree:initializeStateTree()
         state_tree.nodes.by_id[id] = nil
       end
       removeDescendants(node_id)
+    end,
+    _processPendingNodes = function(state_tree)
+      -- Process any pending nodes whose parents might now exist
+      if not state_tree._pending_nodes then return end
+      
+      local processed = {}
+      for node_id, pending in pairs(state_tree._pending_nodes) do
+        local parent = state_tree.nodes.by_id[pending.parent_id]
+        if parent then
+          -- Parent now exists, add the pending node
+          plugin_instance.logger:debug("Processing pending node " .. node_id .. " - parent " .. pending.parent_id .. " now exists")
+          
+          if not parent._child_ids then
+            parent._child_ids = {}
+          end
+          table.insert(parent._child_ids, node_id)
+          state_tree.nodes.by_id[node_id]._parent_id = pending.parent_id
+          
+          table.insert(processed, node_id)
+        end
+      end
+      
+      -- Remove processed nodes from pending
+      for _, node_id in ipairs(processed) do
+        state_tree._pending_nodes[node_id] = nil
+      end
+      
+      -- Clear pending nodes table if empty
+      if next(state_tree._pending_nodes) == nil then
+        state_tree._pending_nodes = nil
+      end
     end,
     render = function(state_tree)
       -- State tree render -> render all active view trees
