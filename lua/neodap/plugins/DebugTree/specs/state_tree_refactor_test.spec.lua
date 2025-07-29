@@ -45,6 +45,8 @@ T.Scenario(function(api)
 end)
 
 
+
+
 --[[ TERMINAL SNAPSHOT: full_tree_initial
 Size: 24x80
 Cursor: [1, 0] (line 1, col 0)
@@ -75,6 +77,8 @@ Mode: n
 23| lua/testing/fixtures/variables/complex.js                     10,1           Top
 24|                                                               1,1           All
 ]]
+
+
 
 
 --[[ TERMINAL SNAPSHOT: scopes_loaded
@@ -109,6 +113,8 @@ Mode: n
 ]]
 
 
+
+
 --[[ TERMINAL SNAPSHOT: variables_loaded
 Size: 24x80
 Cursor: [1, 10] (line 1, col 10)
@@ -141,6 +147,8 @@ Mode: n
 ]]
 
 
+
+
 --[[ TERMINAL SNAPSHOT: scope_collapsed
 Size: 24x80
 Cursor: [1, 9] (line 1, col 9)
@@ -171,6 +179,8 @@ Mode: n
 23| lua/testing/fixtures/variables/complex.js                     10,1           Top
 24|                                                               1,10-6        All
 ]]
+
+
 
 
 --[[ TERMINAL SNAPSHOT: tree_reopened_with_state

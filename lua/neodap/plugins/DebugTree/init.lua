@@ -189,6 +189,29 @@ local Variable = require('neodap.api.Session.Variable')
 -- Store plugin instance for asNode methods
 local plugin_instance = nil
 
+-- Helper to escape special characters in path segments
+local function escapePathSegment(segment)
+  -- URL-encode special characters that could break our path structure
+  return tostring(segment):gsub("([/:#%%])", function(c)
+    return string.format("%%%02X", string.byte(c))
+  end)
+end
+
+-- Helper to build path-based IDs in URL format
+local function buildPathId(parent_path, entity_type, entity_id)
+  local base = parent_path or "dap:/"
+  
+  -- For root level (no parent), start with dap://
+  if base == "dap:/" then
+    return "dap://" .. entity_type .. "/" .. tostring(entity_id)
+  end
+  
+  -- Otherwise append to parent path
+  -- Escape the entity_id to handle special characters (especially for variable names)
+  local escaped_id = escapePathSegment(entity_id)
+  return base .. "/" .. entity_type .. "/" .. escaped_id
+end
+
 -- ========================================
 -- API RESOURCE EXTENSIONS
 -- ========================================
@@ -222,8 +245,8 @@ function Stack:ResolveChildren(node)
     local index = 0
     for frame in frames:each() do
       index = index + 1
-      -- Pass the index to frame:asNode
-      local frame_node = frame:asNode(index)
+      -- Pass the index and parent path to frame:asNode
+      local frame_node = frame:asNode(index, node.id)
       plugin_instance.state_tree:add_node(frame_node, node.id)
     end
     -- CRITICAL: Update the state tree node, not the parameter node
@@ -241,8 +264,9 @@ function Frame:ResolveChildren(node)
   local scopes = self:scopes()
   
   if scopes and plugin_instance.state_tree then
+    -- Pass the frame's node ID to scope:asNode for prefixing
     for i, scope in ipairs(scopes) do
-      local scope_node = scope:asNode()
+      local scope_node = scope:asNode(node.id)
       plugin_instance.state_tree:add_node(scope_node, node.id)
     end
     -- CRITICAL: Update the state tree node, not the parameter node
@@ -260,7 +284,7 @@ function Scope:ResolveChildren(node)
   
   if variables and plugin_instance.state_tree then
     for i, variable in ipairs(variables) do
-      local var_node = variable:asNode()
+      local var_node = variable:asNode(node.id)  -- Pass parent (scope) ID
       plugin_instance.state_tree:add_node(var_node, node.id)
     end
     -- CRITICAL: Update the state tree node, not the parameter node
@@ -282,7 +306,7 @@ function Variable:ResolveChildren(node)
   
   if children and plugin_instance.state_tree then
     for i, child in ipairs(children) do
-      local child_node = child:asNode()
+      local child_node = child:asNode(node.id)  -- Pass parent (variable) ID
       plugin_instance.state_tree:add_node(child_node, node.id)
     end
     -- CRITICAL: Update the state tree node, not the parameter node
@@ -307,7 +331,7 @@ function Session:asNode()
   end
 
   local node = NuiTree.Node({
-    id = "session:" .. tostring(self.id),
+    id = "session:" .. tostring(self.id),  -- Keep old format for now
     text = display_text,
     type = "session",
     expandable = true,
@@ -376,8 +400,13 @@ function Thread:asNode()
     return status_icon .. " Thread " .. tostring(self.id) .. " (" .. status_text .. ")"
   end
 
+  -- Get session ID to build hierarchical path
+  local session_id = self.session and buildPathId(nil, "session", self.session.id) or nil
+  local thread_id = session_id and buildPathId(session_id, "thread", self.id) 
+                    or buildPathId(nil, "thread", self.id)
+
   local node = NuiTree.Node({
-    id = "thread:" .. tostring(self.id),
+    id = thread_id,
     text = getDisplayText(),
     type = "thread",
     expandable = self.stopped,
@@ -402,11 +431,11 @@ function Thread:asNode()
     -- Add stack when stopped (if not already added)
     local stack = self:stack()
     if stack and plugin_instance.state_tree then
+      -- Generate the actual stack node to get its ID
+      local stack_node = stack:asNode()
       -- Check if stack already exists to avoid duplicates
-      local stack_id = "stack:" .. tostring(self.id)
-      if not plugin_instance.state_tree.nodes.by_id[stack_id] then
+      if not plugin_instance.state_tree.nodes.by_id[stack_node.id] then
         plugin_instance.logger:debug("Adding stack for newly stopped thread " .. self.id)
-        local stack_node = stack:asNode()
         plugin_instance.state_tree:add_node(stack_node, node.id)
       end
       plugin_instance.state_tree:render() -- Update all views
@@ -444,8 +473,13 @@ function Stack:asNode()
   local frames = self:getFrames()
   local frame_count = frames and frames:count() or 0
 
+  -- Build hierarchical ID through session -> thread -> stack
+  local thread_id = self.thread and self.thread._cached_node and self.thread._cached_node.id
+  local stack_id = thread_id and buildPathId(thread_id, "stack", self.thread.id)
+                   or buildPathId(nil, "stack", self.thread.id)
+
   local node = NuiTree.Node({
-    id = "stack:" .. tostring(self.thread.id),
+    id = stack_id,
     text = "📚 Stack (" .. frame_count .. " frames)",
     type = "stack",
     expandable = true,
@@ -463,8 +497,9 @@ end
 
 ---@param self api.Frame
 ---@param index? number The frame's position in the stack (1-based)
+---@param parent_path? string Parent stack path for ID generation
 ---@return NuiTree.Node
-function Frame:asNode(index)
+function Frame:asNode(index, parent_path)
   -- For frames with index, we need unique nodes per position
   local cache_key = index and ("_cached_node_" .. index) or "_cached_node"
   if self[cache_key] then return self[cache_key] end
@@ -474,8 +509,11 @@ function Frame:asNode(index)
   -- Replace newlines and tabs with spaces, trim whitespace
   frame_name = frame_name:gsub("[\n\r\t]+", " "):gsub("%s+", " "):match("^%s*(.-)%s*$")
   
-  -- Include index in ID to make frames unique even if same function appears multiple times
-  local frame_id = index and ("frame:" .. tostring(self.ref.id) .. ":" .. index) or ("frame:" .. tostring(self.ref.id))
+  -- Generate hierarchical frame ID
+  -- Use frame index as identifier to ensure uniqueness within stack
+  local frame_identifier = index or self.ref.id
+  local frame_id = parent_path and buildPathId(parent_path, "frame", frame_identifier)
+                   or buildPathId(nil, "frame", tostring(self.ref.id) .. ":" .. tostring(index or 0))
   
   -- Add frame number prefix if index is provided
   local display_text = index and ("#" .. index .. " 🖼️  " .. frame_name) or ("🖼️  " .. frame_name)
@@ -499,9 +537,12 @@ end
 -- ========================================
 
 ---@param self api.Scope
+---@param frame_id? string Optional frame ID to prefix the scope ID
 ---@return NuiTree.Node
-function Scope:asNode()
-  if self._cached_node then return self._cached_node end
+function Scope:asNode(frame_id)
+  -- Use frame_id as cache key if provided
+  local cache_key = frame_id and ("_cached_node_" .. frame_id) or "_cached_node"
+  if self[cache_key] then return self[cache_key] end
 
   local scope_name = self.name or (self.ref and self.ref.name) or "Unknown"
   -- Clean scope name of newlines
@@ -516,16 +557,22 @@ function Scope:asNode()
     scope_icon = "🔒"
   end
 
+  -- Generate hierarchical scope ID
+  local vars_ref = self.variablesReference or self.ref.variablesReference
+  local scope_id = frame_id and buildPathId(frame_id, "scope", vars_ref)
+                   or buildPathId(nil, "scope", vars_ref)
+
   local node = NuiTree.Node({
-    id = "scope:" .. tostring(self.variablesReference or self.ref.variablesReference),
+    id = scope_id,
     text = scope_icon .. " " .. scope_name,
     type = "scope",
     expandable = true,
     _dap = self,
+    _frame_id = frame_id,  -- Store frame ID for later use
   })
 
 
-  self._cached_node = node
+  self[cache_key] = node
   return node
 end
 
@@ -534,9 +581,12 @@ end
 -- ========================================
 
 ---@param self api.Variable
+---@param parent_id? string Optional parent ID (scope or variable) to prefix the variable ID
 ---@return NuiTree.Node
-function Variable:asNode()
-  if self._cached_node then return self._cached_node end
+function Variable:asNode(parent_id)
+  -- Use parent_id as cache key if provided
+  local cache_key = parent_id and ("_cached_node_" .. parent_id) or "_cached_node"
+  if self[cache_key] then return self[cache_key] end
   
   -- Store scope information if available
   if not self.scope and self.parent and self.parent.name then
@@ -578,18 +628,27 @@ function Variable:asNode()
   local var_ref = (self.ref and self.ref.variablesReference) or 0
   local expandable = var_ref > 0
   
-  -- Include parent scope in ID to ensure uniqueness across different scopes
-  local parent_scope_id = ""
-  if self.parent and self.parent.variablesReference then
-    parent_scope_id = tostring(self.parent.variablesReference) .. ":"
+  -- Generate hierarchical variable ID
+  local var_id
+  if parent_id then
+    -- Append variable name to parent path (escaped to handle special chars)
+    var_id = buildPathId(parent_id, "variable", var_name)
+  else
+    -- Fallback for variables without parent context
+    local parent_scope_id = ""
+    if self.parent and self.parent.variablesReference then
+      parent_scope_id = tostring(self.parent.variablesReference) .. ":"
+    end
+    var_id = buildPathId(nil, "variable", parent_scope_id .. var_name .. ":" .. tostring(var_ref))
   end
   
   local node = NuiTree.Node({
-    id = "variable:" .. parent_scope_id .. var_name .. ":" .. tostring(var_ref),
+    id = var_id,
     text = text,
     type = "variable",
     expandable = expandable,
     _dap = self,
+    _parent_id = parent_id,  -- Store parent ID for reference
     _highlight = style.highlight,  -- Store highlight group for rendering
     _is_lazy = is_lazy,           -- Track lazy status
     _kind = kind,                 -- Store presentationHint.kind
@@ -600,7 +659,7 @@ function Variable:asNode()
   })
 
 
-  self._cached_node = node
+  self[cache_key] = node
   return node
 end
 
@@ -695,7 +754,7 @@ function DebugTree:initializeStateTree()
   for session in self.api:eachSession() do
     local session_node = session:asNode()
     self.state_tree:add_node(session_node)
-    self:addChildSessions(session)
+    self:addExistingChildren(session)
   end
 
 end
