@@ -297,31 +297,25 @@ function Frame:ResolveChildren(node)
     return 
   end
   
-  -- Wrap in async context to call Frame:scopes()
-  require('neodap.tools.async').run(function()
-    plugin_instance.logger:debug("Frame resolving children for: " .. node.id)
-    
-    local ok, scopes = pcall(function() return self:scopes() end)
-    if not ok then
-      plugin_instance.logger:error("Failed to get scopes: " .. tostring(scopes))
-      return
+  -- Direct async call - no wrapping needed since we're in PascalCase context
+  plugin_instance.logger:debug("Frame resolving children for: " .. node.id)
+  
+  local scopes = self:scopes()
+  
+  plugin_instance.logger:debug("Frame scopes result: " .. vim.inspect(scopes))
+  
+  if scopes and plugin_instance.state_tree then
+    plugin_instance.logger:debug("Adding " .. #scopes .. " scopes to frame " .. node.id)
+    for i, scope in ipairs(scopes) do
+      local scope_node = scope:asNode()
+      plugin_instance.logger:debug("Adding scope[" .. i .. "] node: " .. scope_node.id .. " text: " .. scope_node.text)
+      plugin_instance.state_tree:add_node(scope_node, node.id)
     end
-    
-    plugin_instance.logger:debug("Frame scopes result: " .. vim.inspect(scopes))
-    
-    if scopes and plugin_instance.state_tree then
-      plugin_instance.logger:debug("Adding " .. #scopes .. " scopes to frame " .. node.id)
-      for i, scope in ipairs(scopes) do
-        local scope_node = scope:asNode()
-        plugin_instance.logger:debug("Adding scope[" .. i .. "] node: " .. scope_node.id .. " text: " .. scope_node.text)
-        plugin_instance.state_tree:add_node(scope_node, node.id)
-      end
-      node._children_loaded = true
-      plugin_instance.state_tree:render() -- Update all views
-    else
-      plugin_instance.logger:debug("No scopes found or state_tree missing")
-    end
-  end)
+    node._children_loaded = true
+    plugin_instance.state_tree:render() -- Update all views
+  else
+    plugin_instance.logger:debug("No scopes found or state_tree missing")
+  end
 end
 
 ---@param self api.Scope
@@ -330,31 +324,25 @@ function Scope:ResolveChildren(node)
   -- Scopes have lazy-loaded variables
   if node._children_loaded then return end
   
-  -- Wrap in async context to call Scope:variables()
-  require('neodap.tools.async').run(function()
-    plugin_instance.logger:debug("Scope resolving children for: " .. node.id)
-    
-    local ok, variables = pcall(function() return self:variables() end)
-    if not ok then
-      plugin_instance.logger:error("Failed to get variables: " .. tostring(variables))
-      return
+  -- Direct async call - no wrapping needed since we're in PascalCase context
+  plugin_instance.logger:debug("Scope resolving children for: " .. node.id)
+  
+  local variables = self:variables()
+  
+  plugin_instance.logger:debug("Scope variables result: " .. vim.inspect(variables))
+  
+  if variables and plugin_instance.state_tree then
+    plugin_instance.logger:debug("Adding " .. #variables .. " variables to scope " .. node.id)
+    for i, variable in ipairs(variables) do
+      local var_node = variable:asNode()
+      plugin_instance.logger:debug("Adding variable[" .. i .. "] node: " .. var_node.id .. " text: " .. var_node.text)
+      plugin_instance.state_tree:add_node(var_node, node.id)
     end
-    
-    plugin_instance.logger:debug("Scope variables result: " .. vim.inspect(variables))
-    
-    if variables and plugin_instance.state_tree then
-      plugin_instance.logger:debug("Adding " .. #variables .. " variables to scope " .. node.id)
-      for i, variable in ipairs(variables) do
-        local var_node = variable:asNode()
-        plugin_instance.logger:debug("Adding variable[" .. i .. "] node: " .. var_node.id .. " text: " .. var_node.text)
-        plugin_instance.state_tree:add_node(var_node, node.id)
-      end
-      node._children_loaded = true
-      plugin_instance.state_tree:render() -- Update all views
-    else
-      plugin_instance.logger:debug("No variables found or state_tree missing")
-    end
-  end)
+    node._children_loaded = true
+    plugin_instance.state_tree:render() -- Update all views
+  else
+    plugin_instance.logger:debug("No variables found or state_tree missing")
+  end
 end
 
 ---@param self api.Variable
@@ -367,31 +355,25 @@ function Variable:ResolveChildren(node)
   local var_ref = (self.ref and self.ref.variablesReference) or 0
   if var_ref == 0 then return end
   
-  -- Wrap in async context to call Variable:variables()
-  require('neodap.tools.async').run(function()
-    plugin_instance.logger:debug("Variable resolving children for: " .. node.id)
-    
-    local ok, children = pcall(function() return self:variables() end)
-    if not ok then
-      plugin_instance.logger:error("Failed to get child variables: " .. tostring(children))
-      return
+  -- Direct async call - no wrapping needed since we're in PascalCase context
+  plugin_instance.logger:debug("Variable resolving children for: " .. node.id)
+  
+  local children = self:variables()
+  
+  plugin_instance.logger:debug("Variable children result: " .. vim.inspect(children))
+  
+  if children and plugin_instance.state_tree then
+    plugin_instance.logger:debug("Adding " .. #children .. " child variables to " .. node.id)
+    for i, child in ipairs(children) do
+      local child_node = child:asNode()
+      plugin_instance.logger:debug("Adding child[" .. i .. "] node: " .. child_node.id .. " text: " .. child_node.text)
+      plugin_instance.state_tree:add_node(child_node, node.id)
     end
-    
-    plugin_instance.logger:debug("Variable children result: " .. vim.inspect(children))
-    
-    if children and plugin_instance.state_tree then
-      plugin_instance.logger:debug("Adding " .. #children .. " child variables to " .. node.id)
-      for i, child in ipairs(children) do
-        local child_node = child:asNode()
-        plugin_instance.logger:debug("Adding child[" .. i .. "] node: " .. child_node.id .. " text: " .. child_node.text)
-        plugin_instance.state_tree:add_node(child_node, node.id)
-      end
-      node._children_loaded = true
-      plugin_instance.state_tree:render() -- Update all views
-    else
-      plugin_instance.logger:debug("No child variables found or state_tree missing")
-    end
-  end)
+    node._children_loaded = true
+    plugin_instance.state_tree:render() -- Update all views
+  else
+    plugin_instance.logger:debug("No child variables found or state_tree missing")
+  end
 end
 
 ---@param self api.Session
@@ -1145,20 +1127,21 @@ function DebugTree:createViewTree(root_entity, title)
     if node:has_children() or node.expandable then
       if node:is_expanded() then
         node:collapse()
+        view_tree:render()
       else
-        -- Resolve children first if the DAP resource has lazy children
-        if node._dap and node._dap.ResolveChildren then
+        -- Expand the node first
+        node:expand()
+        
+        -- Resolve children if the DAP resource has lazy children
+        if node._dap and node._dap.ResolveChildren and not node._children_loaded then
+          -- This is now properly async - ResolveChildren will complete before we continue
           node._dap:ResolveChildren(node)
         end
         
-        -- Now expand the node
-        node:expand()
-        
-        -- Render the tree first
+        -- Render after children are loaded (async chain ensures proper sequencing)
         view_tree:render()
         
-        -- Now move cursor to first child if available
-        -- Since we're in async context, this will naturally wait for async operations
+        -- Move cursor to first child if available
         if node:has_children() then
           local child_ids = node:get_child_ids()
           if child_ids and #child_ids > 0 then
