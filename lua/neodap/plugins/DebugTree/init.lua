@@ -219,15 +219,41 @@ local plugin_instance = nil
 ---@param self api.Session
 ---@param node NuiTree.Node
 function Session:ResolveChildren(node)
-  -- Sessions don't have lazy children - threads are added via events
-  -- Nothing to resolve
+  -- Sessions can have existing threads that need to be added
+  if node._children_loaded then return end
+  
+  -- Add any existing threads
+  for thread in self.threads:each() do
+    local thread_node = thread:asNode()
+    if plugin_instance.state_tree then
+      plugin_instance.state_tree:add_node(thread_node, node.id)
+    end
+  end
+  
+  node._children_loaded = true
+  if plugin_instance.state_tree then
+    plugin_instance.state_tree:render()
+  end
 end
 
 ---@param self api.Thread
 ---@param node NuiTree.Node
 function Thread:ResolveChildren(node)
-  -- Threads don't have lazy children - stack is fetched synchronously
-  -- Nothing to resolve
+  -- Threads can have a stack if they're stopped
+  if node._children_loaded then return end
+  
+  if self.stopped then
+    local stack = self:stack()
+    if stack and plugin_instance.state_tree then
+      local stack_node = stack:asNode()
+      plugin_instance.state_tree:add_node(stack_node, node.id)
+    end
+  end
+  
+  node._children_loaded = true
+  if plugin_instance.state_tree then
+    plugin_instance.state_tree:render()
+  end
 end
 
 ---@param self api.Stack
@@ -982,25 +1008,18 @@ function DebugTree:createViewTree(root_entity, title)
         -- Now expand the node
         node:expand()
         
-        -- Check if we have children immediately (sync case)
+        -- Render the tree first
+        view_tree:render()
+        
+        -- Now move cursor to first child if available
+        -- Since we're in async context, this will naturally wait for async operations
         if node:has_children() then
           local child_ids = node:get_child_ids()
           if child_ids and #child_ids > 0 then
             self:setCursorToNode(view_tree, child_ids[1])
           end
-        else
-          -- For async cases, wait a bit for children to load
-          vim.defer_fn(function()
-            if node:has_children() then
-              local child_ids = node:get_child_ids()
-              if child_ids and #child_ids > 0 then
-                self:setCursorToNode(view_tree, child_ids[1])
-              end
-            end
-          end, 100) -- Wait 100ms for async loading
         end
       end
-      view_tree:render()
     end
   end
   
