@@ -989,11 +989,8 @@ function DebugTree:createViewTree(root_entity, title)
     
     -- For frame-level trees, pre-expand the frame to show scopes
     if root_entity.scopes and not root_node._children_loaded then
-      -- Trigger the lazy load and mark as expanded
+      -- Just expand - this will trigger lazy load automatically
       root_node:expand()
-      if root_node._lazy_load then
-        root_node._lazy_load()
-      end
     end
     
     view_tree._view_root_ids = { root_node.id }
