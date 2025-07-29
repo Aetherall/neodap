@@ -982,12 +982,22 @@ function DebugTree:createViewTree(root_entity, title)
         -- Now expand the node
         node:expand()
         
-        -- Move to first child after expanding
+        -- Check if we have children immediately (sync case)
         if node:has_children() then
           local child_ids = node:get_child_ids()
           if child_ids and #child_ids > 0 then
             self:setCursorToNode(view_tree, child_ids[1])
           end
+        else
+          -- For async cases, wait a bit for children to load
+          vim.defer_fn(function()
+            if node:has_children() then
+              local child_ids = node:get_child_ids()
+              if child_ids and #child_ids > 0 then
+                self:setCursorToNode(view_tree, child_ids[1])
+              end
+            end
+          end, 100) -- Wait 100ms for async loading
         end
       end
       view_tree:render()
