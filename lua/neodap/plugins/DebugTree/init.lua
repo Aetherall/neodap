@@ -1479,15 +1479,29 @@ function DebugTree:setupTreeRendering(tree)
         -- Check attributes for more specific highlighting
         if node._attributes then
           for _, attr in ipairs(node._attributes) do
-            if attr == "constant" then
-              name_highlight = "@constant"
-              break
-            elseif attr == "readOnly" then
+            if attr == "constant" or attr == "readOnly" then
               name_highlight = "@constant"
               break
             elseif attr == "static" then
               name_highlight = "@variable.builtin"
               break
+            end
+          end
+        end
+        
+        -- Check visibility for additional context
+        if node._visibility then
+          if node._visibility == "private" then
+            -- Private members often use different highlighting
+            if not node._kind then
+              name_highlight = "@field"
+            end
+          elseif node._visibility == "internal" then
+            -- Internal/built-in variables
+            if var_name:match("^[A-Z]") then
+              name_highlight = "@type.builtin"  -- Built-in constructors
+            else
+              name_highlight = "@variable.builtin"  -- Built-in values
             end
           end
         end

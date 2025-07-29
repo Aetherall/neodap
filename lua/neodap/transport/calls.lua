@@ -138,6 +138,13 @@ function Calls:call(command, params)
     type = "request",
   }
 
+  -- Log variables and scopes requests
+  if command == "variables" or command == "scopes" then
+    local log = Logger.get("DAP:Variables")
+    log:info("=== " .. string.upper(command) .. " REQUEST ===")
+    log:info("Arguments: " .. vim.inspect(params))
+  end
+
   local future = nio.control.future()
 
   self.listeners[request_seq] = function(response)
@@ -145,6 +152,13 @@ function Calls:call(command, params)
     log:debug("Received DAP response:", response.command, "seq:", response.seq, "success:", response.success)
     
     if response.success then
+      -- Log variables and scopes responses 
+      if command == "variables" or command == "scopes" then
+        local varlog = Logger.get("DAP:Variables")
+        varlog:info("=== " .. string.upper(command) .. " RESPONSE ===")
+        varlog:info("Body: " .. vim.inspect(response.body))
+      end
+      
       log:trace("DAP response body:", response.body)
       -- Special attention to step command responses
       if response.command == "next" or response.command == "stepIn" or response.command == "stepOut" then
