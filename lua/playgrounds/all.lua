@@ -43,9 +43,10 @@ local function go()
     local brkpt = api:getPluginInstance(require("neodap.plugins.ToggleBreakpoint"))
     api:getPluginInstance(require("neodap.plugins.FrameHighlight"))
     -- api:getPluginInstance(require("neodap.plugins.DebugMode"))
-    api:getPluginInstance(require("neodap.plugins.Variables4"))
+    -- api:getPluginInstance(require("neodap.plugins.Variables4"))
     api:getPluginInstance(require("neodap.plugins.LaunchJsonSupport"))
     -- api:getPluginInstance(require("neodap.plugins.ScopeViewer"))
+				api:getPluginInstance(require("neodap.plugins.DebugTree"))
 
 
     local currentStopped = nil

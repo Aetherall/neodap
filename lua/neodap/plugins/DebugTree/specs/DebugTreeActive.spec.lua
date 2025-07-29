@@ -97,6 +97,7 @@ T.Scenario(function(api)
   T.TerminalSnapshot('active_cleanup')
 end)
 
+
 --[[ TERMINAL SNAPSHOT: before_active_debug
 Size: 24x80
 Cursor: [7, 0] (line 7, col 0)

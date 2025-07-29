@@ -15,77 +15,128 @@ T.Scenario(function(api)
   T.cmd("edit lua/testing/fixtures/variables/complex.js")
   T.cmd("normal! 6j")
   T.cmd("NeodapToggleBreakpoint")
-  T.cmd("NeodapLaunchClosest Variables [variables]")
-  T.sleep(1500) -- Wait for session to start and hit breakpoint
-  
+  T.cmd("NeodapLaunchClosest Variables")
+  T.sleep(2000) -- Wait for session to start and hit breakpoint
+
   -- Test 1: Full debug tree at session level
   T.TerminalSnapshot('before_debug_tree')
-  
+
   T.cmd("DebugTree")
   T.sleep(500)
   T.TerminalSnapshot('debug_tree_session_level')
-  
+
   -- Test 2: Navigate to thread level
-  T.cmd("normal! j") -- Move to first thread
+  T.cmd("normal! j")                 -- Move to first thread
   T.cmd("execute \"normal \\<CR>\"") -- Expand thread
   T.sleep(300)
   T.TerminalSnapshot('debug_tree_thread_expanded')
-  
+
   -- Test 3: Navigate to stack level
-  T.cmd("normal! j") -- Move to stack
+  T.cmd("normal! j")                 -- Move to stack
   T.cmd("execute \"normal \\<CR>\"") -- Expand stack
-  T.sleep(300) 
+  T.sleep(300)
   T.TerminalSnapshot('debug_tree_stack_expanded')
-  
+
   -- Test 4: Navigate to frame level (should show Variables4-level detail)
-  T.cmd("normal! j") -- Move to frame
+  T.cmd("normal! j")                 -- Move to frame
   T.cmd("execute \"normal \\<CR>\"") -- Expand frame
   T.sleep(300)
   T.TerminalSnapshot('debug_tree_frame_expanded')
-  
+
   -- Test 5: Navigate to scope level
-  T.cmd("normal! j") -- Move to first scope
+  T.cmd("normal! j")                 -- Move to first scope
   T.cmd("execute \"normal \\<CR>\"") -- Expand scope
   T.sleep(300)
   T.TerminalSnapshot('debug_tree_scope_expanded')
-  
+
   -- Test 6: Test focus mode (Variables4 feature)
   T.cmd("normal! f") -- Focus on current scope
   T.sleep(300)
   T.TerminalSnapshot('debug_tree_focus_mode')
-  
+
   -- Test 7: Test sophisticated variable rendering
-  T.cmd("normal! j") -- Move to variable
+  T.cmd("normal! j")                 -- Move to variable
   T.cmd("execute \"normal \\<CR>\"") -- Expand variable
   T.sleep(300)
   T.TerminalSnapshot('debug_tree_variable_detail')
-  
+
   -- Test 8: Frame-level tree (equivalent to Variables4)
   T.cmd("normal! q") -- Close current tree
   T.sleep(200)
-  
+
   T.cmd("DebugTreeFrame")
   T.sleep(500)
   T.TerminalSnapshot('debug_tree_frame_level')
-  
+
   -- Test 9: Compare with Variables4Tree (should be equivalent at frame level)
   T.cmd("normal! q")
   T.sleep(200)
-  
+
   T.cmd("Variables4Tree")
   T.sleep(500)
   T.TerminalSnapshot('variables4_comparison')
-  
+
   -- Test 10: Help system
   T.cmd("normal! ?")
   T.sleep(200)
   T.TerminalSnapshot('debug_tree_help')
-  
+
   -- Cleanup
   T.cmd("normal! q")
   T.sleep(200)
   T.TerminalSnapshot('debug_tree_cleanup')
 end)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -121,6 +172,18 @@ Mode: n
 ]]
 
 
+
+
+
+
+
+
+
+
+
+
+
+
 --[[ TERMINAL SNAPSHOT: debug_tree_session_level
 Size: 24x80
 Cursor: [1, 0] (line 1, col 0)
@@ -128,11 +191,11 @@ Mode: n
 
  1| // Test fixture for Variables plugin - various variable types
  2| 
- 3| functio╭──────────────────── Debug Tree - Session 1 ────────────────────╮
- 4|     // │  📡  Session 1 (no activity)                                    │
- 5|     let│                                                                │
- 6|     let│                                                                │
- 7|     let│                                                                │
+ 3| functio╭────────────────── Debug Tree - All Sessions ───────────────────╮
+ 4|     // │▶ 📡  Session 1                                                  │
+ 5|     let│▶ 📡  Session 2                                                  │
+ 6|     let│▶ ⏸  Thread 0 (stopped)                                         │
+ 7|     let│▶ 📚  Stack (8 frames)                                           │
  8|     let│                                                                │
  9|     let│                                                                │
 10|     let│                                                                │lue";
@@ -151,20 +214,33 @@ Mode: n
 23| lua/testing/fixtures/variables/complex.js                     7,1            Top
 24|                                                               1,1           All
 ]]
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 --[[ TERMINAL SNAPSHOT: debug_tree_thread_expanded
 Size: 24x80
-Cursor: [1, 0] (line 1, col 0)
+Cursor: [2, 0] (line 2, col 0)
 Mode: n
 
  1| // Test fixture for Variables plugin - various variable types
  2| 
- 3| functio╭──────────────────── Debug Tree - Session 1 ────────────────────╮
- 4|     // │  📡  Session 1 (no activity)                                    │
- 5|     let│                                                                │
- 6|     let│                                                                │
- 7|     let│                                                                │
+ 3| functio╭────────────────── Debug Tree - All Sessions ───────────────────╮
+ 4|     // │▶ 📡  Session 1                                                  │
+ 5|     let│▼ 📡  Session 2                                                  │
+ 6|     let│▶ ⏸  Thread 0 (stopped)                                         │
+ 7|     let│▶ 📚  Stack (8 frames)                                           │
  8|     let│                                                                │
  9|     let│                                                                │
 10|     let│                                                                │lue";
@@ -181,22 +257,35 @@ Mode: n
 21|             data: ["a", "b", "c"]
 22|         },
 23| lua/testing/fixtures/variables/complex.js                     7,1            Top
-24|                                                               1,1           All
+24|                                                               2,1           All
 ]]
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 --[[ TERMINAL SNAPSHOT: debug_tree_stack_expanded
 Size: 24x80
-Cursor: [1, 0] (line 1, col 0)
+Cursor: [3, 0] (line 3, col 0)
 Mode: n
 
  1| // Test fixture for Variables plugin - various variable types
  2| 
- 3| functio╭──────────────────── Debug Tree - Session 1 ────────────────────╮
- 4|     // │  📡  Session 1 (no activity)                                    │
- 5|     let│                                                                │
- 6|     let│                                                                │
- 7|     let│                                                                │
+ 3| functio╭────────────────── Debug Tree - All Sessions ───────────────────╮
+ 4|     // │▶ 📡  Session 1                                                  │
+ 5|     let│▼ 📡  Session 2                                                  │
+ 6|     let│▼ ⏸  Thread 0 (stopped)                                         │
+ 7|     let│▶ 📚  Stack (8 frames)                                           │
  8|     let│                                                                │
  9|     let│                                                                │
 10|     let│                                                                │lue";
@@ -213,22 +302,35 @@ Mode: n
 21|             data: ["a", "b", "c"]
 22|         },
 23| lua/testing/fixtures/variables/complex.js                     7,1            Top
-24|                                                               1,1           All
+24|                                                               3,1           All
 ]]
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 --[[ TERMINAL SNAPSHOT: debug_tree_frame_expanded
 Size: 24x80
-Cursor: [1, 0] (line 1, col 0)
+Cursor: [4, 0] (line 4, col 0)
 Mode: n
 
  1| // Test fixture for Variables plugin - various variable types
  2| 
- 3| functio╭──────────────────── Debug Tree - Session 1 ────────────────────╮
- 4|     // │  📡  Session 1 (no activity)                                    │
- 5|     let│                                                                │
- 6|     let│                                                                │
- 7|     let│                                                                │
+ 3| functio╭────────────────── Debug Tree - All Sessions ───────────────────╮
+ 4|     // │▶ 📡  Session 1                                                  │
+ 5|     let│▼ 📡  Session 2                                                  │
+ 6|     let│▼ ⏸  Thread 0 (stopped)                                         │
+ 7|     let│▶ 📚  Stack (8 frames)                                           │
  8|     let│                                                                │
  9|     let│                                                                │
 10|     let│                                                                │lue";
@@ -245,22 +347,35 @@ Mode: n
 21|             data: ["a", "b", "c"]
 22|         },
 23| lua/testing/fixtures/variables/complex.js                     7,1            Top
-24|                                                               1,1           All
+24|                                                               4,1           All
 ]]
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 --[[ TERMINAL SNAPSHOT: debug_tree_scope_expanded
 Size: 24x80
-Cursor: [1, 0] (line 1, col 0)
+Cursor: [4, 0] (line 4, col 0)
 Mode: n
 
  1| // Test fixture for Variables plugin - various variable types
  2| 
- 3| functio╭──────────────────── Debug Tree - Session 1 ────────────────────╮
- 4|     // │  📡  Session 1 (no activity)                                    │
- 5|     let│                                                                │
- 6|     let│                                                                │
- 7|     let│                                                                │
+ 3| functio╭────────────────── Debug Tree - All Sessions ───────────────────╮
+ 4|     // │▶ 📡  Session 1                                                  │
+ 5|     let│▼ 📡  Session 2                                                  │
+ 6|     let│▼ ⏸  Thread 0 (stopped)                                         │
+ 7|     let│▼ 📚  Stack (8 frames)                                           │
  8|     let│                                                                │
  9|     let│                                                                │
 10|     let│                                                                │lue";
@@ -277,22 +392,35 @@ Mode: n
 21|             data: ["a", "b", "c"]
 22|         },
 23| lua/testing/fixtures/variables/complex.js                     7,1            Top
-24|                                                               1,1           All
+24|                                                               4,1           All
 ]]
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 --[[ TERMINAL SNAPSHOT: debug_tree_focus_mode
 Size: 24x80
-Cursor: [1, 0] (line 1, col 0)
+Cursor: [4, 0] (line 4, col 0)
 Mode: n
 
  1| // Test fixture for Variables plugin - various variable types
  2| 
- 3| functio╭──────────────────── Debug Tree - Session 1 ────────────────────╮
- 4|     // │  📡  Session 1 (no activity)                                    │
- 5|     let│                                                                │
- 6|     let│                                                                │
- 7|     let│                                                                │
+ 3| functio╭────────────────── Debug Tree - All Sessions ───────────────────╮
+ 4|     // │▶ 📡  Session 1                                                  │
+ 5|     let│▼ 📡  Session 2                                                  │
+ 6|     let│▼ ⏸  Thread 0 (stopped)                                         │
+ 7|     let│▼ 📚  Stack (8 frames)                                           │
  8|     let│                                                                │
  9|     let│                                                                │
 10|     let│                                                                │lue";
@@ -309,22 +437,35 @@ Mode: n
 21|             data: ["a", "b", "c"]
 22|         },
 23| lua/testing/fixtures/variables/complex.js                     7,1            Top
-24|                                                               1,1           All
+24|                                                               4,1           All
 ]]
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 --[[ TERMINAL SNAPSHOT: debug_tree_variable_detail
 Size: 24x80
-Cursor: [1, 0] (line 1, col 0)
+Cursor: [4, 0] (line 4, col 0)
 Mode: n
 
  1| // Test fixture for Variables plugin - various variable types
  2| 
- 3| functio╭──────────────────── Debug Tree - Session 1 ────────────────────╮
- 4|     // │  📡  Session 1 (no activity)                                    │
- 5|     let│                                                                │
- 6|     let│                                                                │
- 7|     let│                                                                │
+ 3| functio╭────────────────── Debug Tree - All Sessions ───────────────────╮
+ 4|     // │▶ 📡  Session 1                                                  │
+ 5|     let│▼ 📡  Session 2                                                  │
+ 6|     let│▼ ⏸  Thread 0 (stopped)                                         │
+ 7|     let│▶ 📚  Stack (8 frames)                                           │
  8|     let│                                                                │
  9|     let│                                                                │
 10|     let│                                                                │lue";
@@ -341,30 +482,45 @@ Mode: n
 21|             data: ["a", "b", "c"]
 22|         },
 23| lua/testing/fixtures/variables/complex.js                     7,1            Top
-24|                                                               1,1           All
+24|                                                               4,1           All
 ]]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 --[[ TERMINAL SNAPSHOT: debug_tree_frame_level
 Size: 24x80
-Cursor: [1, 0] (line 1, col 0)
+Cursor: [4, 0] (line 4, col 0)
 Mode: n
 
  1| // Test fixture for Variables plugin - various variable types
  2| 
- 3| functio╭──────────────────── Debug Tree - Session 1 ────────────────────╮
- 4|     // │  📡  Session 1 (no activity)                                    │
- 5|     let│     ╭────────── Debug Tree - Frame Variables ───────────╮      │
- 6|     let│     │▶ 📄  global.testVariables @ /home/aetherall/workspa│      │
- 7|     let│     │                                                   │      │
- 8|     let│     │                                                   │      │
- 9|     let│     │                                                   │      │
-10|     let│     │                                                   │      │lue";
-11|     let│     │                                                   │      │e trunc
-12| ated wh│     │                                                   │      │
-13|        │     │                                                   │      │
-14|     // │     │                                                   │      │
-15|     let│     │                                                   │      │
-16|     let│     ╰───────────────────────────────────────────────────╯      │
+ 3| functio╭────────────────── Debug Tree - All Sessions ───────────────────╮
+ 4|     // │▶ 📡  Session 1                                                  │
+ 5|     let│▼ 📡  Session 2                                                  │
+ 6|     let│▼ ⏸  Thread 0 (stopped)                                         │
+ 7|     let│▶ 📚  Stack (8 frames)                                           │
+ 8|     let│                                                                │
+ 9|     let│                                                                │
+10|     let│                                                                │lue";
+11|     let│                                                                │e trunc
+12| ated wh│                                                                │
+13|        │                                                                │
+14|     // │                                                                │
+15|     let│                                                                │
+16|     let│                                                                │
 17|        │                                                                │
 18|        │                                                                │
 19|        ╰────────────────────────────────────────────────────────────────╯
@@ -372,8 +528,41 @@ Mode: n
 21|             data: ["a", "b", "c"]
 22|         },
 23| lua/testing/fixtures/variables/complex.js                     7,1            Top
-24|                                                               1,1           All
+24| No current frame available                                    4,1           All
 ]]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 --[[ TERMINAL SNAPSHOT: variables4_comparison
 Size: 24x80
@@ -382,19 +571,19 @@ Mode: n
 
  1| // Test fixture for Variables plugin - various variable types
  2| 
- 3| functio╭──────────────────── Debug Tree - Session 1 ────────────────────╮
- 4|     // │  📡  Session 1 (no activity)                                    │
- 5|     let│     ╭────────── Debug Tree - Frame Variables ───────────╮      │
- 6|     let│     │▶ 📄 ╭──────── Variables4 Debug Tree ─────────╮rkspa│      │
- 7|     let│     │    │▼ 📁  Local: testVariables               │     │      │
- 8|     let│     │    │╰─ ▶ 󰅪 arrayVar: (5) [1, 2, 3, 'four', {│     │      │
- 9|     let│     │    │╰─   ◐ booleanVar: true                 │     │      │
-10|     let│     │    │╰─   󰅩 dateVar: Mon Jan 01 2024 01:00:00│     │      │lue";
-11|     let│     │    │╰─ ▶ 󰊕 functionVar: ƒ (x) { return x * 2│     │      │e trunc
-12| ated wh│     │    │╰─   󰉿 longStringValue: "'This is a very│     │      │
-13|        │     │    │╰─ ▶ 󰘣 mapVar: Map(2) {size: 2, key1 => │     │      │
-14|     // │     │    ╰────────────────────────────────────────╯     │      │
-15|     let│     │                                                   │      │
+ 3| functio╭────────────────── Debug Tree - All Sessions ───────────────────╮
+ 4|     // │▶ 📡  Session 1                                                  │
+ 5|     let│▼ 📡  ╭────────────── Variables4 Debug Tree ──────────────╮      │
+ 6|     let│▼ ⏸  │▼ 📁  Local: testVariables                          │      │
+ 7|     let│▶ 📚  │╰─ ▶ 󰅪 arrayVar: (5) [1, 2, 3, 'four', {…}]        │      │
+ 8|     let│     │╰─   ◐ booleanVar: true                            │      │
+ 9|     let│     │╰─   󰅩 dateVar: Mon Jan 01 2024 01:00:00 GMT+0100 (│      │
+10|     let│     │╰─ ▶ 󰊕 functionVar: ƒ (x) { return x * 2; }        │      │lue";
+11|     let│     │╰─   󰉿 longStringValue: "'This is a very long strin│      │e trunc
+12| ated wh│     │╰─ ▶ 󰘣 mapVar: Map(2) {size: 2, key1 => value1, key│      │
+13|        │     │╰─   󰅩 nullVar: null                               │      │
+14|     // │     │╰─   󰎠 numberVar: 42                               │      │
+15|     let│     │╰─ ▶ 󰅩 objectVar: {name: 'Test Object', count: 100,│      │
 16|     let│     ╰───────────────────────────────────────────────────╯      │
 17|        │                                                                │
 18|        │                                                                │
@@ -406,6 +595,39 @@ Mode: n
 24| W10: Warning: Changing a readonly file                        1,1           Top
 ]]
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 --[[ TERMINAL SNAPSHOT: debug_tree_help
 Size: 24x80
 Cursor: [1, 0] (line 1, col 0)
@@ -413,19 +635,19 @@ Mode: n
 
  1| // Test fixture for Variables plugin - various variable types
  2| 
- 3| functio╭──────────────────── Debug Tree - Session 1 ────────────────────╮
- 4|     // │  📡  Session 1 (no activity)                                    │
- 5|     let│     ╭────────── Debug Tree - Frame Variables ───────────╮      │
- 6|     let│     │▶ 📄 ╭──────── Variables4 Debug Tree ─────────╮rkspa│      │
- 7|     let│     │    │▼ 📁  Local: testVariables               │     │      │
- 8|     let│     │    │╰─ ▶ 󰅪 arrayVar: (5) [1, 2, 3, 'four', {│     │      │
- 9|     let│     │    │╰─   ◐ booleanVar: true                 │     │      │
-10|     let│     │    │╰─   󰅩 dateVar: Mon Jan 01 2024 01:00:00│     │      │lue";
-11|     let│     │    │╰─ ▶ 󰊕 functionVar: ƒ (x) { return x * 2│     │      │e trunc
-12| ated wh│     │    │╰─   󰉿 longStringValue: "'This is a very│     │      │
-13|        │     │    │╰─ ▶ 󰘣 mapVar: Map(2) {size: 2, key1 => │     │      │
-14|     // │     │    ╰────────────────────────────────────────╯     │      │
-15|     let│     │                                                   │      │
+ 3| functio╭────────────────── Debug Tree - All Sessions ───────────────────╮
+ 4|     // │▶ 📡  Session 1                                                  │
+ 5|     let│▼ 📡  ╭────────────── Variables4 Debug Tree ──────────────╮      │
+ 6|     let│▼ ⏸  │▼ 📁  Local: testVariables                          │      │
+ 7|     let│▶ 📚  │╰─ ▶ 󰅪 arrayVar: (5) [1, 2, 3, 'four', {…}]        │      │
+ 8|     let│     │╰─   ◐ booleanVar: true                            │      │
+ 9|     let│     │╰─   󰅩 dateVar: Mon Jan 01 2024 01:00:00 GMT+0100 (│      │
+10|     let│     │╰─ ▶ 󰊕 functionVar: ƒ (x) { return x * 2; }        │      │lue";
+11|     let│     │╰─   󰉿 longStringValue: "'This is a very long strin│      │e trunc
+12| ated wh│     │╰─ ▶ 󰘣 mapVar: Map(2) {size: 2, key1 => value1, key│      │
+13|        │     │╰─   󰅩 nullVar: null                               │      │
+14|     // │     │╰─   󰎠 numberVar: 42                               │      │
+15|     let│     │╰─ ▶ 󰅩 objectVar: {name: 'Test Object', count: 100,│      │
 16|     let│     ╰───────────────────────────────────────────────────╯      │
 17|        │                                                                │
 18|        │                                                                │
@@ -437,6 +659,39 @@ Mode: n
 24|                                                               1,1           Top
 ]]
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 --[[ TERMINAL SNAPSHOT: debug_tree_cleanup
 Size: 24x80
 Cursor: [1, 0] (line 1, col 0)
@@ -444,19 +699,19 @@ Mode: n
 
  1| // Test fixture for Variables plugin - various variable types
  2| 
- 3| functio╭──────────────────── Debug Tree - Session 1 ────────────────────╮
- 4|     // │  📡  Session 1 (no activity)                                    │
- 5|     let│     ╭────────── Debug Tree - Frame Variables ───────────╮      │
- 6|     let│     │▶ 📄 ╭──────── Variables4 Debug Tree ─────────╮rkspa│      │
- 7|     let│     │    │▼ 📁  Local: testVariables               │     │      │
- 8|     let│     │    │╰─ ▶ 󰅪 arrayVar: (5) [1, 2, 3, 'four', {│     │      │
- 9|     let│     │    │╰─   ◐ booleanVar: true                 │     │      │
-10|     let│     │    │╰─   󰅩 dateVar: Mon Jan 01 2024 01:00:00│     │      │lue";
-11|     let│     │    │╰─ ▶ 󰊕 functionVar: ƒ (x) { return x * 2│     │      │e trunc
-12| ated wh│     │    │╰─   󰉿 longStringValue: "'This is a very│     │      │
-13|        │     │    │╰─ ▶ 󰘣 mapVar: Map(2) {size: 2, key1 => │     │      │
-14|     // │     │    ╰────────────────────────────────────────╯     │      │
-15|     let│     │                                                   │      │
+ 3| functio╭────────────────── Debug Tree - All Sessions ───────────────────╮
+ 4|     // │▶ 📡  Session 1                                                  │
+ 5|     let│▼ 📡  ╭────────────── Variables4 Debug Tree ──────────────╮      │
+ 6|     let│▼ ⏸  │▼ 📁  Local: testVariables                          │      │
+ 7|     let│▶ 📚  │╰─ ▶ 󰅪 arrayVar: (5) [1, 2, 3, 'four', {…}]        │      │
+ 8|     let│     │╰─   ◐ booleanVar: true                            │      │
+ 9|     let│     │╰─   󰅩 dateVar: Mon Jan 01 2024 01:00:00 GMT+0100 (│      │
+10|     let│     │╰─ ▶ 󰊕 functionVar: ƒ (x) { return x * 2; }        │      │lue";
+11|     let│     │╰─   󰉿 longStringValue: "'This is a very long strin│      │e trunc
+12| ated wh│     │╰─ ▶ 󰘣 mapVar: Map(2) {size: 2, key1 => value1, key│      │
+13|        │     │╰─   󰅩 nullVar: null                               │      │
+14|     // │     │╰─   󰎠 numberVar: 42                               │      │
+15|     let│     │╰─ ▶ 󰅩 objectVar: {name: 'Test Object', count: 100,│      │
 16|     let│     ╰───────────────────────────────────────────────────╯      │
 17|        │                                                                │
 18|        │                                                                │
