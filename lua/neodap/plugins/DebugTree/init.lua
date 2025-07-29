@@ -726,123 +726,30 @@ end
 function DebugTree:initializeStateTree()
   if self.state_tree then return end -- Already initialized
   
-  -- Create state tree without NUI Tree - just use plain node storage
-  -- NUI Tree requires a bufnr, so we'll use a custom data structure
-  self.state_tree = {
-    nodes = {
-      by_id = {},
-      root_ids = {},
-    },
-    add_node = function(state_tree, node, parent_id)
-      -- Store the node
-      state_tree.nodes.by_id[node.id] = node
-      
-      if parent_id then
-        -- Add as child to parent
-        local parent = state_tree.nodes.by_id[parent_id]
-        if parent then
-          if not parent._child_ids then
-            parent._child_ids = {}
-          end
-          table.insert(parent._child_ids, node.id)
-          -- CRITICAL: Store parent relationship in the state tree node
-          state_tree.nodes.by_id[node.id]._parent_id = parent_id
-        else
-          -- Parent not found - defer add
-          -- CRITICAL: Don't add as root! Store pending nodes to add later
-          if not state_tree._pending_nodes then
-            state_tree._pending_nodes = {}
-          end
-          state_tree._pending_nodes[node.id] = { node = node, parent_id = parent_id }
-        end
-      else
-        -- Add as root node
-        table.insert(state_tree.nodes.root_ids, node.id)
-      end
-      
-      -- After adding any node, check if pending nodes can now be processed
-      state_tree:_processPendingNodes()
-    end,
-    remove_node = function(state_tree, node_id)
-      local node = state_tree.nodes.by_id[node_id]
-      if not node then return end
-      
-      -- Remove from parent's children or root list
-      if node._parent_id then
-        local parent = state_tree.nodes.by_id[node._parent_id]
-        if parent and parent._child_ids then
-          for i, child_id in ipairs(parent._child_ids) do
-            if child_id == node_id then
-              table.remove(parent._child_ids, i)
-              break
-            end
-          end
-        end
-      else
-        -- Remove from root list
-        for i, root_id in ipairs(state_tree.nodes.root_ids) do
-          if root_id == node_id then
-            table.remove(state_tree.nodes.root_ids, i)
-            break
-          end
-        end
-      end
-      
-      -- Remove the node and all descendants
-      local function removeDescendants(id)
-        local n = state_tree.nodes.by_id[id]
-        if n and n._child_ids then
-          for _, child_id in ipairs(n._child_ids) do
-            removeDescendants(child_id)
-          end
-        end
-        state_tree.nodes.by_id[id] = nil
-      end
-      removeDescendants(node_id)
-    end,
-    _processPendingNodes = function(state_tree)
-      -- Process any pending nodes whose parents might now exist
-      if not state_tree._pending_nodes then return end
-      
-      local processed = {}
-      for node_id, pending in pairs(state_tree._pending_nodes) do
-        local parent = state_tree.nodes.by_id[pending.parent_id]
-        if parent then
-          -- Parent now exists, add the pending node
-          
-          if not parent._child_ids then
-            parent._child_ids = {}
-          end
-          table.insert(parent._child_ids, node_id)
-          state_tree.nodes.by_id[node_id]._parent_id = pending.parent_id
-          
-          table.insert(processed, node_id)
-        end
-      end
-      
-      -- Remove processed nodes from pending
-      for _, node_id in ipairs(processed) do
-        state_tree._pending_nodes[node_id] = nil
-      end
-      
-      -- Clear pending nodes table if empty
-      if next(state_tree._pending_nodes) == nil then
-        state_tree._pending_nodes = nil
-      end
-    end,
-    render = function(state_tree)
-      -- State tree render -> render all active view trees
-      for _, view_tree in ipairs(plugin_instance.active_view_trees) do
-        if view_tree.bufnr and vim.api.nvim_buf_is_valid(view_tree.bufnr) then
-          -- Restore the view's specific root_ids before rendering
-          view_tree.nodes.root_ids = view_tree._view_root_ids
-          
-          -- View trees already share the nodes structure, just render!
-          view_tree:render()
-        end
+  -- Create a scratch buffer for the state tree (never displayed)
+  local state_bufnr = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_name(state_bufnr, "[DebugTree-State]")
+  
+  -- Use real NUI Tree for state - it's just better
+  self.state_tree = NuiTree({
+    bufnr = state_bufnr,
+    nodes = {},
+    get_node_id = function(node) return node.id end,
+  })
+  
+  -- Override render to update all view trees instead
+  self.state_tree.render = function(state_tree)
+    -- State tree render -> render all active view trees
+    for _, view_tree in ipairs(self.active_view_trees) do
+      if view_tree.bufnr and vim.api.nvim_buf_is_valid(view_tree.bufnr) then
+        -- Restore the view's specific root_ids before rendering
+        view_tree.nodes.root_ids = view_tree._view_root_ids
+        
+        -- View trees already share the nodes structure, just render!
+        view_tree:render()
       end
     end
-  }
+  end
 
   -- Add all existing sessions to the state tree
   for session in self.api:eachSession() do
@@ -852,7 +759,6 @@ function DebugTree:initializeStateTree()
   end
 
 end
-
 -- ========================================
 -- SIMPLE TREE COMMANDS
 -- ========================================
@@ -1253,35 +1159,6 @@ end
 -- ========================================
 -- VIEW TREE HELPERS
 -- ========================================
-
-function DebugTree:collectSubtreeNodes(nodes_array, root_node)
-  -- Add the root node to the array
-  table.insert(nodes_array, root_node)
-  self.logger:debug("collectSubtreeNodes: Added root node " .. root_node.id)
-  
-  -- Recursively collect all descendants
-  local function collectDescendants(node)
-    if node:has_children() then
-      local child_ids = node:get_child_ids()
-      self.logger:debug("collectSubtreeNodes: Node " .. node.id .. " has " .. #child_ids .. " children")
-      for _, child_id in ipairs(child_ids) do
-        local child = self.state_tree.nodes.by_id[child_id]
-        if child then
-          table.insert(nodes_array, child)
-          self.logger:debug("collectSubtreeNodes: Added child node " .. child.id .. " (type: " .. (child.type or "nil") .. ")")
-          collectDescendants(child)
-        else
-          self.logger:debug("collectSubtreeNodes: Child " .. child_id .. " not found in state tree")
-        end
-      end
-    else
-      self.logger:debug("collectSubtreeNodes: Node " .. node.id .. " has no children")
-    end
-  end
-  
-  collectDescendants(root_node)
-  self.logger:debug("collectSubtreeNodes: Total collected nodes: " .. #nodes_array)
-end
 
 function DebugTree:setupTreeRendering(tree)
   local NuiLine = require("nui.line")
