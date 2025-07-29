@@ -222,9 +222,15 @@ local plugin_instance = nil
 function Session:asNode()
   if self._cached_node then return self._cached_node end
 
+  -- Create display text that shows parent-child relationship
+  local display_text = "📡 Session " .. tostring(self.id)
+  if self.parent then
+    display_text = "📡 Child Session " .. tostring(self.id)
+  end
+
   local node = NuiTree.Node({
     id = "session:" .. tostring(self.id),
-    text = "📡 Session " .. tostring(self.id),
+    text = display_text,
     type = "session",
     expandable = true,
     _session = self,
@@ -241,6 +247,10 @@ function Session:asNode()
       plugin_instance.state_tree:render() -- This will render all view trees!
     end
   end)
+  
+  -- Autonomous: when child sessions are created via startDebugging
+  -- Note: This requires the session to have a way to notify about child sessions
+  -- For now, child sessions will be added when they're created with parent set
 
   -- Autonomous cleanup
   self:onTerminated(function()
@@ -616,12 +626,21 @@ function DebugTree:setupSessionHandlers()
   self.api:onSession(function(session)
     -- Initialize the session node and add it to the persistent state tree
     local session_node = session:asNode()
-    self.state_tree:add_node(session_node)
+    
+    -- Check if this session has a parent session
+    if session.parent then
+      -- Add as child of parent session
+      local parent_id = "session:" .. tostring(session.parent.id)
+      self.state_tree:add_node(session_node, parent_id)
+      self.logger:info("Added session " .. session.id .. " as child of session " .. session.parent.id)
+    else
+      -- Add as root session
+      self.state_tree:add_node(session_node)
+      self.logger:info("Added session " .. session.id .. " as root session")
+    end
 
     -- Add any existing threads to the state tree
     self:addExistingChildren(session)
-
-    self.logger:debug("Added session " .. session.id .. " to persistent state tree")
     
     -- Render all views to show new session
     self.state_tree:render()
@@ -1211,6 +1230,16 @@ function DebugTree:addExistingChildren(root_entity)
           local stack_node = stack:asNode()
           self.state_tree:add_node(stack_node, "thread:" .. tostring(thread.id))
         end
+      end
+    end
+    
+    -- Also add existing child sessions if any
+    if root_entity.children then
+      for child_id, child_session in pairs(root_entity.children) do
+        local child_node = child_session:asNode()
+        self.state_tree:add_node(child_node, "session:" .. tostring(root_entity.id))
+        -- Recursively add children of child session
+        self:addExistingChildren(child_session)
       end
     end
   elseif root_entity.frames then
