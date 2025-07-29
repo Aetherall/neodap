@@ -183,65 +183,8 @@ local Variable = require('neodap.api.Session.Variable')
 ---@field asNode fun(self: api.Variable): NuiTree.Node Create a tree node for this variable
 ---@field _cached_node NuiTree.Node|nil Cached tree node
 
--- Helper function to add compatibility methods to nodes
-local function addNodeCompatibilityMethods(node, state_tree)
-  -- Map our node structure to NUI Tree's expected structure
-  node._id = node.id
-  node._is_expanded = node._expanded or false
-  node._tree = state_tree  -- Store reference for depth calculation
-  
-  -- Rename _children to _child_ids for NUI compatibility
-  if node._children then
-    node._child_ids = node._children
-    node._children = nil
-  end
-  
-  -- Add compatibility methods for NUI Tree
-  node.get_id = function(self)
-    return self._id or self.id
-  end
-  
-  node.has_children = function(self)
-    return self._child_ids and #self._child_ids > 0
-  end
-  
-  node.get_child_ids = function(self)
-    return self._child_ids or {}
-  end
-  
-  node.is_expanded = function(self)
-    return self._is_expanded == true
-  end
-  
-  node.expand = function(self)
-    self._is_expanded = true
-  end
-  
-  
-  node.collapse = function(self)
-    self._is_expanded = false
-  end
-  
-  node.get_depth = function(self)
-    -- Calculate depth by traversing up the tree
-    local depth = 1
-    local current_id = self._parent_id
-    while current_id do
-      depth = depth + 1
-      local parent = self._tree and self._tree.nodes.by_id[current_id]
-      if parent then
-        current_id = parent._parent_id
-      else
-        break
-      end
-    end
-    return depth
-  end
-  
-  node.get_parent_id = function(self)
-    return self._parent_id
-  end
-end
+-- NUI Tree nodes already have all required methods via TreeNode metatable
+-- No compatibility layer needed anymore!
 
 -- Store plugin instance for asNode methods
 local plugin_instance = nil
@@ -370,9 +313,6 @@ function Session:asNode()
     expandable = true,
     _dap = self,
   })
-  
-  -- Add compatibility methods for our custom state tree
-  addNodeCompatibilityMethods(node, plugin_instance.state_tree)
 
   -- Autonomous: when threads appear, add them directly to tree
   self:onThread(function(thread)
@@ -443,8 +383,6 @@ function Thread:asNode()
     expandable = self.stopped,
     _dap = self,
   })
-  
-  addNodeCompatibilityMethods(node, plugin_instance.state_tree)
 
   -- Check if thread is already stopped and has a stack
   if self.stopped then
@@ -513,8 +451,6 @@ function Stack:asNode()
     expandable = true,
     _dap = self,
   })
-  
-  addNodeCompatibilityMethods(node, plugin_instance.state_tree)
 
 
   self._cached_node = node
@@ -552,8 +488,6 @@ function Frame:asNode(index)
     _dap = self,
     _frame_index = index,
   })
-  
-  addNodeCompatibilityMethods(node, plugin_instance.state_tree)
 
 
   self[cache_key] = node
@@ -589,8 +523,6 @@ function Scope:asNode()
     expandable = true,
     _dap = self,
   })
-  
-  addNodeCompatibilityMethods(node, plugin_instance.state_tree)
 
 
   self._cached_node = node
@@ -666,8 +598,6 @@ function Variable:asNode()
     _has_memory = self.ref and self.ref.memoryReference ~= nil,
     _evaluateName = self.ref and self.ref.evaluateName,
   })
-  
-  addNodeCompatibilityMethods(node, plugin_instance.state_tree)
 
 
   self._cached_node = node
@@ -716,7 +646,7 @@ function DebugTree:setupSessionHandlers()
     end
 
     -- Add any existing threads to the state tree
-    self:addExistingChildren(session)
+    self:addChildSessions(session)
     
     -- Render all views to show new session
     self.state_tree:render()
@@ -755,7 +685,7 @@ function DebugTree:initializeStateTree()
   for session in self.api:eachSession() do
     local session_node = session:asNode()
     self.state_tree:add_node(session_node)
-    self:addExistingChildren(session)
+    self:addChildSessions(session)
   end
 
 end
@@ -1413,18 +1343,15 @@ end
 -- TREE INITIALIZATION HELPERS
 -- ========================================
 
-function DebugTree:addExistingChildren(root_entity)
-  -- This method is now mostly deprecated since we use reactive/autonomous nodes
-  -- that add their own children via event handlers.
-  -- We only keep it for child sessions which might not have events.
-  
-  if root_entity.children then
-    -- Handle child sessions created via startDebugging
-    for child_id, child_session in pairs(root_entity.children) do
+function DebugTree:addChildSessions(session)
+  -- Add any child sessions created via startDebugging request
+  -- These don't trigger onSession events, so we need to add them manually
+  if session.children then
+    for child_id, child_session in pairs(session.children) do
       local child_node = child_session:asNode()
-      self.state_tree:add_node(child_node, "session:" .. tostring(root_entity.id))
-      -- Recursively check for grandchild sessions
-      self:addExistingChildren(child_session)
+      self.state_tree:add_node(child_node, "session:" .. tostring(session.id))
+      -- Recursively add any grandchild sessions
+      self:addChildSessions(child_session)
     end
   end
 end
