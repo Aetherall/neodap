@@ -954,8 +954,6 @@ function DebugTree:setupViewTreeKeybindings(view_tree, popup, title)
   -- Focus controls
   popup:map("n", "f", function() self:FocusIn(view_tree, popup) end)
   popup:map("n", "F", function() self:FocusOut(view_tree, popup, title) end)
-  popup:map("n", ">", function() self:FocusDeeper(view_tree, popup) end)
-  popup:map("n", "<", function() self:FocusShallower(view_tree, popup, title) end)
   
   -- Utility keys
   popup:map("n", "r", function() view_tree:render() end)
@@ -985,6 +983,20 @@ function DebugTree:setupViewTreeKeybindings(view_tree, popup, title)
     table.insert(debug_info, "Node ID: " .. (node.id or "nil"))
     table.insert(debug_info, "Text: " .. (node.text or "nil"))
     table.insert(debug_info, "Type: " .. (node.type or "nil"))
+    
+    -- Build and show the path
+    local path_parts = {}
+    local current = node
+    while current do
+      table.insert(path_parts, 1, current.id)
+      local parent_id = current:get_parent_id()
+      if parent_id then
+        current = view_tree.nodes.by_id[parent_id]
+      else
+        current = nil
+      end
+    end
+    table.insert(debug_info, "Path: /" .. table.concat(path_parts, "/"))
     table.insert(debug_info, "")
     
     -- Node state
@@ -1092,10 +1104,8 @@ Smart Navigation:
   gj      - Down (child, next sibling, or parent's next)
   
 Focus Controls:
-  f       - Focus on current node's subtree
+  f       - Focus on current subtree
   F       - Unfocus (restore full view)
-  >       - Focus deeper (zoom in one level)
-  <       - Focus shallower (zoom out one level)
   
 Other:
   r       - Refresh tree
@@ -1633,100 +1643,6 @@ function DebugTree:FocusTop(tree, popup, original_title)
   end
   
   tree:render()
-end
-
-function DebugTree:FocusDeeper(tree, popup)
-  local node = tree:get_node()
-  if not node then return end
-  
-  -- Store original roots if not already stored
-  if not tree._original_root_ids then
-    tree._original_root_ids = vim.deepcopy(tree._view_root_ids)
-  end
-  
-  -- Get current focus level - find common ancestor of current roots
-  local current_roots = tree.nodes.root_ids
-  if #current_roots == 1 then
-    -- Already focused on single node, try to focus on cursor position
-    local focused_root = tree.nodes.by_id[current_roots[1]]
-    if focused_root and node:get_id() ~= current_roots[1] then
-      -- Focus on current cursor node instead
-      tree._view_root_ids = { node:get_id() }
-      tree.nodes.root_ids = tree._view_root_ids
-      
-      if popup then
-        local title = " DebugTree - Focused: " .. (node.text or "Unknown") .. " "
-        popup.border:set_text("top", title, "center")
-      end
-      
-      tree:render()
-    end
-  else
-    -- Multiple roots - focus on the one containing cursor
-    for _, root_id in ipairs(current_roots) do
-      if self:isNodeAncestorOf(root_id, node:get_id(), tree) then
-        tree._view_root_ids = { root_id }
-        tree.nodes.root_ids = tree._view_root_ids
-        
-        if popup then
-          local root_node = tree.nodes.by_id[root_id]
-          local title = " DebugTree - Focused: " .. (root_node and root_node.text or "Unknown") .. " "
-          popup.border:set_text("top", title, "center")
-        end
-        
-        tree:render()
-        break
-      end
-    end
-  end
-end
-
-function DebugTree:FocusShallower(tree, popup, original_title)
-  -- If we have no focus history, nothing to do
-  if not tree._original_root_ids then return end
-  
-  local current_roots = tree.nodes.root_ids
-  if #current_roots == 1 then
-    local current_root_id = current_roots[1]
-    local current_root = tree.nodes.by_id[current_root_id]
-    
-    if current_root then
-      local parent_id = current_root:get_parent_id()
-      if parent_id then
-        -- Focus on parent
-        tree._view_root_ids = { parent_id }
-        tree.nodes.root_ids = tree._view_root_ids
-        
-        if popup then
-          local parent_node = tree.nodes.by_id[parent_id]
-          local title = " DebugTree - Focused: " .. (parent_node and parent_node.text or "Unknown") .. " "
-          popup.border:set_text("top", title, "center")
-        end
-        
-        tree:render()
-      else
-        -- No parent - restore original view
-        self:FocusOut(tree, popup, original_title)
-      end
-    end
-  else
-    -- Multiple roots - shouldn't happen with our focus model, but restore original
-    self:FocusOut(tree, popup, original_title)
-  end
-end
-
--- Helper to check if one node is ancestor of another
-function DebugTree:isNodeAncestorOf(ancestor_id, descendant_id, tree)
-  if ancestor_id == descendant_id then return true end
-  
-  local current = tree.nodes.by_id[descendant_id]
-  while current do
-    local parent_id = current:get_parent_id()
-    if not parent_id then return false end
-    if parent_id == ancestor_id then return true end
-    current = tree.nodes.by_id[parent_id]
-  end
-  return false
 end
 
 -- Composite Navigation Methods
