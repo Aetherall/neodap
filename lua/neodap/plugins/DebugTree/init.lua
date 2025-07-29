@@ -22,31 +22,41 @@ DebugTree.name = "DebugTree"
 -- VARIABLE PRESENTATION CONFIGURATION
 -- ========================================
 
--- Rich type icons and formatting borrowed from Variables4
+-- Rich type icons and formatting with Tree-sitter highlight groups
 local VariablePresentation = {
   styles = {
     -- JavaScript primitives
-    string = { icon = "󰉿", highlight = "String", truncate = 35 },
-    number = { icon = "󰎠", highlight = "Number", truncate = 40 },
-    boolean = { icon = "◐", highlight = "Boolean", truncate = 40 },
-    undefined = { icon = "󰟢", highlight = "Constant", truncate = 40 },
-    ['nil'] = { icon = "∅", highlight = "Constant", truncate = 40 },
-    null = { icon = "∅", highlight = "Constant", truncate = 40 },
+    string = { icon = "󰉿", highlight = "@string", truncate = 35 },
+    number = { icon = "󰎠", highlight = "@number", truncate = 40 },
+    boolean = { icon = "◐", highlight = "@boolean", truncate = 40 },
+    undefined = { icon = "󰟢", highlight = "@constant.builtin", truncate = 40 },
+    ['nil'] = { icon = "∅", highlight = "@constant.builtin", truncate = 40 },
+    null = { icon = "∅", highlight = "@constant.builtin", truncate = 40 },
     
     -- Complex types
-    object = { icon = "󰅩", highlight = "Structure", truncate = 40 },
-    array = { icon = "󰅪", highlight = "Structure", truncate = 40 },
-    ['function'] = { icon = "󰊕", highlight = "Function", truncate = 25 },
+    object = { icon = "󰅩", highlight = "@type", truncate = 40 },
+    array = { icon = "󰅪", highlight = "@type.builtin", truncate = 40 },
+    ['function'] = { icon = "󰊕", highlight = "@function", truncate = 25 },
     
     -- Special types
-    date = { icon = "󰃭", highlight = "Special", truncate = 40 },
-    regexp = { icon = "󰑑", highlight = "String", truncate = 40 },
-    map = { icon = "󰘣", highlight = "Type", truncate = 40 },
-    set = { icon = "󰘦", highlight = "Type", truncate = 40 },
+    date = { icon = "󰃭", highlight = "@type.builtin", truncate = 40 },
+    regexp = { icon = "󰑑", highlight = "@string.regex", truncate = 40 },
+    map = { icon = "󰘣", highlight = "@type.builtin", truncate = 40 },
+    set = { icon = "󰘦", highlight = "@type.builtin", truncate = 40 },
     
     -- Default fallback
-    default = { icon = "󰀬", highlight = "Identifier", truncate = 40 },
+    default = { icon = "󰀬", highlight = "@variable", truncate = 40 },
   }
+}
+
+-- Entity type highlight mapping
+local EntityHighlights = {
+  session = "@namespace",
+  thread = "@function.call", 
+  stack = "@type",
+  frame = "@function",
+  scope = "@parameter",
+  variable = "@variable",
 }
 
 -- Get presentation style for a variable type
@@ -1239,10 +1249,98 @@ function DebugTree:setupTreeRendering(tree)
     -- Store cursor position - this is where the content starts
     node._cursor_col = line:content():len()
 
-    -- Add content (ensure no newlines)
+    -- Add content with proper highlighting
     local text = node.text or ""
     text = text:gsub("[\n\r]+", " ")
-    line:append(text)
+    
+    -- Get the appropriate highlight group based on node type
+    local highlight_group = EntityHighlights[node.type] or "@text"
+    
+    -- For variables, use more specific highlighting based on the stored highlight
+    if node.type == "variable" and node._highlight then
+      highlight_group = node._highlight
+    end
+    
+    -- Parse variable nodes for better syntax highlighting
+    if node.type == "variable" then
+      -- Split variable display into parts: icon, name, colon, value
+      local icon_end = text:find(" ") or 1
+      local icon = text:sub(1, icon_end)
+      local rest = text:sub(icon_end + 1)
+      
+      local colon_pos = rest:find(":")
+      if colon_pos then
+        local var_name = rest:sub(1, colon_pos - 1)
+        local colon_and_value = rest:sub(colon_pos)
+        
+        -- Add icon with default highlighting
+        line:append(icon, "@text.note")
+        
+        -- Add variable name
+        line:append(var_name, "@variable")
+        
+        -- Add colon
+        line:append(":", "@punctuation.delimiter")
+        
+        -- Add value with type-specific highlighting
+        line:append(colon_and_value:sub(2), highlight_group) -- Remove colon, already added
+      else
+        -- Fallback: just highlight the whole thing
+        line:append(text, highlight_group)
+      end
+    else
+      -- For non-variable nodes, parse and highlight different parts
+      if node.type == "session" then
+        -- Highlight session differently: icon + text
+        local icon_match = text:match("^(📡%s*)")
+        if icon_match then
+          line:append(icon_match, "@text.note")
+          line:append(text:sub(#icon_match + 1), highlight_group)
+        else
+          line:append(text, highlight_group)
+        end
+      elseif node.type == "thread" then
+        -- Highlight thread: icon + text + status
+        local icon_match = text:match("^([⏸️▶️]%s*)")
+        if icon_match then
+          line:append(icon_match, "@text.note")
+          local rest = text:sub(#icon_match + 1)
+          local paren_start = rest:find("%(")
+          if paren_start then
+            line:append(rest:sub(1, paren_start - 1), highlight_group)
+            line:append(rest:sub(paren_start), "@comment")
+          else
+            line:append(rest, highlight_group)
+          end
+        else
+          line:append(text, highlight_group)
+        end
+      elseif node.type == "frame" then
+        -- Highlight frame: number + icon + function name
+        local num_match = text:match("^(#%d+%s*)")
+        local icon_match = text:match("🖼️%s*")
+        if num_match then
+          line:append(num_match, "@number")
+          local after_num = text:sub(#num_match + 1)
+          if icon_match then
+            local icon_start = after_num:find("🖼️")
+            if icon_start then
+              line:append(after_num:sub(1, icon_start + 1), "@text.note")
+              line:append(after_num:sub(icon_start + 2), highlight_group)
+            else
+              line:append(after_num, highlight_group)
+            end
+          else
+            line:append(after_num, highlight_group)
+          end
+        else
+          line:append(text, highlight_group)
+        end
+      else
+        -- Default highlighting for other entity types
+        line:append(text, highlight_group)
+      end
+    end
 
     return line
   end
