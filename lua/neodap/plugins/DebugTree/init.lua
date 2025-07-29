@@ -321,7 +321,7 @@ function Session:asNode()
     text = display_text,
     type = "session",
     expandable = true,
-    _session = self,
+    _dap = self,
   })
   
   -- Add compatibility methods for our custom state tree
@@ -373,7 +373,7 @@ function Thread:asNode()
     text = getDisplayText(),
     type = "thread",
     expandable = self.stopped,
-    _thread = self,
+    _dap = self,
   })
   
   addNodeCompatibilityMethods(node, plugin_instance.state_tree)
@@ -428,7 +428,7 @@ function Stack:asNode()
     text = "📚 Stack (" .. frame_count .. " frames)",
     type = "stack",
     expandable = true,
-    _stack = self,
+    _dap = self,
   })
   
   addNodeCompatibilityMethods(node, plugin_instance.state_tree)
@@ -484,7 +484,7 @@ function Frame:asNode(index)
     text = display_text,
     type = "frame",
     expandable = true,
-    _frame = self,
+    _dap = self,
     _frame_index = index,
   })
   
@@ -558,7 +558,7 @@ function Scope:asNode()
     text = scope_icon .. " " .. scope_name,
     type = "scope",
     expandable = true,
-    _scope = self,
+    _dap = self,
   })
   
   addNodeCompatibilityMethods(node, plugin_instance.state_tree)
@@ -640,7 +640,7 @@ function Variable:asNode()
     text = text,
     type = "variable",
     expandable = expandable,
-    _variable = self,
+    _dap = self,
     _highlight = style.highlight,  -- Store highlight group for rendering
     _is_lazy = is_lazy,           -- Track lazy status
   })
@@ -1038,9 +1038,8 @@ function DebugTree:createViewTree(root_entity, title)
         node:collapse()
       else
         -- Resolve children first if the DAP resource has lazy children
-        local dap_resource = node._session or node._thread or node._stack or node._frame or node._scope or node._variable
-        if dap_resource and dap_resource.ResolveChildren then
-          dap_resource:ResolveChildren(node)
+        if node._dap and node._dap.ResolveChildren then
+          node._dap:ResolveChildren(node)
         end
         
         -- Now expand the node
@@ -1389,7 +1388,7 @@ end
 
 -- Resolve lazy variable by fetching its actual value
 function DebugTree:resolveLazyVariable(node, view_tree)
-  local variable = node._variable
+  local variable = node._dap
   if not variable or not variable.resolve then
     self.logger:warn("Cannot resolve lazy variable - no variable or resolve method")
     return
