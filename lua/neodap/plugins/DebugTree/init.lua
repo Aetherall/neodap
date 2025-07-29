@@ -283,8 +283,9 @@ function Stack:ResolveChildren(node)
       local frame_node = frame:asNode(index)
       plugin_instance.state_tree:add_node(frame_node, node.id)
     end
-    node._children_loaded = true
-    plugin_instance.state_tree:render() -- Update all views
+    -- CRITICAL: Update the state tree node, not the parameter node
+    plugin_instance.state_tree.nodes.by_id[node.id]._children_loaded = true
+    -- Don't render here - let the caller do it after we return
   end
 end
 
@@ -298,23 +299,24 @@ function Frame:ResolveChildren(node)
   end
   
   -- Direct async call - no wrapping needed since we're in PascalCase context
-  plugin_instance.logger:debug("Frame resolving children for: " .. node.id)
+  plugin_instance.logger:debug("Frame:ResolveChildren START for: " .. node.id)
   
   local scopes = self:scopes()
   
-  plugin_instance.logger:debug("Frame scopes result: " .. vim.inspect(scopes))
+  plugin_instance.logger:debug("Frame:ResolveChildren got " .. (scopes and #scopes or 0) .. " scopes")
   
   if scopes and plugin_instance.state_tree then
-    plugin_instance.logger:debug("Adding " .. #scopes .. " scopes to frame " .. node.id)
     for i, scope in ipairs(scopes) do
       local scope_node = scope:asNode()
-      plugin_instance.logger:debug("Adding scope[" .. i .. "] node: " .. scope_node.id .. " text: " .. scope_node.text)
+      plugin_instance.logger:debug("Frame:ResolveChildren adding scope[" .. i .. "]: " .. scope_node.id)
       plugin_instance.state_tree:add_node(scope_node, node.id)
     end
-    node._children_loaded = true
-    plugin_instance.state_tree:render() -- Update all views
+    -- CRITICAL: Update the state tree node, not the parameter node
+    plugin_instance.state_tree.nodes.by_id[node.id]._children_loaded = true
+    -- Don't render here - let the caller do it after we return
+    plugin_instance.logger:debug("Frame:ResolveChildren DONE - added " .. #scopes .. " children")
   else
-    plugin_instance.logger:debug("No scopes found or state_tree missing")
+    plugin_instance.logger:debug("Frame:ResolveChildren DONE - no scopes found")
   end
 end
 
@@ -338,8 +340,9 @@ function Scope:ResolveChildren(node)
       plugin_instance.logger:debug("Adding variable[" .. i .. "] node: " .. var_node.id .. " text: " .. var_node.text)
       plugin_instance.state_tree:add_node(var_node, node.id)
     end
-    node._children_loaded = true
-    plugin_instance.state_tree:render() -- Update all views
+    -- CRITICAL: Update the state tree node, not the parameter node
+    plugin_instance.state_tree.nodes.by_id[node.id]._children_loaded = true
+    -- Don't render here - let the caller do it after we return
   else
     plugin_instance.logger:debug("No variables found or state_tree missing")
   end
@@ -369,46 +372,14 @@ function Variable:ResolveChildren(node)
       plugin_instance.logger:debug("Adding child[" .. i .. "] node: " .. child_node.id .. " text: " .. child_node.text)
       plugin_instance.state_tree:add_node(child_node, node.id)
     end
-    node._children_loaded = true
-    plugin_instance.state_tree:render() -- Update all views
+    -- CRITICAL: Update the state tree node, not the parameter node
+    plugin_instance.state_tree.nodes.by_id[node.id]._children_loaded = true
+    -- Don't render here - let the caller do it after we return
   else
     plugin_instance.logger:debug("No child variables found or state_tree missing")
   end
 end
 
----@param self api.Session
----@param node NuiTree.Node
-function Session:ResolveChildren(node)
-  -- Sessions don't need lazy loading - threads are added reactively
-  -- This is here for consistency with the API
-end
-
----@param self api.Thread  
----@param node NuiTree.Node
-function Thread:ResolveChildren(node)
-  -- Threads don't need lazy loading - stacks are added reactively
-  -- This is here for consistency with the API
-end
-
----@param self api.Stack
----@param node NuiTree.Node
-function Stack:ResolveChildren(node)
-  -- Stacks load frames on demand
-  if node._children_loaded then return end
-  
-  -- Get frames using the Stack API
-  local frames = self:getFrames()
-  if frames and plugin_instance.state_tree then
-    local index = 0
-    for frame in frames:each() do
-      index = index + 1
-      local frame_node = frame:asNode(index)
-      plugin_instance.state_tree:add_node(frame_node, node.id)
-    end
-    node._children_loaded = true
-    plugin_instance.state_tree:render()
-  end
-end
 
 -- ========================================
 -- SESSION NODE
@@ -1071,6 +1042,8 @@ function DebugTree:createViewTree(root_entity, title)
   -- Share the state tree's nodes structure
   view_tree.nodes = self.state_tree.nodes
   
+  self.logger:debug("Shared nodes - view_tree.nodes === state_tree.nodes: " .. tostring(view_tree.nodes == self.state_tree.nodes))
+  
   -- Store the original root_ids for this view
   if root_entity then
     -- Single entity view - ensure the entity's node exists
@@ -1084,11 +1057,7 @@ function DebugTree:createViewTree(root_entity, title)
       self.state_tree:add_node(root_node)
     end
     
-    -- For frame-level trees, pre-expand the frame to show scopes
-    if root_entity.scopes and not root_node._children_loaded then
-      -- Just expand - this will trigger lazy load automatically
-      root_node:expand()
-    end
+    -- Don't pre-expand - let the user expand with 'l' to trigger proper loading
     
     view_tree._view_root_ids = { root_node.id }
   else
@@ -1135,32 +1104,59 @@ function DebugTree:createViewTree(root_entity, title)
         node:collapse()
         view_tree:render()
       else
-        -- Expand the node first
-        node:expand()
+        -- Check if we need to load children
+        local state_node = self.state_tree.nodes.by_id[node.id]
+        local needs_loading = node._dap and node._dap.ResolveChildren and state_node and not state_node._children_loaded
         
-        -- Resolve children if the DAP resource has lazy children
-        if node._dap and node._dap.ResolveChildren and not node._children_loaded then
-          -- This is now properly async - ResolveChildren will complete before we continue
+        if needs_loading then
+          self.logger:debug("ExpandOrDrillIntoNode: Loading children for " .. node.id)
+          
+          -- Expand first to show loading state
+          node:expand()
+          view_tree:render()
+          
+          -- Load children
           node._dap:ResolveChildren(node)
+          
+          -- CRITICAL: After adding children, we need to collapse and re-expand
+          -- because NUI Tree already rendered with no children when we first expanded
+          self.logger:debug("Before collapse/expand: node._is_expanded=" .. tostring(node._is_expanded))
+          self.logger:debug("Before collapse/expand: #node._child_ids=" .. tostring(node._child_ids and #node._child_ids or "nil"))
+          
+          node:collapse()
+          node:expand()
+          
+          self.logger:debug("After collapse/expand: node._is_expanded=" .. tostring(node._is_expanded))
+          self.logger:debug("After collapse/expand: #node._child_ids=" .. tostring(node._child_ids and #node._child_ids or "nil"))
+          
+          self.logger:debug("ExpandOrDrillIntoNode: Children loaded and node re-expanded")
+        else
+          -- Just expand normally if children already exist
+          node:expand()
         end
         
-        -- Render after children are loaded (async chain ensures proper sequencing)
+        -- Render to show the expanded state and children
         view_tree:render()
         
+        self.logger:debug("After render: checking what's visible")
+        
         -- Move cursor to first child if available
-        if node:has_children() then
-          local child_ids = node:get_child_ids()
-          if child_ids and #child_ids > 0 then
-            self:setCursorToNode(view_tree, child_ids[1])
-          end
+        local updated_node = self.state_tree.nodes.by_id[node.id]
+        if updated_node and updated_node._child_ids and #updated_node._child_ids > 0 then
+          self.logger:debug("ExpandOrDrillIntoNode: Moving cursor to first child: " .. updated_node._child_ids[1])
+          self:setCursorToNode(view_tree, updated_node._child_ids[1])
+        else
+          self.logger:debug("ExpandOrDrillIntoNode: No children found for " .. node.id)
         end
       end
     end
   end
   
   -- <CR> and l - Expand/drill into node
-  popup:map("n", "<CR>", ExpandOrDrillIntoNode)
-  popup:map("n", "l", ExpandOrDrillIntoNode)
+  -- Wrap in async context so PascalCase methods work properly
+  local async = require('neodap.tools.async')
+  popup:map("n", "<CR>", function() async.run(ExpandOrDrillIntoNode) end)
+  popup:map("n", "l", function() async.run(ExpandOrDrillIntoNode) end)
   
   -- h - Navigate to parent level or collapse current node
   popup:map("n", "h", function()
