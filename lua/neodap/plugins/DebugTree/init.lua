@@ -780,7 +780,7 @@ function DebugTree:initializeStateTree()
         if parent and parent._child_ids then
           for i, child_id in ipairs(parent._child_ids) do
             if child_id == node_id then
-              table.remove(parent._children, i)
+              table.remove(parent._child_ids, i)
               break
             end
           end
@@ -963,6 +963,13 @@ function DebugTree:createViewTree(root_entity, title)
     nodes = {},  -- Start with empty nodes
     get_node_id = function(node) return node.id end,
   })
+  
+  -- Debug the state tree structure
+  self.logger:info("State tree structure before view creation:")
+  self.logger:info("  Root IDs: " .. vim.inspect(self.state_tree.nodes.root_ids))
+  for id, node in pairs(self.state_tree.nodes.by_id) do
+    self.logger:info("  Node " .. id .. " parent: " .. (node._parent_id or "none") .. " children: " .. vim.inspect(node._child_ids or {}))
+  end
   
   -- Share the state tree's nodes structure
   view_tree.nodes = self.state_tree.nodes
@@ -1279,7 +1286,7 @@ function DebugTree:setupTreeRendering(tree)
     end
 
     -- Add expand/collapse indicator
-    local has_children = node._children and #node._children > 0
+    local has_children = node._child_ids and #node._child_ids > 0
     if has_children or node.expandable then
       if node:is_expanded() then
         line:append("▼ ", "Comment")
@@ -1472,10 +1479,16 @@ end
 -- ========================================
 
 function DebugTree:addExistingChildren(root_entity)
+  self.logger:info("addExistingChildren called for entity type: " .. (root_entity._node_type or "unknown"))
+  
   -- Handle different entity types to add their existing children
   if root_entity.threads then
+    self.logger:info("Processing session with threads")
     -- Session: add existing threads
+    local thread_count = 0
     for thread in root_entity.threads:each() do
+      thread_count = thread_count + 1
+      self.logger:info("Adding thread " .. thread.id .. " to session " .. root_entity.id)
       local thread_node = thread:asNode()
       self.state_tree:add_node(thread_node, "session:" .. tostring(root_entity.id))
 
@@ -1483,11 +1496,13 @@ function DebugTree:addExistingChildren(root_entity)
       if thread.stopped then
         local stack = thread:stack()
         if stack then
+          self.logger:info("Adding stack for stopped thread " .. thread.id)
           local stack_node = stack:asNode()
           self.state_tree:add_node(stack_node, "thread:" .. tostring(thread.id))
         end
       end
     end
+    self.logger:info("Added " .. thread_count .. " threads to session " .. root_entity.id)
     
     -- Also add existing child sessions if any
     if root_entity.children then
