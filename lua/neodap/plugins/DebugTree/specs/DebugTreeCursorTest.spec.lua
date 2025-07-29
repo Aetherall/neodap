@@ -142,9 +142,10 @@ Mode: n
 ]]
 
 
+
 --[[ TERMINAL SNAPSHOT: 03_navigated_to_thread
 Size: 24x80
-Cursor: [3, 3] (line 3, col 3)
+Cursor: [3, 11] (line 3, col 11)
 Mode: n
 
  1| // Test fixture for Variables plugin - various variable types
@@ -170,12 +171,13 @@ Mode: n
 21|             data: ["a", "b", "c"]
 22|         },
 23| lua/testing/fixtures/variables/complex.js                     7,1            Top
-24|                                                               3,4-2         All
+24|                                                               3,12-6        All
 ]]
+
 
 --[[ TERMINAL SNAPSHOT: 04_navigated_to_stack
 Size: 24x80
-Cursor: [4, 0] (line 4, col 0)
+Cursor: [4, 16] (line 4, col 16)
 Mode: n
 
  1| // Test fixture for Variables plugin - various variable types
@@ -201,12 +203,13 @@ Mode: n
 21|             data: ["a", "b", "c"]
 22|         },
 23| lua/testing/fixtures/variables/complex.js                     7,1            Top
-24|                                                               4,1           All
+24|                                                               4,17-9        All
 ]]
+
 
 --[[ TERMINAL SNAPSHOT: 05_navigated_to_frame
 Size: 24x80
-Cursor: [6, 0] (line 6, col 0)
+Cursor: [6, 21] (line 6, col 21)
 Mode: n
 
  1| // Test fixture for Variables plugin - various variable types
@@ -216,14 +219,14 @@ Mode: n
  5|     let│▼ 📡  Session 2                                                  │
  6|     let│╰─ ▼ ⏸  Thread 0 (stopped)                                      │
  7|     let││  ╰─ ▼ 📚  Stack (8 frames)                                     │
- 8|     let││  │  ╰─ ▶ 🖼   global.testVariables                             │
- 9|     let││  │  ╰─ ▶ 🖼   <anonymous>                                      │
-10|     let││  │  ╰─ ▶ 🖼   Module._compile                                  │lue";
-11|     let││  │  ╰─ ▶ 🖼   Module._extensions..js                           │e trunc
-12| ated wh││  │  ╰─ ▶ 🖼   Module.load                                      │
-13|        ││  │  ╰─ ▶ 🖼   Module._load                                     │
-14|     // ││  │  ╰─ ▶ 🖼   function Module(id = '', parent) {.executeUserEnt│
-15|     let││  │  ╰─ ▶ 🖼   <anonymous>                                      │
+ 8|     let││  │  ╰─ ▶ #1 🖼   global.testVariables                          │
+ 9|     let││  │  ╰─ ▶ #2 🖼   <anonymous>                                   │
+10|     let││  │  ╰─ ▶ #3 🖼   Module._compile                               │lue";
+11|     let││  │  ╰─ ▶ #4 🖼   Module._extensions..js                        │e trunc
+12| ated wh││  │  ╰─ ▶ #5 🖼   Module.load                                   │
+13|        ││  │  ╰─ ▶ #6 🖼   Module._load                                  │
+14|     // ││  │  ╰─ ▶ #7 🖼   function Module(id = '', parent) {.executeUser│
+15|     let││  │  ╰─ ▶ #8 🖼   <anonymous>                                   │
 16|     let│                                                                │
 17|        │                                                                │
 18|        │                                                                │
@@ -232,12 +235,13 @@ Mode: n
 21|             data: ["a", "b", "c"]
 22|         },
 23| lua/testing/fixtures/variables/complex.js                     7,1            Top
-24|                                                               6,1           All
+24|                                                               6,22-12       All
 ]]
+
 
 --[[ TERMINAL SNAPSHOT: 06_navigated_to_local_scope
 Size: 24x80
-Cursor: [7, 0] (line 7, col 0)
+Cursor: [7, 21] (line 7, col 21)
 Mode: n
 
  1| // Test fixture for Variables plugin - various variable types
@@ -247,28 +251,29 @@ Mode: n
  5|     let│▼ 📡  Session 2                                                  │
  6|     let│╰─ ▼ ⏸  Thread 0 (stopped)                                      │
  7|     let││  ╰─ ▼ 📚  Stack (8 frames)                                     │
- 8|     let││  │  ╰─ ▶ 🖼   global.testVariables                             │
- 9|     let││  │  ╰─ ▼ 🖼   <anonymous>                                      │
+ 8|     let││  │  ╰─ ▶ #1 🖼   global.testVariables                          │
+ 9|     let││  │  ╰─ ▼ #2 🖼   <anonymous>                                   │
 10|     let││  │  │  ╰─ ▶ 📁  Local                                          │lue";
 11|     let││  │  │  ╰─ ▶ 🌍  Global                                         │e trunc
-12| ated wh││  │  ╰─ ▶ 🖼   Module._compile                                  │
-13|        ││  │  ╰─ ▶ 🖼   Module._extensions..js                           │
-14|     // ││  │  ╰─ ▶ 🖼   Module.load                                      │
-15|     let││  │  ╰─ ▶ 🖼   Module._load                                     │
-16|     let││  │  ╰─ ▶ 🖼   function Module(id = '', parent) {.executeUserEnt│
-17|        ││  │  ╰─ ▶ 🖼   <anonymous>                                      │
+12| ated wh││  │  ╰─ ▶ #3 🖼   Module._compile                               │
+13|        ││  │  ╰─ ▶ #4 🖼   Module._extensions..js                        │
+14|     // ││  │  ╰─ ▶ #5 🖼   Module.load                                   │
+15|     let││  │  ╰─ ▶ #6 🖼   Module._load                                  │
+16|     let││  │  ╰─ ▶ #7 🖼   function Module(id = '', parent) {.executeUser│
+17|        ││  │  ╰─ ▶ #8 🖼   <anonymous>                                   │
 18|        │                                                                │
 19|        ╰────────────────────────────────────────────────────────────────╯
 20|             level: 2,
 21|             data: ["a", "b", "c"]
 22|         },
 23| lua/testing/fixtures/variables/complex.js                     7,1            Top
-24|                                                               7,1           All
+24|                                                               7,22-12       All
 ]]
+
 
 --[[ TERMINAL SNAPSHOT: 07_first_variable
 Size: 24x80
-Cursor: [8, 0] (line 8, col 0)
+Cursor: [8, 19] (line 8, col 19)
 Mode: n
 
  1| // Test fixture for Variables plugin - various variable types
@@ -278,8 +283,8 @@ Mode: n
  5|     let│▼ 📡  Session 2                                                  │
  6|     let│╰─ ▼ ⏸  Thread 0 (stopped)                                      │
  7|     let││  ╰─ ▼ 📚  Stack (8 frames)                                     │
- 8|     let││  │  ╰─ ▶ 🖼   global.testVariables                             │
- 9|     let││  │  ╰─ ▼ 🖼   <anonymous>                                      │
+ 8|     let││  │  ╰─ ▶ #1 🖼   global.testVariables                          │
+ 9|     let││  │  ╰─ ▼ #2 🖼   <anonymous>                                   │
 10|     let││  │  │  ╰─ ▼ 📁  Local                                          │lue";
 11|     let││  │  │  │  ╰─   󰉿 __dirname: "'/home/aetherall/workspace/githu.│e trunc
 12| ated wh││  │  │  │  ╰─   󰉿 __filename: "'/home/aetherall/workspace/githu│
@@ -294,12 +299,13 @@ Mode: n
 21|             data: ["a", "b", "c"]
 22|         },
 23| lua/testing/fixtures/variables/complex.js                     7,1            Top
-24|                                                               8,1           Top
+24|                                                               8,20-12       Top
 ]]
+
 
 --[[ TERMINAL SNAPSHOT: 08_second_variable
 Size: 24x80
-Cursor: [9, 0] (line 9, col 0)
+Cursor: [9, 19] (line 9, col 19)
 Mode: n
 
  1| // Test fixture for Variables plugin - various variable types
@@ -309,8 +315,8 @@ Mode: n
  5|     let│▼ 📡  Session 2                                                  │
  6|     let│╰─ ▼ ⏸  Thread 0 (stopped)                                      │
  7|     let││  ╰─ ▼ 📚  Stack (8 frames)                                     │
- 8|     let││  │  ╰─ ▶ 🖼   global.testVariables                             │
- 9|     let││  │  ╰─ ▼ 🖼   <anonymous>                                      │
+ 8|     let││  │  ╰─ ▶ #1 🖼   global.testVariables                          │
+ 9|     let││  │  ╰─ ▼ #2 🖼   <anonymous>                                   │
 10|     let││  │  │  ╰─ ▼ 📁  Local                                          │lue";
 11|     let││  │  │  │  ╰─   󰉿 __dirname: "'/home/aetherall/workspace/githu.│e trunc
 12| ated wh││  │  │  │  ╰─   󰉿 __filename: "'/home/aetherall/workspace/githu│
@@ -325,12 +331,13 @@ Mode: n
 21|             data: ["a", "b", "c"]
 22|         },
 23| lua/testing/fixtures/variables/complex.js                     7,1            Top
-24|                                                               9,1           Top
+24|                                                               9,20-12       Top
 ]]
+
 
 --[[ TERMINAL SNAPSHOT: 09_third_variable
 Size: 24x80
-Cursor: [10, 0] (line 10, col 0)
+Cursor: [10, 19] (line 10, col 19)
 Mode: n
 
  1| // Test fixture for Variables plugin - various variable types
@@ -340,8 +347,8 @@ Mode: n
  5|     let│▼ 📡  Session 2                                                  │
  6|     let│╰─ ▼ ⏸  Thread 0 (stopped)                                      │
  7|     let││  ╰─ ▼ 📚  Stack (8 frames)                                     │
- 8|     let││  │  ╰─ ▶ 🖼   global.testVariables                             │
- 9|     let││  │  ╰─ ▼ 🖼   <anonymous>                                      │
+ 8|     let││  │  ╰─ ▶ #1 🖼   global.testVariables                          │
+ 9|     let││  │  ╰─ ▼ #2 🖼   <anonymous>                                   │
 10|     let││  │  │  ╰─ ▼ 📁  Local                                          │lue";
 11|     let││  │  │  │  ╰─   󰉿 __dirname: "'/home/aetherall/workspace/githu.│e trunc
 12| ated wh││  │  │  │  ╰─   󰉿 __filename: "'/home/aetherall/workspace/githu│
@@ -356,12 +363,13 @@ Mode: n
 21|             data: ["a", "b", "c"]
 22|         },
 23| lua/testing/fixtures/variables/complex.js                     7,1            Top
-24|                                                               10,1          Top
+24|                                                               10,20-12      Top
 ]]
+
 
 --[[ TERMINAL SNAPSHOT: 10_navigated_back_up
 Size: 24x80
-Cursor: [9, 0] (line 9, col 0)
+Cursor: [9, 19] (line 9, col 19)
 Mode: n
 
  1| // Test fixture for Variables plugin - various variable types
@@ -371,8 +379,8 @@ Mode: n
  5|     let│▼ 📡  Session 2                                                  │
  6|     let│╰─ ▼ ⏸  Thread 0 (stopped)                                      │
  7|     let││  ╰─ ▼ 📚  Stack (8 frames)                                     │
- 8|     let││  │  ╰─ ▶ 🖼   global.testVariables                             │
- 9|     let││  │  ╰─ ▼ 🖼   <anonymous>                                      │
+ 8|     let││  │  ╰─ ▶ #1 🖼   global.testVariables                          │
+ 9|     let││  │  ╰─ ▼ #2 🖼   <anonymous>                                   │
 10|     let││  │  │  ╰─ ▼ 📁  Local                                          │lue";
 11|     let││  │  │  │  ╰─   󰉿 __dirname: "'/home/aetherall/workspace/githu.│e trunc
 12| ated wh││  │  │  │  ╰─   󰉿 __filename: "'/home/aetherall/workspace/githu│
@@ -387,5 +395,5 @@ Mode: n
 21|             data: ["a", "b", "c"]
 22|         },
 23| lua/testing/fixtures/variables/complex.js                     7,1            Top
-24|                                                               9,1           Top
+24|                                                               9,20-12       Top
 ]]

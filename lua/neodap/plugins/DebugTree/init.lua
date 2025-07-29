@@ -1180,6 +1180,9 @@ function DebugTree:setupTreeRendering(tree)
       line:append("  ")
     end
 
+    -- Store cursor position - this is where the content starts
+    node._cursor_col = line:content():len()
+
     -- Add content (ensure no newlines)
     local text = node.text or ""
     text = text:gsub("[\n\r]+", " ")
@@ -1249,48 +1252,13 @@ function DebugTree:getVisibleNodes(tree)
   return visible_nodes
 end
 
--- Smart cursor positioning that finds the first meaningful character
+-- Smart cursor positioning using stored cursor column
 function DebugTree:setCursorToNode(tree, node_id, window)
   local node, line = tree:get_node(node_id)
   if node and line then
-    -- Get the line content
-    local lines = vim.api.nvim_buf_get_lines(tree.bufnr, line - 1, line, false)
-    if lines and lines[1] then
-      local line_text = lines[1]
-      
-      -- Skip past tree structure characters to find actual content
-      local pos = 1
-      local len = #line_text
-      
-      -- Skip tree drawing characters and spaces
-      while pos <= len do
-        local char = line_text:sub(pos, pos)
-        local utf8_char = line_text:sub(pos, pos + 2)
-        
-        -- Check for tree structure characters
-        if char == "│" or char == " " or char == "─" then
-          pos = pos + 1
-        elseif utf8_char == "╰" or utf8_char == "├" then
-          pos = pos + 3
-        elseif utf8_char == "▶" or utf8_char == "▼" then
-          -- Found expand/collapse indicator, position after it + space
-          pos = pos + 4  -- Skip the indicator and following space
-          break
-        else
-          -- Found content
-          break
-        end
-      end
-      
-      -- Ensure we don't go past the line
-      if pos > len then pos = len end
-      if pos < 1 then pos = 1 end
-      
-      vim.api.nvim_win_set_cursor(window or 0, {line, pos - 1})
-    else
-      -- Fallback
-      vim.api.nvim_win_set_cursor(window or 0, {line, 0})
-    end
+    -- Use the stored cursor position if available
+    local col = node._cursor_col or 0
+    vim.api.nvim_win_set_cursor(window or 0, {line, col})
   end
 end
 
