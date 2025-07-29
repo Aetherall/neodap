@@ -19,6 +19,99 @@ local DebugTree = BasePlugin:extend()
 DebugTree.name = "DebugTree"
 
 -- ========================================
+-- VARIABLE PRESENTATION CONFIGURATION
+-- ========================================
+
+-- Rich type icons and formatting borrowed from Variables4
+local VariablePresentation = {
+  styles = {
+    -- JavaScript primitives
+    string = { icon = "󰉿", highlight = "String", truncate = 35 },
+    number = { icon = "󰎠", highlight = "Number", truncate = 40 },
+    boolean = { icon = "◐", highlight = "Boolean", truncate = 40 },
+    undefined = { icon = "󰟢", highlight = "Constant", truncate = 40 },
+    ['nil'] = { icon = "∅", highlight = "Constant", truncate = 40 },
+    null = { icon = "∅", highlight = "Constant", truncate = 40 },
+    
+    -- Complex types
+    object = { icon = "󰅩", highlight = "Structure", truncate = 40 },
+    array = { icon = "󰅪", highlight = "Structure", truncate = 40 },
+    ['function'] = { icon = "󰊕", highlight = "Function", truncate = 25 },
+    
+    -- Special types
+    date = { icon = "󰃭", highlight = "Special", truncate = 40 },
+    regexp = { icon = "󰑑", highlight = "String", truncate = 40 },
+    map = { icon = "󰘣", highlight = "Type", truncate = 40 },
+    set = { icon = "󰘦", highlight = "Type", truncate = 40 },
+    
+    -- Default fallback
+    default = { icon = "󰀬", highlight = "Identifier", truncate = 40 },
+  }
+}
+
+-- Get presentation style for a variable type
+local function getVariableStyle(var_type)
+  if not var_type then return VariablePresentation.styles.default end
+  return VariablePresentation.styles[var_type:lower()] or VariablePresentation.styles.default
+end
+
+-- Detect if a value is an array by checking its string representation
+local function isArray(ref)
+  return ref and ref.type and ref.type:lower() == "object" and 
+         ref.value and ref.value:match("^%[.*%]$")
+end
+
+-- Format variable value with smart truncation and type-specific handling
+local function formatVariableValue(ref, style)
+  if not ref then return "undefined" end
+  
+  local value = ref.value or ""
+  local var_type = ref.type and ref.type:lower() or "default"
+  
+  -- Handle multiline values by inlining
+  if type(value) == "string" then
+    value = value:gsub("[\r\n]+", " "):gsub("\\[nrt]", " "):gsub("%s+", " ")
+    value = value:match("^%s*(.-)%s*$") or ""
+    
+    -- Smart truncation
+    if #value > style.truncate then
+      value = value:sub(1, style.truncate - 3) .. "..."
+    end
+  end
+  
+  -- Type-specific formatting
+  if var_type == "string" then
+    return string.format('"%s"', value)
+  elseif var_type == "function" then
+    -- Extract function signature
+    if type(value) == "string" and value:match("^function") then
+      local signature = value:match("^function%s*([^{]*)")
+      if signature then
+        return "ƒ " .. signature:gsub("%s+", " "):sub(1, 20) .. (signature:len() > 20 and "..." or "")
+      end
+    elseif type(value) == "string" and value:match("^ƒ") then
+      -- Already formatted function
+      return value
+    end
+    return "ƒ (...)"
+  elseif var_type == "object" and ref.variablesReference and ref.variablesReference > 0 then
+    -- Check for array presentation
+    if isArray(ref) then
+      -- Extract array length if available
+      local length = value:match("^%((%d+)%)") or value:match("^Array%((%d+)%)")
+      if length then
+        return "(" .. length .. ") [...]"
+      end
+      return "[...]"
+    end
+    -- Object with children
+    return value:match("^%{.*%}$") and value or ("{...}")
+  end
+  
+  return tostring(value)
+end
+
+-- ========================================
 -- AUTONOMOUS NODE EXTENSIONS
 -- ========================================
 
@@ -399,42 +492,32 @@ end
 function Variable:asNode()
   if self._cached_node then return self._cached_node end
 
-  -- Use Variables4's sophisticated variable rendering
-  local icon = "📄"
-  local expandable = (self.ref and self.ref.variablesReference and self.ref.variablesReference > 0)
-
-  -- Determine icon based on type
-  local value_type = type(self.ref and self.ref.value)
-  if value_type == "table" then
-    icon = "📋"
-  elseif value_type == "function" then
-    icon = "⚡"
-  elseif value_type == "boolean" then
-    icon = "🔘"
-  elseif value_type == "number" then
-    icon = "🔢"
-  elseif value_type == "string" then
-    icon = "📝"
+  -- Get variable type and style
+  local var_type = (self.ref and self.ref.type) and self.ref.type:lower() or "default"
+  local style = getVariableStyle(var_type)
+  
+  -- Check for array vs object
+  if isArray(self.ref) then
+    style = getVariableStyle("array")
   end
-
-  local display_value = self.ref and self.ref.value or ""
-  if type(display_value) == "string" then
-    -- Clean newlines and trim to 50 chars
-    display_value = display_value:gsub("[\n\r\t]+", " "):gsub("%s+", " ")
-    if #display_value > 50 then
-      display_value = string.sub(display_value, 1, 47) .. "..."
-    end
-  end
-
+  
+  -- Check for lazy variables
+  local is_lazy = self.ref and self.ref.presentationHint and self.ref.presentationHint.lazy
+  
+  -- Format the value using sophisticated formatting
+  local formatted_value = formatVariableValue(self.ref, style)
+  
+  -- Clean variable name
   local var_name = self.name or (self.ref and self.ref.name) or "unknown"
-  -- Clean variable name of newlines
   var_name = tostring(var_name):gsub("[\n\r\t]+", " "):gsub("%s+", " "):match("^%s*(.-)%s*$")
   
-  local var_ref = (self.ref and self.ref.variablesReference) or 0
+  -- Build node text with icon
+  local icon = is_lazy and "⏳" or style.icon  -- Show loading icon for lazy vars
+  local text = icon .. " " .. var_name .. ": " .. formatted_value
+  text = text:gsub("[\n\r]+", " ")  -- Final safety check
   
-  -- Ensure the entire text has no newlines
-  local text = icon .. " " .. var_name .. ": " .. tostring(display_value)
-  text = text:gsub("[\n\r]+", " ")
+  local var_ref = (self.ref and self.ref.variablesReference) or 0
+  local expandable = var_ref > 0
   
   local node = NuiTree.Node({
     id = "variable:" .. var_name .. ":" .. tostring(var_ref),
@@ -442,6 +525,8 @@ function Variable:asNode()
     type = "variable",
     expandable = expandable,
     _variable = self,
+    _highlight = style.highlight,  -- Store highlight group for rendering
+    _is_lazy = is_lazy,           -- Track lazy status
   })
   
   addNodeCompatibilityMethods(node, plugin_instance.state_tree)
@@ -666,9 +751,13 @@ function DebugTree:openFrameTree()
       local stack = thread:stack()
       if stack then
         local frames = stack:getFrames()
-        if frames and #frames > 0 then
-          current_frame = frames[1] -- Top frame
-          break
+        if frames then
+          -- Get first frame from Frames iterator
+          for frame in frames:each() do
+            current_frame = frame
+            break
+          end
+          if current_frame then break end
         end
       end
     end
@@ -761,8 +850,26 @@ function DebugTree:createViewTree(root_entity, title)
   
   -- Store the original root_ids for this view
   if root_entity then
-    -- Single entity view - show only this entity's subtree
+    -- Single entity view - ensure the entity's node exists
     local root_node = root_entity:asNode()
+    
+    -- For frames, we need to add scopes as children
+    if root_entity.scopes then
+      -- It's a frame - add its scopes
+      local scopes = root_entity:scopes()
+      if scopes then
+        for _, scope in ipairs(scopes) do
+          local scope_node = scope:asNode()
+          self.state_tree:add_node(scope_node, root_node.id)
+        end
+      end
+    end
+    
+    -- Make sure the node is in the state tree
+    if not self.state_tree.nodes.by_id[root_node.id] then
+      self.state_tree:add_node(root_node)
+    end
+    
     view_tree._view_root_ids = { root_node.id }
   else
     -- Full view - show all sessions
@@ -791,35 +898,159 @@ function DebugTree:createViewTree(root_entity, title)
   -- Initial render
   view_tree:render()
 
-  -- Setup keybindings
-  popup:map("n", "<CR>", function()
+  -- Setup keybindings with vim-style navigation
+  local function expandOrDrillIntoNode()
     local node = view_tree:get_node()
-    if node then
-      -- Debug logging
-      self.logger:debug("Key pressed on node: " .. (node.id or "nil") .. " type: " .. (node.type or "nil"))
-      self.logger:debug("Node has _lazy_load: " .. tostring(node._lazy_load ~= nil))
-      self.logger:debug("Node _children_loaded: " .. tostring(node._children_loaded))
-      self.logger:debug("Node has_children: " .. tostring(node:has_children()))
-      
-      -- For all expandable nodes, just toggle expansion
-      -- The expand() method will handle lazy loading if needed
-      if node:has_children() or node.expandable or node._lazy_load then
-        self.logger:debug("Toggling expansion for node: " .. node.id .. " (expandable: " .. tostring(node.expandable) .. ", has_lazy_load: " .. tostring(node._lazy_load ~= nil) .. ")")
-        -- Toggle expansion
-        if node:is_expanded() then
-          node:collapse()
-        else
-          node:expand()
-        end
-        view_tree:render()
+    if not node then return end
+    
+    -- Handle lazy variables
+    if node._is_lazy then
+      self:resolveLazyVariable(node, view_tree)
+      return
+    end
+    
+    -- For all expandable nodes, toggle expansion
+    if node:has_children() or node.expandable or node._lazy_load then
+      if node:is_expanded() then
+        node:collapse()
       else
-        self.logger:debug("Node has no children and not expandable: " .. node.id)
+        node:expand()
+        -- Move to first child after expanding
+        if node:has_children() then
+          local child_ids = node:get_child_ids()
+          if child_ids and #child_ids > 0 then
+            vim.schedule(function()
+              local child_node, line = view_tree:get_node(child_ids[1])
+              if child_node and line then
+                vim.api.nvim_win_set_cursor(0, {line, 0})
+              end
+            end)
+          end
+        end
       end
+      view_tree:render()
+    end
+  end
+  
+  -- <CR> and l - Expand/drill into node
+  popup:map("n", "<CR>", expandOrDrillIntoNode)
+  popup:map("n", "l", expandOrDrillIntoNode)
+  
+  -- h - Navigate to parent level or collapse current node
+  popup:map("n", "h", function()
+    local node = view_tree:get_node()
+    if not node then return end
+    
+    if node:is_expanded() then
+      -- Collapse current node
+      node:collapse()
+      view_tree:render()
     else
-      self.logger:debug("No node found at cursor position")
+      -- Navigate to parent
+      local parent_id = node:get_parent_id()
+      if parent_id then
+        local parent_node, line = view_tree:get_node(parent_id)
+        if parent_node and line then
+          vim.api.nvim_win_set_cursor(0, {line, 0})
+        end
+      end
     end
   end)
-
+  
+  -- j - Navigate to next sibling or next visible node
+  popup:map("n", "j", function()
+    local node = view_tree:get_node()
+    if not node then 
+      vim.cmd("normal! j")
+      return
+    end
+    
+    -- Get all visible nodes in order
+    local visible_nodes = self:getVisibleNodes(view_tree)
+    local current_id = node:get_id()
+    
+    for i, node_id in ipairs(visible_nodes) do
+      if node_id == current_id and i < #visible_nodes then
+        local next_node, line = view_tree:get_node(visible_nodes[i + 1])
+        if next_node and line then
+          vim.api.nvim_win_set_cursor(0, {line, 0})
+          return
+        end
+      end
+    end
+    
+    -- Fallback to normal j
+    vim.cmd("normal! j")
+  end)
+  
+  -- k - Navigate to previous sibling or previous visible node
+  popup:map("n", "k", function()
+    local node = view_tree:get_node()
+    if not node then
+      vim.cmd("normal! k")
+      return
+    end
+    
+    -- Get all visible nodes in order
+    local visible_nodes = self:getVisibleNodes(view_tree)
+    local current_id = node:get_id()
+    
+    for i, node_id in ipairs(visible_nodes) do
+      if node_id == current_id and i > 1 then
+        local prev_node, line = view_tree:get_node(visible_nodes[i - 1])
+        if prev_node and line then
+          vim.api.nvim_win_set_cursor(0, {line, 0})
+          return
+        end
+      end
+    end
+    
+    -- Fallback to normal k
+    vim.cmd("normal! k")
+  end)
+  
+  -- f - Focus on current node (show only its subtree)
+  popup:map("n", "f", function()
+    local node = view_tree:get_node()
+    if not node then return end
+    
+    -- Store the original root_ids if not already stored
+    if not view_tree._original_root_ids then
+      view_tree._original_root_ids = vim.deepcopy(view_tree._view_root_ids)
+    end
+    
+    -- Focus on this node by making it the only root
+    view_tree._view_root_ids = { node:get_id() }
+    view_tree.nodes.root_ids = view_tree._view_root_ids
+    
+    -- Update popup title to show focus
+    local title = " DebugTree - Focused: " .. (node.text or "Unknown") .. " "
+    popup.border:set_text("top", title, "center")
+    
+    view_tree:render()
+  end)
+  
+  -- F - Unfocus (restore original view)
+  popup:map("n", "F", function()
+    if view_tree._original_root_ids then
+      view_tree._view_root_ids = view_tree._original_root_ids
+      view_tree.nodes.root_ids = view_tree._view_root_ids
+      view_tree._original_root_ids = nil
+      
+      -- Restore original title
+      popup.border:set_text("top", " " .. title .. " ", "center")
+      
+      view_tree:render()
+    end
+  end)
+  
+  -- r - Refresh tree
+  popup:map("n", "r", function()
+    view_tree:render()
+    vim.notify("Tree refreshed", vim.log.levels.INFO)
+  end)
+  
+  -- q - Quit
   popup:map("n", "q", function()
     -- Remove from active view trees
     for i, vt in ipairs(self.active_view_trees) do
@@ -830,9 +1061,28 @@ function DebugTree:createViewTree(root_entity, title)
     end
     popup:unmount()
   end)
-
+  
+  -- ? - Help
   popup:map("n", "?", function()
-    vim.notify("DebugTree Help:\n<CR> - Expand/Collapse\nq - Quit\n? - This help", vim.log.levels.INFO)
+    local help_text = [[
+DebugTree Navigation:
+  h       - Navigate to parent / Collapse node
+  j       - Navigate to next node
+  k       - Navigate to previous node  
+  l/<CR>  - Expand node / Drill into
+  
+Controls:
+  f       - Focus on current subtree
+  F       - Unfocus (restore full view)
+  r       - Refresh tree
+  q       - Quit
+  ?       - Show this help
+  
+Features:
+  ⏳      - Lazy variable (not yet loaded)
+  ▶/▼    - Expandable/Expanded node]]
+    
+    vim.notify(help_text, vim.log.levels.INFO)
   end)
 end
 
@@ -966,6 +1216,71 @@ function DebugTree:addExistingChildren(root_entity)
     end
   end
   -- Frame and deeper levels use lazy loading, so no need to pre-populate
+end
+
+-- ========================================
+-- NAVIGATION HELPERS
+-- ========================================
+
+-- Get all visible nodes in tree order
+function DebugTree:getVisibleNodes(tree)
+  local visible_nodes = {}
+  
+  local function traverse(node_id)
+    local node = tree.nodes.by_id[node_id]
+    if not node then return end
+    
+    table.insert(visible_nodes, node_id)
+    
+    if node:is_expanded() and node:has_children() then
+      for _, child_id in ipairs(node:get_child_ids()) do
+        traverse(child_id)
+      end
+    end
+  end
+  
+  -- Traverse from root nodes
+  for _, root_id in ipairs(tree.nodes.root_ids) do
+    traverse(root_id)
+  end
+  
+  return visible_nodes
+end
+
+-- Resolve lazy variable by fetching its actual value
+function DebugTree:resolveLazyVariable(node, view_tree)
+  local variable = node._variable
+  if not variable or not variable.resolve then
+    self.logger:warn("Cannot resolve lazy variable - no variable or resolve method")
+    return
+  end
+  
+  -- Call the variable's resolve method
+  require('neodap.tools.async').run(function()
+    local success = variable:resolve()
+    if success then
+      -- Update node text with resolved value
+      local var_type = (variable.ref and variable.ref.type) and variable.ref.type:lower() or "default"
+      local style = getVariableStyle(var_type)
+      
+      if isArray(variable.ref) then
+        style = getVariableStyle("array")
+      end
+      
+      local formatted_value = formatVariableValue(variable.ref, style)
+      local var_name = variable.name or (variable.ref and variable.ref.name) or "unknown"
+      
+      node.text = style.icon .. " " .. var_name .. ": " .. formatted_value
+      node._is_lazy = false
+      
+      -- Re-render tree
+      view_tree:render()
+      
+      self.logger:info("Resolved lazy variable: " .. var_name)
+    else
+      self.logger:warn("Failed to resolve lazy variable")
+    end
+  end)
 end
 
 -- ========================================
