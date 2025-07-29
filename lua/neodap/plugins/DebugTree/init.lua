@@ -615,6 +615,11 @@ end
 ---@return NuiTree.Node
 function Variable:asNode()
   if self._cached_node then return self._cached_node end
+  
+  -- Store scope information if available
+  if not self.scope and self.parent and self.parent.name then
+    self.scope = self.parent
+  end
 
   -- Get variable type and style
   local var_type = (self.ref and self.ref.type) and self.ref.type:lower() or "default"
@@ -641,26 +646,11 @@ function Variable:asNode()
   local var_name = self.name or (self.ref and self.ref.name) or "unknown"
   var_name = tostring(var_name):gsub("[\n\r\t]+", " "):gsub("%s+", " "):match("^%s*(.-)%s*$")
   
-  -- Build prefix with visibility and attributes
-  local prefix = ""
-  
-  -- Add visibility prefix
-  if visibility and VisibilityPrefixes[visibility] then
-    prefix = prefix .. VisibilityPrefixes[visibility] .. " "
-  end
-  
-  -- Add attribute indicators
-  for _, attr in ipairs(attributes) do
-    if AttributeIndicators[attr] then
-      prefix = prefix .. AttributeIndicators[attr] .. " "
-    end
-  end
-  
   -- Choose icon based on kind or type
   local icon = is_lazy and "⏳" or style.icon  -- Show loading icon for lazy vars
   
-  -- Build node text with all information
-  local text = prefix .. icon .. " " .. var_name .. ": " .. formatted_value
+  -- Build node text
+  local text = icon .. " " .. var_name .. ": " .. formatted_value
   text = text:gsub("[\n\r]+", " ")  -- Final safety check
   
   local var_ref = (self.ref and self.ref.variablesReference) or 0
@@ -1335,30 +1325,69 @@ function DebugTree:setupTreeRendering(tree)
         -- Add icon with default highlighting
         line:append(icon, "@text.note")
         
-        -- Add variable name with appropriate highlighting
+        -- Determine variable name highlighting based on DAP metadata
         local name_highlight = "@variable"
         
-        -- Use specific highlights based on kind
-        if node._kind == "method" then
-          name_highlight = "@method"
-        elseif node._kind == "property" then
-          name_highlight = "@property"
-        elseif node._kind == "class" then
-          name_highlight = "@type"
-        elseif node._kind == "event" then
-          name_highlight = "@function.builtin"
+        -- Analyze variable name patterns for better highlighting
+        local var_name_upper = var_name:upper()
+        local var_name_lower = var_name:lower()
+        
+        -- Check for common patterns first
+        if var_name:match("^[A-Z][a-zA-Z0-9]*$") then
+          -- PascalCase typically indicates a class or constructor
+          name_highlight = "@constructor"
+        elseif var_name:match("^[A-Z_]+$") then
+          -- UPPER_CASE typically indicates constants
+          name_highlight = "@constant"
+        elseif var_name:match("^_") then
+          -- Leading underscore often indicates private
+          name_highlight = "@field"
+        elseif var_name:match("^%$") then
+          -- $ prefix (like in observables)
+          name_highlight = "@variable.builtin"
         end
         
-        -- Check for special attributes
+        -- Override with DAP presentation hints if available
+        if node._kind then
+          if node._kind == "method" then
+            name_highlight = "@method"
+          elseif node._kind == "property" then
+            name_highlight = "@property"
+          elseif node._kind == "class" then
+            name_highlight = "@type"
+          elseif node._kind == "event" then
+            name_highlight = "@function.builtin"
+          end
+        end
+        
+        -- Check attributes for more specific highlighting
         if node._attributes then
           for _, attr in ipairs(node._attributes) do
             if attr == "constant" then
               name_highlight = "@constant"
               break
+            elseif attr == "readOnly" then
+              name_highlight = "@constant"
+              break
             elseif attr == "static" then
-              -- Could use a different highlight for static
               name_highlight = "@variable.builtin"
               break
+            end
+          end
+        end
+        
+        -- Check if this is in a specific scope that gives context
+        if node._dap and node._dap.scope then
+          local scope_name = node._dap.scope.name
+          if scope_name == "Arguments" or scope_name == "Local" then
+            -- If it's a function parameter or local variable
+            if var_name:match("^[a-z]") and not node._kind then
+              name_highlight = "@parameter"
+            end
+          elseif scope_name == "Global" then
+            -- Global variables might use different highlighting
+            if not node._kind and not var_name:match("^[A-Z]") then
+              name_highlight = "@variable.builtin"
             end
           end
         end
