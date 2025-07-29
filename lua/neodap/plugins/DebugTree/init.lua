@@ -185,9 +185,8 @@ local function addNodeCompatibilityMethods(node, state_tree)
     end
   end
   
-  -- Async version that waits for lazy loading to complete
-  node.ExpandAndWait = function(self)
-    self._is_expanded = true
+  -- Resolve children if they haven't been loaded yet
+  node.ResolveChildren = function(self)
     if self._lazy_load and not self._children_loaded then
       -- Set a flag that we're waiting for children
       self._waiting_for_children = true
@@ -972,12 +971,13 @@ function DebugTree:createViewTree(root_entity, title)
       if node:is_expanded() then
         node:collapse()
       else
-        -- Use async expand if available, otherwise regular expand
-        if node.ExpandAndWait then
-          node:ExpandAndWait()
-        else
-          node:expand()
+        -- Resolve children first if needed (async wait for lazy loading)
+        if node.ResolveChildren then
+          node:ResolveChildren()
         end
+        
+        -- Now expand the node
+        node:expand()
         
         -- Move to first child after expanding
         if node:has_children() then
