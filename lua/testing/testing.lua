@@ -32,7 +32,8 @@ return function(describe, it)
 
 
   ---@param fn fun(api: Api, manager: Manager)
-  function T.Scenario(fn)
+  function T.Scenario(fn, ms)
+    ms = ms or 20000
     local filename = debug.getinfo(2, "S").source:match("([^/]+)%.lua$")
     it(filename, function()
       local future = nio.control.future()
@@ -46,7 +47,8 @@ return function(describe, it)
       end)
       local is_debugger = os.getenv("LOCAL_LUA_DEBUGGER_VSCODE") == "1"
       if not is_debugger then
-        assert(vim.wait(20000, future.is_set), "Timed out after 10 seconds waiting for scenario: " .. filename)
+        assert(vim.wait(ms, future.is_set),
+          "Timed out after " .. ms .. " milliseconds waiting for scenario: " .. filename)
       else
         -- For debugging, we wait 5 minutes to allow manual inspection
         assert(vim.wait(300000, future.is_set), "Timed out after 5 minutes waiting for scenario: " .. filename)

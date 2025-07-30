@@ -1652,13 +1652,16 @@ function DebugTree:Expand(tree, node)
     local needs_loading = node._dap and node._dap.ResolveChildren and state_node and not state_node._children_loaded
     
     if needs_loading then
-      -- Load children asynchronously
+      -- Load children (in async context, this waits)
       node._dap:ResolveChildren(node)
-      -- NUI Tree needs collapse/expand cycle to see new children
+      -- Force NUI to recognize the new children
       node:collapse()
+      node:expand()
+    else
+      -- Children already loaded, just expand
+      node:expand()
     end
     
-    node:expand()
     tree:render()
   end
 end
@@ -1776,10 +1779,8 @@ function DebugTree:Open(tree)
   -- First expand the node
   self:Expand(tree, node)
   
-  -- Then move into it
-  vim.schedule(function()
-    self:In(tree)
-  end)
+  -- Then move into it (Expand is PascalCase, so we're in async context)
+  self:In(tree)
 end
 
 function DebugTree:Close(tree)
