@@ -248,6 +248,12 @@ function Stack:ResolveChildren(node)
       -- Pass the index and parent path to frame:asNode
       local frame_node = frame:asNode(index, node.id)
       plugin_instance.state_tree:add_node(frame_node, node.id)
+      
+      -- Auto-expand first frame if requested
+      if index == 1 and node._auto_expand_first_frame then
+        frame_node:expand()
+        frame_node._auto_expand_scopes = true
+      end
     end
     -- CRITICAL: Update the state tree node, not the parameter node
     plugin_instance.state_tree.nodes.by_id[node.id]._children_loaded = true
@@ -268,6 +274,14 @@ function Frame:ResolveChildren(node)
     for i, scope in ipairs(scopes) do
       local scope_node = scope:asNode(node.id)
       plugin_instance.state_tree:add_node(scope_node, node.id)
+      
+      -- Auto-expand non-expensive scopes if requested
+      if node._auto_expand_scopes then
+        local scope_name = scope.name or (scope.ref and scope.ref.name) or ""
+        if scope_name == "Local" or scope_name == "Closure" then
+          scope_node:expand()
+        end
+      end
     end
     -- CRITICAL: Update the state tree node, not the parameter node
     plugin_instance.state_tree.nodes.by_id[node.id]._children_loaded = true
@@ -440,7 +454,8 @@ function Thread:asNode()
         
         -- Auto-expand the stack to show frames
         stack_node:expand()
-        plugin_instance:autoExpandTopFrame(stack_node)
+        -- Mark that we want to auto-expand the first frame when it's loaded
+        stack_node._auto_expand_first_frame = true
       end
       plugin_instance.state_tree:render() -- Update all views
     end
@@ -1450,55 +1465,6 @@ function DebugTree:addChildSessions(session)
       self.state_tree:add_node(child_node, "session:" .. tostring(session.id))
       -- Recursively add any grandchild sessions
       self:addChildSessions(child_session)
-    end
-  end
-end
-
--- ========================================
--- AUTO-EXPANSION LOGIC
--- ========================================
-
---- Auto-expand the top frame and its non-expensive scopes
----@param stack_node NuiTree.Node The stack node that was just added
-function DebugTree:autoExpandTopFrame(stack_node)
-  -- First, resolve the stack's children (frames)
-  local stack_dap = stack_node._dap
-  if stack_dap and stack_dap.ResolveChildren then
-    stack_dap:ResolveChildren(stack_node)
-  end
-  
-  -- Find the first frame (top frame)
-  local frame_id = nil
-  if stack_node._child_ids and #stack_node._child_ids > 0 then
-    frame_id = stack_node._child_ids[1]  -- First child is frame #1
-  end
-  
-  if not frame_id then return end
-  
-  local frame_node = self.state_tree.nodes.by_id[frame_id]
-  if not frame_node then return end
-  
-  -- Expand the top frame
-  frame_node:expand()
-  
-  -- Resolve the frame's children (scopes)
-  local frame_dap = frame_node._dap
-  if frame_dap and frame_dap.ResolveChildren then
-    frame_dap:ResolveChildren(frame_node)
-  end
-  
-  -- Auto-expand non-expensive scopes (Local, Closure)
-  if frame_node._child_ids then
-    for _, scope_id in ipairs(frame_node._child_ids) do
-      local scope_node = self.state_tree.nodes.by_id[scope_id]
-      if scope_node and scope_node.text then
-        -- Check if it's a non-expensive scope by looking at the text
-        local scope_name = scope_node.text:match("^%S+%s+(.+)$") or ""
-        if scope_name == "Local" or scope_name == "Closure" then
-          scope_node:expand()
-          -- Note: We don't resolve scope children here - that happens on-demand
-        end
-      end
     end
   end
 end
