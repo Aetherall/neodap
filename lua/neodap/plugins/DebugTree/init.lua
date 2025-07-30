@@ -437,6 +437,10 @@ function Thread:asNode()
       if not plugin_instance.state_tree.nodes.by_id[stack_node.id] then
         plugin_instance.logger:debug("Adding stack for newly stopped thread " .. self.id)
         plugin_instance.state_tree:add_node(stack_node, node.id)
+        
+        -- Auto-expand the stack to show frames
+        stack_node:expand()
+        plugin_instance:autoExpandTopFrame(stack_node)
       end
       plugin_instance.state_tree:render() -- Update all views
     end
@@ -705,7 +709,7 @@ function DebugTree:setupSessionHandlers()
     end
 
     -- Add any existing threads to the state tree
-    self:addChildSessions(session)
+    self:addExistingChildren(session)
     
     -- Render all views to show new session
     self.state_tree:render()
@@ -1446,6 +1450,55 @@ function DebugTree:addChildSessions(session)
       self.state_tree:add_node(child_node, "session:" .. tostring(session.id))
       -- Recursively add any grandchild sessions
       self:addChildSessions(child_session)
+    end
+  end
+end
+
+-- ========================================
+-- AUTO-EXPANSION LOGIC
+-- ========================================
+
+--- Auto-expand the top frame and its non-expensive scopes
+---@param stack_node NuiTree.Node The stack node that was just added
+function DebugTree:autoExpandTopFrame(stack_node)
+  -- First, resolve the stack's children (frames)
+  local stack_dap = stack_node._dap
+  if stack_dap and stack_dap.ResolveChildren then
+    stack_dap:ResolveChildren(stack_node)
+  end
+  
+  -- Find the first frame (top frame)
+  local frame_id = nil
+  if stack_node._child_ids and #stack_node._child_ids > 0 then
+    frame_id = stack_node._child_ids[1]  -- First child is frame #1
+  end
+  
+  if not frame_id then return end
+  
+  local frame_node = self.state_tree.nodes.by_id[frame_id]
+  if not frame_node then return end
+  
+  -- Expand the top frame
+  frame_node:expand()
+  
+  -- Resolve the frame's children (scopes)
+  local frame_dap = frame_node._dap
+  if frame_dap and frame_dap.ResolveChildren then
+    frame_dap:ResolveChildren(frame_node)
+  end
+  
+  -- Auto-expand non-expensive scopes (Local, Closure)
+  if frame_node._child_ids then
+    for _, scope_id in ipairs(frame_node._child_ids) do
+      local scope_node = self.state_tree.nodes.by_id[scope_id]
+      if scope_node and scope_node.text then
+        -- Check if it's a non-expensive scope by looking at the text
+        local scope_name = scope_node.text:match("^%S+%s+(.+)$") or ""
+        if scope_name == "Local" or scope_name == "Closure" then
+          scope_node:expand()
+          -- Note: We don't resolve scope children here - that happens on-demand
+        end
+      end
     end
   end
 end
