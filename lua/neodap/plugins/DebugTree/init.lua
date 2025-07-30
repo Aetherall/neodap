@@ -448,15 +448,39 @@ function Thread:asNode()
       -- Generate the actual stack node to get its ID
       local stack_node = stack:asNode()
       -- Check if stack already exists to avoid duplicates
-      if not plugin_instance.state_tree.nodes.by_id[stack_node.id] then
+      local existing_stack = plugin_instance.state_tree.nodes.by_id[stack_node.id]
+      if not existing_stack then
         plugin_instance.logger:debug("Adding stack for newly stopped thread " .. self.id)
         plugin_instance.state_tree:add_node(stack_node, node.id)
-        
-        -- Auto-expand the stack to show frames
-        stack_node:expand()
-        -- Mark that we want to auto-expand the first frame when it's loaded
-        stack_node._auto_expand_first_frame = true
+      else
+        -- Stack already exists, use the existing node
+        stack_node = existing_stack
       end
+      
+      -- Always auto-expand on stop (even if stack already existed)
+      stack_node:expand()
+      -- Mark that we want to auto-expand the first frame when it's loaded
+      stack_node._auto_expand_first_frame = true
+      
+      -- If stack already has frames loaded, we need to handle auto-expansion differently
+      if stack_node._children_loaded and stack_node._child_ids and #stack_node._child_ids > 0 then
+        -- Get the first frame
+        local first_frame_id = stack_node._child_ids[1]
+        local first_frame = plugin_instance.state_tree.nodes.by_id[first_frame_id]
+        if first_frame then
+          first_frame:expand()
+          first_frame._auto_expand_scopes = true
+          
+          -- Trigger scope loading if not already loaded
+          if first_frame._dap and first_frame._dap.ResolveChildren and not first_frame._children_loaded then
+            first_frame._dap:ResolveChildren(first_frame)
+          elseif first_frame._children_loaded then
+            -- Scopes already loaded, auto-expand them directly
+            plugin_instance:autoExpandFrameScopes(first_frame)
+          end
+        end
+      end
+      
       plugin_instance.state_tree:render() -- Update all views
     end
   end)
@@ -724,7 +748,7 @@ function DebugTree:setupSessionHandlers()
     end
 
     -- Add any existing threads to the state tree
-    self:addExistingChildren(session)
+    self:addChildSessions(session)
     
     -- Render all views to show new session
     self.state_tree:render()
@@ -773,7 +797,7 @@ function DebugTree:initializeStateTree()
   for session in self.api:eachSession() do
     local session_node = session:asNode()
     self.state_tree:add_node(session_node)
-    self:addExistingChildren(session)
+    self:addChildSessions(session)
   end
 
 end
@@ -1465,6 +1489,26 @@ function DebugTree:addChildSessions(session)
       self.state_tree:add_node(child_node, "session:" .. tostring(session.id))
       -- Recursively add any grandchild sessions
       self:addChildSessions(child_session)
+    end
+  end
+end
+
+-- ========================================
+-- AUTO-EXPANSION HELPERS
+-- ========================================
+
+--- Auto-expand non-expensive scopes in a frame
+---@param frame_node NuiTree.Node The frame node
+function DebugTree:autoExpandFrameScopes(frame_node)
+  if not frame_node._child_ids then return end
+  
+  for _, scope_id in ipairs(frame_node._child_ids) do
+    local scope_node = self.state_tree.nodes.by_id[scope_id]
+    if scope_node and scope_node._dap then
+      local scope_name = scope_node._dap.name or (scope_node._dap.ref and scope_node._dap.ref.name) or ""
+      if scope_name == "Local" or scope_name == "Closure" then
+        scope_node:expand()
+      end
     end
   end
 end
