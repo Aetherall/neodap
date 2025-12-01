@@ -1,0 +1,49 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "python",
+      "request": "launch",
+      "name": "Python: Debug hello.py",
+      "program": "${workspaceFolder}/tests/fixtures/hello.py",
+      "console": "internalConsole"
+    },
+    {
+      "type": "python",
+      "request": "launch",
+      "name": "Python: Debug stepping_test.py",
+      "program": "${workspaceFolder}/tests/fixtures/stepping_test.py",
+      "console": "internalConsole"
+    },
+    {
+      "type": "python",
+      "request": "launch",
+      "name": "Python: Debug Current File",
+      "program": "${file}",
+      "console": "internalConsole"
+    },
+    {
+      "type": "pwa-node",
+      "request": "launch",
+      "name": "Node: Debug stepping_test.js",
+      "program": "${workspaceFolder}/tests/fixtures/stepping_test.js",
+      "console": "internalConsole"
+    },
+    {
+      "type": "pwa-node",
+      "request": "launch",
+      "name": "Node: Debug Current File",
+      "program": "${file}",
+      "console": "internalConsole"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "All Python Tests",
+      "configurations": [
+        "Python: Debug hello.py",
+        "Python: Debug stepping_test.py"
+      ]
+    }
+  ]
+}

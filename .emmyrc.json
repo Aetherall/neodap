@@ -1,0 +1,102 @@
+{
+	"$schema": "https://raw.githubusercontent.com/EmmyLuaLs/emmylua-analyzer-rust/refs/heads/main/crates/emmylua_code_analysis/resources/schema.json",
+	"references": {
+		"enable": true,
+		"fuzzySearch": true,
+		"shortStringSearch": false
+	},
+	"diagnostics": {
+		"disable": [
+			"unused",
+			"redefined-local"
+		],
+		"groupFileStatus": {
+			"ambiguity": "Any",
+			"await": "Any",
+			"duplicate": "Any",
+			"global": "Any",
+			"luadoc": "Any",
+			"redefined": "Any",
+			"strict": "Any",
+			"type-check": "Any",
+			"unbalanced": "Any",
+			"unused": "Any"
+		},
+		"globalsRegex": [
+			"^_G$"
+		],
+		"globals": [
+			"describe",
+			"it",
+			"assert",
+			"vim",
+			"before_each",
+			"after_each",
+			"pending",
+			"setup",
+			"teardown",
+			"insulate",
+			"expose"
+		]
+	},
+	"runtime": {
+		"version": "LuaJIT"
+	},
+	"codeAction": {
+		"insertSpace": false
+	},
+	"codeLens": {
+		"enable": true
+	},
+	"workspace": {
+		"ignoreDir": [
+			".cache",
+			".trash",
+			".direnv"
+		],
+		"workspaceRoots": [
+			"./lua",
+			"./tests"
+		],
+		"library": [
+			"./lua",
+			"./tests",
+			"/nix/store/s307r5v1rig4j8giwnyniqnb205xrmpq-neovim-0.11.5/share/nvim/runtime/lua"
+		]
+	},
+	"typeFormat": {
+		"config": {
+			"format_line": "false"
+		}
+	},
+	"type": {
+		"castNumberToInteger": false,
+		"checkTableShape": true,
+		"inferParamType": true,
+		"weakNilCheck": false,
+		"weakUnionCheck": false
+	},
+	"signature": {
+		"detailSignatureHelper": true
+	},
+	"strict": {
+		"requirePath": false,
+		"typeCall": true,
+		"arrayIndex": true,
+		"metaOverrideFileDefine": true,
+		"docBaseConstMatchBaseType": true
+	},
+	"hint": {
+		"enable": true,
+		"enumParamHint": false,
+		"indexHint": true,
+		"localHint": true,
+		"metaCallHint": true,
+		"overrideHint": true,
+		"paramHint": true
+	},
+	"hover": {
+		"customDetail": null,
+		"enable": true
+	}
+}
