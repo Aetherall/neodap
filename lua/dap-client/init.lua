@@ -414,9 +414,15 @@ function adapters.server(opts)
     if server.obj then return true end
 
     local port_found = false
+    local env = opts.env or vim.fn.environ()
+    -- Debug: show if nix-profile is in PATH
+    local path = env.PATH or ""
+    vim.schedule(function()
+      vim.notify("[DAP] PATH has nix-profile: " .. tostring(path:find("nix-profile", 1, true) ~= nil), vim.log.levels.INFO)
+    end)
     server.obj = vim.system({ opts.command, unpack(opts.args or {}) }, {
       cwd = opts.cwd,
-      env = opts.env,
+      env = env,
       stdout = function(_, data)
         if data then
           -- Always log server output for debugging

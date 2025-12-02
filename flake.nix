@@ -18,7 +18,12 @@
         neovim = pkgs.neovim.override {
           configure = {
             packages.neostate = {
-              start = [pkgs.vimPlugins.plenary-nvim];
+              start = [
+                pkgs.vimPlugins.plenary-nvim
+                pkgs.vimPlugins.nvim-nio
+                pkgs.vimPlugins.neotest
+                pkgs.vimPlugins.neotest-jest
+              ];
             };
           };
         };

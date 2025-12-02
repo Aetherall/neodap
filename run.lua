@@ -20,8 +20,38 @@ if not package.path:find(lua_dir, 1, true) then
   package.path = lua_dir .. "/?.lua;" .. lua_dir .. "/?/init.lua;" .. package.path
 end
 
+-- Add neotest plugins from nix store (for testing neotest integration)
+local neotest_plugins = {
+  "/nix/store/xi93nh409mm6cmv6fngf03sfdbv2wxxl-vimplugin-luajit2.1-plenary.nvim-scm-1-unstable-scm-1",
+  "/nix/store/h2w6dc7sjdpw9vl5sps8day3rwiwzr7s-vimplugin-luajit2.1-nvim-nio-1.10.1-1-unstable-1.10.1-1",
+  "/nix/store/8c8fy6hl5wmdpnwx8pm4m2gqxg0kvyk1-vimplugin-luajit2.1-neotest-5.13.1-1-unstable-5.13.1-1",
+  "/nix/store/2sky3z6sgsv2fmshqcj9m4d05f9lfbzx-vimplugin-neotest-jest-2025-10-24",
+}
+for _, plugin in ipairs(neotest_plugins) do
+  if vim.fn.isdirectory(plugin) == 1 then
+    vim.opt.rtp:prepend(plugin)
+  end
+end
+
 -- Enable true colors for frame highlight backgrounds
 vim.opt.termguicolors = true
+
+-- Wrap vim.notify to be safe in async contexts (like nvim-nio tasks)
+-- This prevents "nvim_echo must not be called in a fast event context" errors
+local original_notify = vim.notify
+vim.notify = function(msg, level, opts)
+  vim.schedule(function()
+    original_notify(msg, level, opts)
+  end)
+end
+
+-- Ensure nix-profile is in PATH (MCP may not inherit full shell environment)
+local home = os.getenv("HOME") or ""
+local nix_profile_bin = home .. "/.nix-profile/bin"
+local current_path = vim.fn.getenv("PATH") or ""
+if not current_path:find(nix_profile_bin, 1, true) then
+  vim.fn.setenv("PATH", nix_profile_bin .. ":" .. current_path)
+end
 
 -- Initialize code-workspace (only once)
 if not _G._workspace_initialized then
@@ -67,19 +97,28 @@ local function setup_debugger()
     },
   })
 
+  -- Build environment with nix-profile in PATH
+  local home = os.getenv("HOME") or ""
+  local base_env = vim.fn.environ()
+  local path = base_env.PATH or ""
+  if not path:find(home .. "/.nix-profile/bin", 1, true) then
+    base_env.PATH = home .. "/.nix-profile/bin:" .. path
+  end
+
   -- JavaScript/TypeScript (vscode-js-debug)
   debugger:register_adapter("pwa-node", {
     type = "server",
     command = "js-debug",
     args = { "0" }, -- Let js-debug pick a random port
+    env = base_env, -- Include nix-profile in PATH
     connect_condition = function(chunk)
       local h, p = chunk:match("Debug server listening at (.*):(%d+)")
       return tonumber(p), h
     end,
     aliases = { "node" }, -- VSCode uses "node", js-debug expects "pwa-node"
     exceptionFilters = {
-      { filter = "all",      label = "All Exceptions",      default = true },
-      { filter = "uncaught", label = "Uncaught Exceptions", default = false },
+      { filter = "all",      label = "All Exceptions",      default = false },
+      { filter = "uncaught", label = "Uncaught Exceptions", default = true },
     },
   })
 
@@ -270,6 +309,17 @@ if neotest_ok then
       neodap = _G.neodap_neotest.get_strategy(),
     },
   })
+
+  -- Command to run nearest test with neodap strategy
+  vim.api.nvim_create_user_command("NeotestDebug", function()
+    neotest.run.run({ strategy = "neodap" })
+  end, { desc = "Run nearest test with neodap debug strategy" })
+
+  -- Command to run current file with neodap strategy
+  vim.api.nvim_create_user_command("NeotestDebugFile", function()
+    neotest.run.run({ vim.fn.expand("%"), strategy = "neodap" })
+  end, { desc = "Run current file tests with neodap debug strategy" })
+
   print("Neotest: configured with neodap strategy")
 else
   print("Neotest: not available")

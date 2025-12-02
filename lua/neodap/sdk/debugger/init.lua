@@ -401,8 +401,73 @@ function Debugger:start(config)
   -- Create session with resolved type
   local session = self:create_session(resolved_type)
 
-  -- Create a modified config with resolved type for DAP server
-  local dap_config = vim.tbl_extend("force", config, { type = resolved_type })
+  -- Merge current environment with config's env (config takes precedence)
+  -- Also ensure nix-profile is in PATH (MCP may not inherit full shell environment)
+  local base_env = vim.fn.environ()
+  local home = os.getenv("HOME") or ""
+  local nix_profile = home .. "/.nix-profile/bin"
+  if base_env.PATH and not base_env.PATH:find(nix_profile, 1, true) then
+    base_env.PATH = nix_profile .. ":" .. base_env.PATH
+  end
+
+  -- Load envFile if specified (VSCode-style .env file support)
+  local env_file_vars = {}
+  if config.envFile then
+    local env_path = config.envFile
+    vim.notify("[DAP] Loading envFile: " .. env_path, vim.log.levels.INFO)
+    local file = io.open(env_path, "r")
+    if file then
+      local count = 0
+      for line in file:lines() do
+        -- Skip empty lines and comments
+        if line ~= "" and not line:match("^%s*#") then
+          -- Parse KEY=VALUE (handles quoted values)
+          local key, value = line:match("^([%w_]+)%s*=%s*(.*)$")
+          if key and value then
+            -- Remove surrounding quotes if present
+            value = value:gsub("^['\"](.*)['\"']$", "%1")
+            env_file_vars[key] = value
+            count = count + 1
+          end
+        end
+      end
+      file:close()
+      vim.notify("[DAP] Loaded " .. count .. " env vars from envFile", vim.log.levels.INFO)
+    else
+      vim.notify("Could not read envFile: " .. env_path, vim.log.levels.WARN)
+    end
+  end
+
+  -- Merge order: envFile < inline env (later values override)
+  -- Note: Don't include base_env here - js-debug merges with its own process env
+  -- We only need to pass the additional vars we want to set
+  local merged_env = vim.tbl_extend("force", env_file_vars, config.env or {})
+
+  -- Resolve runtimeExecutable for NixOS compatibility
+  -- js-debug doesn't use env.PATH for executable lookup, so we need to help it
+  local runtime_exec = config.runtimeExecutable
+  local runtime_args = config.runtimeArgs
+  if runtime_exec and not runtime_exec:match("^/") then
+    local nix_path = nix_profile .. "/" .. runtime_exec
+    if vim.fn.executable(nix_path) == 1 then
+      -- Found in nix-profile, use node to run the script
+      -- This avoids issues with symlink resolution in js-debug
+      runtime_exec = "node"
+      runtime_args = vim.list_extend({ nix_path }, runtime_args or {})
+    end
+  end
+
+  -- Create a modified config with resolved type and merged environment
+  -- Only include env if it has content (debugpy doesn't like empty env dict)
+  local overrides = {
+    type = resolved_type,
+    runtimeExecutable = runtime_exec,
+    runtimeArgs = runtime_args,
+  }
+  if next(merged_env) then
+    overrides.env = merged_env
+  end
+  local dap_config = vim.tbl_extend("force", config, overrides)
 
   -- Set session name from config
   session.name:set(config.name)

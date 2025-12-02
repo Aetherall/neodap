@@ -1120,6 +1120,157 @@ return function(debugger, config)
       end
     end,
 
+    -- Hover: show full node text in floating window (like LSP hover)
+    ["K"] = function(ctx)
+      local entity = ctx.entity
+      if not entity then return end
+
+      -- Build hover content based on entity type
+      local lines = {}
+      local title = entity._type or "Node"
+
+      if entity._type == "output" then
+        -- Show full output text
+        local output = entity.output or ""
+        title = string.format("Output [%s]", entity.category or "output")
+        for line in output:gmatch("[^\n]*") do
+          table.insert(lines, line)
+        end
+      elseif entity._type == "variable" then
+        -- Show variable details
+        local name = entity.name or "?"
+        local value = unwrap(entity.value) or ""
+        local type_str = entity.type_hint or unwrap(entity.type) or ""
+        title = "Variable"
+        table.insert(lines, string.format("Name: %s", name))
+        if type_str ~= "" then
+          table.insert(lines, string.format("Type: %s", type_str))
+        end
+        table.insert(lines, "")
+        table.insert(lines, "Value:")
+        for line in value:gmatch("[^\n]*") do
+          table.insert(lines, "  " .. line)
+        end
+      elseif entity._type == "evaluate_result" then
+        -- Show full evaluation result
+        local expression = entity.expression or "?"
+        local result = entity.result or ""
+        local type_str = entity.type or ""
+        title = "Evaluation"
+        table.insert(lines, string.format("Expression: %s", expression))
+        if type_str ~= "" then
+          table.insert(lines, string.format("Type: %s", type_str))
+        end
+        table.insert(lines, "")
+        table.insert(lines, "Result:")
+        for line in result:gmatch("[^\n]*") do
+          table.insert(lines, "  " .. line)
+        end
+      elseif entity._type == "frame" then
+        -- Show frame details
+        title = "Frame"
+        table.insert(lines, string.format("Function: %s", entity.name or "unknown"))
+        if entity.source then
+          table.insert(lines, string.format("Source: %s", entity.source.path or entity.source.name or "unknown"))
+        end
+        table.insert(lines, string.format("Line: %d", entity.line or 0))
+        if entity.column then
+          table.insert(lines, string.format("Column: %d", entity.column))
+        end
+      elseif entity._type == "session" then
+        -- Show session details
+        title = "Session"
+        table.insert(lines, string.format("Name: %s", unwrap(entity.name) or "unnamed"))
+        table.insert(lines, string.format("State: %s", unwrap(entity.state) or "unknown"))
+        table.insert(lines, string.format("ID: %s", entity.id or "?"))
+      elseif entity._type == "thread" then
+        -- Show thread details
+        title = "Thread"
+        table.insert(lines, string.format("Name: %s", unwrap(entity.name) or "unnamed"))
+        table.insert(lines, string.format("State: %s", unwrap(entity.state) or "unknown"))
+        table.insert(lines, string.format("DAP ID: %d", entity.dap_id or 0))
+      else
+        -- Generic: show entity info
+        table.insert(lines, string.format("Type: %s", entity._type or "unknown"))
+        table.insert(lines, string.format("URI: %s", entity.uri or "?"))
+        if entity.name then
+          table.insert(lines, string.format("Name: %s", unwrap(entity.name)))
+        end
+      end
+
+      -- Remove trailing empty lines
+      while #lines > 0 and lines[#lines] == "" do
+        table.remove(lines)
+      end
+
+      if #lines == 0 then
+        table.insert(lines, "(empty)")
+      end
+
+      -- Calculate window dimensions
+      local max_width = math.min(80, vim.o.columns - 4)
+      local max_height = math.min(20, vim.o.lines - 4)
+
+      -- Create floating window (using vim.lsp.util for consistency with LSP hover)
+      local bufnr = vim.api.nvim_create_buf(false, true)
+      vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+      vim.bo[bufnr].modifiable = false
+      vim.bo[bufnr].bufhidden = "wipe"
+      vim.bo[bufnr].filetype = "markdown"
+
+      -- Calculate actual content dimensions
+      local width = 0
+      for _, line in ipairs(lines) do
+        width = math.max(width, #line)
+      end
+      width = math.min(width + 2, max_width)
+      local height = math.min(#lines, max_height)
+
+      -- Open floating window
+      local win = vim.api.nvim_open_win(bufnr, false, {
+        relative = "cursor",
+        row = 1,
+        col = 0,
+        width = width,
+        height = height,
+        style = "minimal",
+        border = "rounded",
+        title = " " .. title .. " ",
+        title_pos = "center",
+      })
+
+      -- Enable word wrap in the hover window
+      vim.wo[win].wrap = true
+      vim.wo[win].linebreak = true
+
+      -- Close on cursor move or key press
+      local close_events = { "CursorMoved", "CursorMovedI", "BufLeave", "InsertEnter" }
+      vim.api.nvim_create_autocmd(close_events, {
+        buffer = vim.api.nvim_get_current_buf(),
+        once = true,
+        callback = function()
+          if vim.api.nvim_win_is_valid(win) then
+            vim.api.nvim_win_close(win, true)
+          end
+        end,
+      })
+
+      -- Also close on any key press in the hover window
+      vim.api.nvim_create_autocmd("WinEnter", {
+        callback = function()
+          if vim.api.nvim_get_current_win() == win then
+            vim.keymap.set("n", "<Esc>", function()
+              vim.api.nvim_win_close(win, true)
+            end, { buffer = bufnr, nowait = true })
+            vim.keymap.set("n", "q", function()
+              vim.api.nvim_win_close(win, true)
+            end, { buffer = bufnr, nowait = true })
+          end
+        end,
+        once = true,
+      })
+    end,
+
     -- REPL input (on REPL group node)
     ["i"] = {
       group = function(entity, ctx)

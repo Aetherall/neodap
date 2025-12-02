@@ -196,11 +196,11 @@ local function collect_vscode_configs(config_name, path)
   -- Get effective root for this path (dynamic lookup)
   local effective_root = get_effective_root(path)
 
-  -- Helper to add config path if not already added
-  local function add_config(config_path)
+  -- Helper to add config path with its workspace folder context
+  local function add_config(config_path, workspace_folder)
     if not added_paths[config_path] then
       added_paths[config_path] = true
-      table.insert(configs_to_load, config_path)
+      table.insert(configs_to_load, { path = config_path, folder = workspace_folder })
     end
   end
 
@@ -213,7 +213,7 @@ local function collect_vscode_configs(config_name, path)
       end
       folder_path = vim.fn.resolve(folder_path)
       if folder_path ~= effective_root then
-        add_config(folder_path .. '/.vscode/' .. config_name)
+        add_config(folder_path .. '/.vscode/' .. config_name, folder_path)
       end
     end
   else
@@ -234,7 +234,7 @@ local function collect_vscode_configs(config_name, path)
           end
           folder_path = vim.fn.resolve(folder_path)
           if folder_path ~= effective_root then
-            add_config(folder_path .. '/.vscode/' .. config_name)
+            add_config(folder_path .. '/.vscode/' .. config_name, folder_path)
           end
         end
       end
@@ -243,7 +243,7 @@ local function collect_vscode_configs(config_name, path)
 
   -- Add root config last
   if effective_root then
-    add_config(effective_root .. '/.vscode/' .. config_name)
+    add_config(effective_root .. '/.vscode/' .. config_name, effective_root)
   end
 
   return configs_to_load
@@ -251,7 +251,7 @@ end
 
 --- Load and merge multiple config files
 ---@param array_keys string|table Single key or list of keys to merge (e.g., 'configurations', 'tasks', 'compounds')
----@param paths table List of config file paths
+---@param paths table List of config entries (each with .path and .folder)
 ---@param effective_root string|nil Root directory for interpolation (defaults to _state.root_dir)
 ---@return table|nil Merged configuration or nil if no configs found
 local function merge_configs(array_keys, paths, effective_root)
@@ -265,13 +265,17 @@ local function merge_configs(array_keys, paths, effective_root)
     merged[key] = {}
   end
 
-  -- Create interpolation state with effective root
-  local interp_state = {
-    workspace = M._state.workspace,
-    root_dir = effective_root or M._state.root_dir,
-  }
+  for _, config_entry in ipairs(paths) do
+    -- Each config uses its own folder for ${workspaceFolder}
+    local config_path = config_entry.path
+    local config_folder = config_entry.folder
 
-  for _, config_path in ipairs(paths) do
+    -- Create interpolation state with the config's own folder as root
+    local interp_state = {
+      workspace = M._state.workspace,
+      root_dir = config_folder or effective_root or M._state.root_dir,
+    }
+
     local config = parser.parse_json_file(config_path)
     if config then
       config = interpolate.interpolate_config(config, interp_state)
