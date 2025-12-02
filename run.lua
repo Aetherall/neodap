@@ -10,8 +10,15 @@
 -- ONE-TIME SETUP (not reloaded)
 -- =============================================================================
 
--- Add project to runtime path
-vim.opt.rtp:prepend(".")
+-- Add project to runtime path (absolute path so it works after cd)
+local script_dir = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":h")
+vim.opt.rtp:prepend(script_dir)
+
+-- Ensure package.path includes our lua directory (for when cwd changes)
+local lua_dir = script_dir .. "/lua"
+if not package.path:find(lua_dir, 1, true) then
+  package.path = lua_dir .. "/?.lua;" .. lua_dir .. "/?/init.lua;" .. package.path
+end
 
 -- Enable true colors for frame highlight backgrounds
 vim.opt.termguicolors = true
@@ -69,24 +76,14 @@ local function setup_debugger()
       local h, p = chunk:match("Debug server listening at (.*):(%d+)")
       return tonumber(p), h
     end,
+    aliases = { "node" }, -- VSCode uses "node", js-debug expects "pwa-node"
     exceptionFilters = {
       { filter = "all",      label = "All Exceptions",      default = true },
       { filter = "uncaught", label = "Uncaught Exceptions", default = false },
     },
   })
 
-  -- Node.js (alias for pwa-node)
-  debugger:register_adapter("node", {
-    type = "server",
-    command = "js-debug",
-    args = { "0" },
-    connect_condition = function(chunk)
-      local h, p = chunk:match("Debug server listening at (.*):(%d+)")
-      return tonumber(p), h
-    end,
-  })
-
-  -- print("Registered adapters: python, pwa-node, node")
+  -- print("Registered adapters: python, pwa-node")
 
   -- ===========================================================================
   -- PLUGIN SETUP

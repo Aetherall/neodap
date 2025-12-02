@@ -32,6 +32,81 @@ local function find_workspace_file(start_dir)
   return nil
 end
 
+--- Find .vscode directory starting from given directory
+---@param start_dir string Starting directory
+---@return string|nil Parent directory containing .vscode
+local function find_vscode_root(start_dir)
+  local current = start_dir
+  while current ~= '/' do
+    local vscode_dir = current .. '/.vscode'
+    if vim.fn.isdirectory(vscode_dir) == 1 then
+      return current
+    end
+    current = vim.fn.fnamemodify(current, ':h')
+  end
+  return nil
+end
+
+--- Get effective root directory for a given path
+--- Uses workspace root if loaded and path is within it, otherwise searches upward
+---@param path string|nil File path (defaults to current buffer, then cwd)
+---@return string|nil Root directory
+local function get_effective_root(path)
+  -- Determine the search path: explicit path > current buffer > cwd
+  local search_path = path
+  if not search_path or search_path == '' then
+    search_path = vim.api.nvim_buf_get_name(0)
+  end
+  if not search_path or search_path == '' then
+    search_path = vim.fn.getcwd()
+  end
+
+  local abs_path = vim.fn.fnamemodify(search_path, ':p')
+
+  -- If we have a loaded workspace, check if path is within it
+  if M._state.root_dir then
+    -- Check if path is within workspace root
+    if vim.startswith(abs_path, M._state.root_dir .. '/') or abs_path == M._state.root_dir then
+      return M._state.root_dir
+    end
+    -- Check workspace folders
+    if M._state.workspace and M._state.workspace.folders then
+      for _, folder in ipairs(M._state.workspace.folders) do
+        local folder_path = folder.path
+        if not vim.startswith(folder_path, '/') then
+          folder_path = M._state.root_dir .. '/' .. folder_path
+        end
+        folder_path = vim.fn.resolve(folder_path)
+        if vim.startswith(abs_path, folder_path .. '/') or abs_path == folder_path then
+          return M._state.root_dir
+        end
+      end
+    end
+  end
+
+  -- Path is outside workspace or no workspace loaded - find root dynamically
+  local search_start = abs_path
+  -- If path is a file, start from its directory
+  if vim.fn.isdirectory(search_start) == 0 then
+    search_start = vim.fn.fnamemodify(search_start, ':h')
+  end
+
+  -- First try to find a .code-workspace file
+  local workspace_file = find_workspace_file(search_start)
+  if workspace_file then
+    return vim.fn.fnamemodify(workspace_file, ':h')
+  end
+
+  -- Fall back to finding .vscode directory
+  local vscode_root = find_vscode_root(search_start)
+  if vscode_root then
+    return vscode_root
+  end
+
+  -- Last resort: use cwd
+  return vim.fn.getcwd()
+end
+
 --- Load per-folder settings from .vscode/settings.json in each folder
 local function load_folder_settings()
   if not M._state.workspace or not M._state.workspace.folders then
@@ -104,7 +179,7 @@ end
 --- Collect .vscode config file paths for a given path (folder + root)
 ---@param config_name string Config file name (e.g., 'launch.json', 'tasks.json')
 ---@param path string|nil File path to determine context (defaults to current buffer)
----@return table List of config file paths to load (folder first, then root)
+---@return table List of config file paths to load (all workspace folders + root)
 local function collect_vscode_configs(config_name, path)
   -- Default to current buffer if no path
   if not path then
@@ -116,18 +191,59 @@ local function collect_vscode_configs(config_name, path)
   end
 
   local configs_to_load = {}
+  local added_paths = {} -- Track to avoid duplicates
 
-  -- Find which folder contains this path
-  local folder_path = path and find_folder_for_path(path) or nil
+  -- Get effective root for this path (dynamic lookup)
+  local effective_root = get_effective_root(path)
 
-  -- Add folder-specific config first (if path is in a folder and not at root)
-  if folder_path and folder_path ~= M._state.root_dir then
-    table.insert(configs_to_load, folder_path .. '/.vscode/' .. config_name)
+  -- Helper to add config path if not already added
+  local function add_config(config_path)
+    if not added_paths[config_path] then
+      added_paths[config_path] = true
+      table.insert(configs_to_load, config_path)
+    end
   end
 
-  -- Add root config
-  if M._state.root_dir then
-    table.insert(configs_to_load, M._state.root_dir .. '/.vscode/' .. config_name)
+  -- If we have a loaded workspace with folders, add all folder configs
+  if M._state.workspace and M._state.workspace.folders then
+    for _, folder in ipairs(M._state.workspace.folders) do
+      local folder_path = folder.path
+      if not vim.startswith(folder_path, '/') and M._state.root_dir then
+        folder_path = M._state.root_dir .. '/' .. folder_path
+      end
+      folder_path = vim.fn.resolve(folder_path)
+      if folder_path ~= effective_root then
+        add_config(folder_path .. '/.vscode/' .. config_name)
+      end
+    end
+  else
+    -- No loaded workspace - try to find and parse workspace file dynamically
+    local search_start = path or vim.fn.getcwd()
+    if vim.fn.isdirectory(search_start) == 0 then
+      search_start = vim.fn.fnamemodify(search_start, ':h')
+    end
+    local workspace_file = find_workspace_file(search_start)
+    if workspace_file then
+      local workspace_data = parser.parse_workspace_file(workspace_file)
+      local ws_root = vim.fn.fnamemodify(workspace_file, ':h')
+      if workspace_data and workspace_data.folders then
+        for _, folder in ipairs(workspace_data.folders) do
+          local folder_path = folder.path
+          if not vim.startswith(folder_path, '/') then
+            folder_path = ws_root .. '/' .. folder_path
+          end
+          folder_path = vim.fn.resolve(folder_path)
+          if folder_path ~= effective_root then
+            add_config(folder_path .. '/.vscode/' .. config_name)
+          end
+        end
+      end
+    end
+  end
+
+  -- Add root config last
+  if effective_root then
+    add_config(effective_root .. '/.vscode/' .. config_name)
   end
 
   return configs_to_load
@@ -136,8 +252,9 @@ end
 --- Load and merge multiple config files
 ---@param array_keys string|table Single key or list of keys to merge (e.g., 'configurations', 'tasks', 'compounds')
 ---@param paths table List of config file paths
+---@param effective_root string|nil Root directory for interpolation (defaults to _state.root_dir)
 ---@return table|nil Merged configuration or nil if no configs found
-local function merge_configs(array_keys, paths)
+local function merge_configs(array_keys, paths, effective_root)
   -- Normalize to table
   if type(array_keys) == 'string' then
     array_keys = { array_keys }
@@ -148,10 +265,16 @@ local function merge_configs(array_keys, paths)
     merged[key] = {}
   end
 
+  -- Create interpolation state with effective root
+  local interp_state = {
+    workspace = M._state.workspace,
+    root_dir = effective_root or M._state.root_dir,
+  }
+
   for _, config_path in ipairs(paths) do
     local config = parser.parse_json_file(config_path)
     if config then
-      config = interpolate.interpolate_config(config, M._state)
+      config = interpolate.interpolate_config(config, interp_state)
 
       for _, key in ipairs(array_keys) do
         if config[key] then
@@ -364,8 +487,9 @@ end
 ---@param path string|nil File path to determine context (defaults to current buffer)
 ---@return table|nil Parsed launch configuration with merged configurations and compounds arrays
 function M.get_launch_config(path)
+  local effective_root = get_effective_root(path)
   local config_paths = collect_vscode_configs('launch.json', path)
-  return merge_configs({ 'configurations', 'compounds' }, config_paths)
+  return merge_configs({ 'configurations', 'compounds' }, config_paths, effective_root)
 end
 
 --- Resolve a launch configuration by name
@@ -488,8 +612,9 @@ end
 ---@param path string|nil File path to determine context (defaults to current buffer)
 ---@return table|nil Parsed tasks configuration with merged tasks array
 function M.get_tasks_config(path)
+  local effective_root = get_effective_root(path)
   local config_paths = collect_vscode_configs('tasks.json', path)
-  return merge_configs('tasks', config_paths)
+  return merge_configs('tasks', config_paths, effective_root)
 end
 
 --- Resolve a task by label

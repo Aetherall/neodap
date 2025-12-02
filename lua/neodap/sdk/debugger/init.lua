@@ -217,6 +217,10 @@ function Debugger:init()
   -- Adapter registry (logical type -> physical config)
   self.adapters = {}
 
+  -- Type aliases (VSCode type -> DAP adapter type)
+  -- Maps launch.json types (like "node") to adapter types (like "pwa-node")
+  self.type_aliases = {}
+
   -- Context management
   self._global_context = Context:new(nil)
   self._global_context:set_parent(self)
@@ -271,6 +275,13 @@ function Debugger:register_adapter(type_or_config, config)
 
   self.adapters[adapter_type] = adapter_config
 
+  -- Register type aliases (e.g., "node" -> "pwa-node")
+  if adapter_config.aliases then
+    for _, alias in ipairs(adapter_config.aliases) do
+      self.type_aliases[alias] = adapter_type
+    end
+  end
+
   -- Create ExceptionFilter objects from adapter config
   if adapter_config.exceptionFilters then
     for _, filter_config in ipairs(adapter_config.exceptionFilters) do
@@ -279,6 +290,13 @@ function Debugger:register_adapter(type_or_config, config)
       self.store:add(filter, "exception_filter", {})
     end
   end
+end
+
+---Resolve a type to its adapter type (follows aliases)
+---@param type_name string
+---@return string resolved_type
+function Debugger:resolve_type(type_name)
+  return self.type_aliases[type_name] or type_name
 end
 
 ---Create a new global breakpoint
@@ -377,8 +395,14 @@ function Debugger:start(config)
     error("Debug configuration must have a 'request' field (launch or attach)")
   end
 
-  -- Create session (pass just the type, not the whole config)
-  local session = self:create_session(config.type)
+  -- Resolve type alias (e.g., "node" -> "pwa-node")
+  local resolved_type = self:resolve_type(config.type)
+
+  -- Create session with resolved type
+  local session = self:create_session(resolved_type)
+
+  -- Create a modified config with resolved type for DAP server
+  local dap_config = vim.tbl_extend("force", config, { type = resolved_type })
 
   -- Set session name from config
   session.name:set(config.name)
@@ -391,9 +415,9 @@ function Debugger:start(config)
 
   -- Launch or attach based on request type
   if config.request == "launch" then
-    session:launch(config)
+    session:launch(dap_config)
   elseif config.request == "attach" then
-    err = session:attach(config)
+    err = session:attach(dap_config)
     if err then
       error("Failed to attach session: " .. err)
     end
