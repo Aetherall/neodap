@@ -1,0 +1,31 @@
+{
+  "folders": [
+    {
+      "path": "app-a",
+      "name": "App A"
+    },
+    {
+      "path": "app-b",
+      "name": "App B"
+    }
+  ],
+  "settings": {
+    "editor.formatOnSave": true
+  },
+  "launch": {
+    "version": "0.2.0",
+    "configurations": [],
+    "compounds": [
+      {
+        "name": "Debug Both Apps",
+        "configurations": ["App A: Debug", "App B: Debug"],
+        "stopAll": true
+      },
+      {
+        "name": "Debug Both (Stop on Entry)",
+        "configurations": ["App A: Debug (Stop)", "App B: Debug (Stop)"],
+        "stopAll": true
+      }
+    ]
+  }
+}

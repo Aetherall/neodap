@@ -1,0 +1,28 @@
+{
+  "folders": [
+    {
+      "path": "app-a",
+      "name": "App A"
+    },
+    {
+      "path": "app-b",
+      "name": "App B"
+    }
+  ],
+  "settings": {},
+  "launch": {
+    "version": "0.2.0",
+    "configurations": [],
+    "compounds": [
+      {
+        "name": "Debug Both Apps",
+        "configurations": ["App A: Debug", "App B: Debug"],
+        "stopAll": true
+      },
+      {
+        "name": "Debug Both (no stopAll)",
+        "configurations": ["App A: Debug", "App B: Debug"]
+      }
+    ]
+  }
+}

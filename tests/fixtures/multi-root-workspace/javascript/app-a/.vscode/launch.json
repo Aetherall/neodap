@@ -1,0 +1,13 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "pwa-node",
+      "request": "launch",
+      "name": "App A: Debug",
+      "program": "${workspaceFolder}/program.js",
+      "skipFiles": [],
+      "stopOnEntry": true
+    }
+  ]
+}

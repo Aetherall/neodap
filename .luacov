@@ -1,0 +1,19 @@
+-- LuaCov configuration for neodap
+return {
+  statsfile = ".tests/coverage/luacov.stats.out",
+  reportfile = ".tests/coverage/luacov.report.out",
+
+  -- Only track neodap and neograph code
+  include = {
+    "lua/neodap/",
+    "lua/neograph/",
+  },
+
+  -- Exclude test files and external dependencies
+  exclude = {
+    "tests/",
+    "%.tests/",
+    "lazy%.nvim",
+    "mini%.test",
+  },
+}

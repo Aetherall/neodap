@@ -1,0 +1,27 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "pwa-node",
+      "request": "launch",
+      "name": "Debug",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["tsx"],
+      "program": "${workspaceFolder}/main.ts",
+      "sourceMaps": true,
+      "skipFiles": [],
+      "stopOnEntry": false
+    },
+    {
+      "type": "pwa-node",
+      "request": "launch",
+      "name": "Debug stop",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["tsx"],
+      "program": "${workspaceFolder}/main.ts",
+      "sourceMaps": true,
+      "skipFiles": [],
+      "stopOnEntry": true
+    }
+  ]
+}

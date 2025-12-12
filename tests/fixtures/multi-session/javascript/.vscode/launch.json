@@ -1,0 +1,158 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "pwa-node",
+      "request": "launch",
+      "name": "Debug A",
+      "program": "${workspaceFolder}/program_a.js",
+      "sourceMaps": true,
+      "skipFiles": [],
+      "stopOnEntry": false
+    },
+    {
+      "type": "pwa-node",
+      "request": "launch",
+      "name": "Debug A stop",
+      "program": "${workspaceFolder}/program_a.js",
+      "sourceMaps": true,
+      "skipFiles": [],
+      "stopOnEntry": true
+    },
+    {
+      "type": "pwa-node",
+      "request": "launch",
+      "name": "Debug B",
+      "program": "${workspaceFolder}/program_b.js",
+      "sourceMaps": true,
+      "skipFiles": [],
+      "stopOnEntry": false
+    },
+    {
+      "type": "pwa-node",
+      "request": "launch",
+      "name": "Debug B stop",
+      "program": "${workspaceFolder}/program_b.js",
+      "sourceMaps": true,
+      "skipFiles": [],
+      "stopOnEntry": true
+    },
+    {
+      "type": "pwa-node",
+      "request": "launch",
+      "name": "Debug A with task",
+      "program": "${workspaceFolder}/program_a.js",
+      "sourceMaps": true,
+      "skipFiles": [],
+      "stopOnEntry": true,
+      "preLaunchTask": "build-a"
+    },
+    {
+      "type": "pwa-node",
+      "request": "launch",
+      "name": "Debug B with task",
+      "program": "${workspaceFolder}/program_b.js",
+      "sourceMaps": true,
+      "skipFiles": [],
+      "stopOnEntry": true,
+      "preLaunchTask": "build-b"
+    },
+    {
+      "type": "pwa-node",
+      "request": "launch",
+      "name": "Debug A with post task",
+      "program": "${workspaceFolder}/program_a.js",
+      "sourceMaps": true,
+      "skipFiles": [],
+      "stopOnEntry": true,
+      "postDebugTask": "build-a"
+    },
+    {
+      "type": "pwa-node",
+      "request": "launch",
+      "name": "Debug B with post task",
+      "program": "${workspaceFolder}/program_b.js",
+      "sourceMaps": true,
+      "skipFiles": [],
+      "stopOnEntry": true,
+      "postDebugTask": "build-b"
+    },
+    {
+      "type": "pwa-node",
+      "request": "launch",
+      "name": "Debug A with both tasks",
+      "program": "${workspaceFolder}/program_a.js",
+      "sourceMaps": true,
+      "skipFiles": [],
+      "stopOnEntry": true,
+      "preLaunchTask": "build-a",
+      "postDebugTask": "build-a"
+    },
+    {
+      "type": "pwa-node",
+      "request": "launch",
+      "name": "Debug B with both tasks",
+      "program": "${workspaceFolder}/program_b.js",
+      "sourceMaps": true,
+      "skipFiles": [],
+      "stopOnEntry": true,
+      "preLaunchTask": "build-b",
+      "postDebugTask": "build-b"
+    },
+    {
+      "type": "pwa-node",
+      "request": "launch",
+      "name": "Debug A with failing task",
+      "program": "${workspaceFolder}/program_a.js",
+      "sourceMaps": true,
+      "skipFiles": [],
+      "stopOnEntry": true,
+      "preLaunchTask": "build-fail"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Both Programs",
+      "configurations": ["Debug A stop", "Debug B stop"]
+    },
+    {
+      "name": "Both with compound task",
+      "configurations": ["Debug A stop", "Debug B stop"],
+      "preLaunchTask": "build-all"
+    },
+    {
+      "name": "Both with individual tasks",
+      "configurations": ["Debug A with task", "Debug B with task"]
+    },
+    {
+      "name": "Both with all tasks",
+      "configurations": ["Debug A with task", "Debug B with task"],
+      "preLaunchTask": "build-all"
+    },
+    {
+      "name": "Both Programs (stopAll)",
+      "configurations": ["Debug A stop", "Debug B stop"],
+      "stopAll": true
+    },
+    {
+      "name": "Both with compound post task",
+      "configurations": ["Debug A stop", "Debug B stop"],
+      "postDebugTask": "build-all"
+    },
+    {
+      "name": "Both with individual post tasks",
+      "configurations": ["Debug A with post task", "Debug B with post task"]
+    },
+    {
+      "name": "Both with compound and individual tasks",
+      "configurations": ["Debug A with both tasks", "Debug B with both tasks"],
+      "preLaunchTask": "build-all",
+      "postDebugTask": "build-all"
+    },
+    {
+      "name": "Both with failing compound task",
+      "configurations": ["Debug A stop", "Debug B stop"],
+      "preLaunchTask": "build-fail"
+    }
+  ]
+}

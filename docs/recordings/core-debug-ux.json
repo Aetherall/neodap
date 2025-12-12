@@ -1,0 +1,25 @@
+{
+  "command": "env NVIM_APPNAME=nvimconfig NVIM_CONFIG=$NVIM_CONFIG nvim -u $NVIM_CONFIG/init.lua /tmp/test-debug.js",
+  "width": 180,
+  "height": 40,
+  "startup_wait": 3000,
+  "steps": [
+    {"type": "16G", "wait": 300},
+    {"type": " db", "wait": 500},
+
+    {"type": " dr", "wait": 800},
+    {"key": "Enter", "wait": 3000},
+
+    {"type": " dj", "wait": 1500},
+    {"type": " dj", "wait": 1500},
+    {"type": " dj", "wait": 1500},
+    {"type": " dj", "wait": 1500},
+
+    {"type": " dc", "wait": 1500},
+
+    {"type": " dq", "wait": 1500},
+
+    {"type": ":qa!", "wait": 200},
+    {"key": "Enter", "wait": 300}
+  ]
+}
