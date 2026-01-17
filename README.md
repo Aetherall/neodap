@@ -57,10 +57,29 @@ use {
 ```lua
 require("neodap.boost").setup({
   adapters = {
+    -- Python (debugpy) - communicates via stdin/stdout
     python = {
-      type = "server",
+      type = "stdio",
       command = "python",
       args = { "-m", "debugpy.adapter" },
+    },
+
+    -- Node.js (js-debug) - spawns server, detects port, connects
+    ["pwa-node"] = {
+      type = "server",
+      command = "js-debug",
+      args = { "0" },  -- port 0 = auto-assign
+      connect_condition = function(output)
+        local port = output:match(":(%d+)%s*$")
+        if port then return tonumber(port), "::1" end
+      end,
+    },
+
+    -- Go (delve) - communicates via stdin/stdout
+    go = {
+      type = "stdio",
+      command = "dlv",
+      args = { "dap" },
     },
   },
   keys = true,
@@ -706,12 +725,29 @@ debugger:use(neodap.plugins.control_cmd)
 
 **Adapter types**:
 ```lua
--- stdio: communicate via stdin/stdout
-{ type = "stdio", command = "dlv", args = { "dap" } }
+-- stdio: communicate via stdin/stdout (debugpy, delve, etc.)
+python = {
+  type = "stdio",
+  command = "python",
+  args = { "-m", "debugpy.adapter" },
+}
 
--- tcp: connect to running adapter
-{ type = "tcp", host = "127.0.0.1", port = 5678 }
+-- server: spawn process, detect ready, connect via TCP (js-debug, etc.)
+["pwa-node"] = {
+  type = "server",
+  command = "js-debug",
+  args = { "0" },  -- port 0 = auto-assign
+  connect_condition = function(output)
+    -- return port, host when server is ready
+    local port = output:match(":(%d+)%s*$")
+    if port then return tonumber(port), "::1" end
+  end,
+}
 
--- server: launch process, wait for port, connect
-{ type = "server", command = "js-debug-adapter", args = {} }
+-- tcp: connect to already-running adapter
+python_remote = {
+  type = "tcp",
+  host = "127.0.0.1",
+  port = 5678,
+}
 ```

@@ -6,9 +6,13 @@ local navigate = require("neodap.plugins.utils.navigate")
 
 ---@class JumpStopConfig
 ---@field enabled? boolean Initial enabled state (default: true)
+---@field pick_window? fun(path: string, line: number, column: number): number? Full override for window selection (return nil to skip jump)
+---@field create_window? fun(): number Fallback when no suitable window exists (default: vsplit)
 
 local default_config = {
   enabled = true,
+  pick_window = nil, -- nil = use default logic (find existing window with buffer, or non-DAP window)
+  create_window = nil, -- nil = use vsplit
 }
 
 ---@param debugger neodap.entities.Debugger
@@ -43,7 +47,10 @@ return function(debugger, config)
         local top_frame = stack.topFrame:get()
         if top_frame then
           a.wait(a.main, "jump_stop:schedule")
-          navigate.goto_frame(top_frame)
+          navigate.goto_frame(top_frame, {
+            pick_window = config.pick_window,
+            create_window = config.create_window,
+          })
         end
       end)
     end)

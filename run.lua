@@ -274,17 +274,17 @@ write_file(launch_json, launch_content)
 -- Build adapters table for neodap.setup()
 local adapters = {}
 
--- Node.js adapter (js-debug) - spawns server on demand
-adapters["pwa-node"] = function()
-  local port = math.random(30000, 40000)
-  vim.system({ JSDBG_PATH, tostring(port) }, { detach = true })
-  vim.uv.sleep(500) -- Wait for server to start
-  return {
-    type = "tcp",
-    host = "::1",
-    port = port,
-  }
-end
+-- Node.js adapter (js-debug) - spawns server, detects port, connects
+adapters["pwa-node"] = {
+  type = "server",
+  command = JSDBG_PATH,
+  args = { "0" },  -- port 0 = auto-assign
+  connect_condition = function(output)
+    -- js-debug outputs "Debug server listening at ::1:PORT"
+    local port = output:match(":(%d+)%s*$")
+    if port then return tonumber(port), "::1" end
+  end,
+}
 
 -- Python adapter (debugpy)
 if DEBUGPY_PATH then

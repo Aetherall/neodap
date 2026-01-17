@@ -67,6 +67,10 @@ return function(debugger, config)
       return
     end
 
+    -- Use the cursor item ID saved by CursorMoved (before view changed)
+    local cursor_item_id = state.cursor_item_id
+    local win = vim.fn.bufwinid(bufnr)
+
     local view, offset = state.view, state.offset or 0
     local items = {}
     local hide_root = not config.show_root
@@ -95,6 +99,7 @@ return function(debugger, config)
 
     local guide_data = render.compute_guides(items)
     local rendered, highlights, anchors = {}, {}, {}
+    local cursor_item_line = nil
 
     for i, item in ipairs(items) do
       local line_idx = offset + i - 1
@@ -108,6 +113,10 @@ return function(debugger, config)
       end
       if cursor_col then
         anchors[line_idx] = cursor_col
+      end
+      -- Track where the previously-focused item ended up
+      if cursor_item_id and item.id == cursor_item_id then
+        cursor_item_line = line_idx
       end
     end
 
@@ -124,6 +133,12 @@ return function(debugger, config)
         hl_group = hl.group,
         hl_eol = hl.col_end == -1,
       })
+    end
+
+    -- Restore cursor to the same item after re-render
+    if cursor_item_line and win ~= -1 then
+      local anchor = anchors[cursor_item_line] or 0
+      pcall(vim.api.nvim_win_set_cursor, win, { cursor_item_line + 1, anchor })
     end
   end
 
@@ -161,7 +176,9 @@ return function(debugger, config)
       item.type = get_prop(item, "type", "Unknown")
       item.expanded = item:any_expanded()
     end
-    return { item = item, entity = item and graph:get(item.id), bufnr = bufnr, debugger = debugger }
+    -- Use item.node directly (the entity reference from the view)
+    local entity = item and item.node
+    return { item = item, entity = entity, bufnr = bufnr, debugger = debugger }
   end
 
   --- Call on_expand callbacks for all edges of an entity type
@@ -322,16 +339,23 @@ return function(debugger, config)
 
         -- Update focused_uri for tree preview integration
         local item = get_cursor_item(bufnr)
+        local state = view_state[bufnr]
         if item then
           local entity = graph:get(item.id)
           if entity and entity.uri then
             vim.b[bufnr].focused_uri = entity.uri:get()
           end
+          -- Save cursor item ID for restoration after re-render
+          if state then
+            state.cursor_item_id = item.id
+          end
         else
           vim.b[bufnr].focused_uri = nil
+          if state then
+            state.cursor_item_id = nil
+          end
         end
 
-        local state = view_state[bufnr]
         if state and state.cursor_anchors then
           local w = vim.fn.bufwinid(bufnr)
           if w ~= -1 then
