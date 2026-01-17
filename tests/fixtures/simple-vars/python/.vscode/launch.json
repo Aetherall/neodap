@@ -1,0 +1,58 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "python",
+      "request": "launch",
+      "name": "Debug",
+      "program": "${workspaceFolder}/main.py",
+      "console": "internalConsole",
+      "stopOnEntry": false
+    },
+    {
+      "type": "python",
+      "request": "launch",
+      "name": "Debug stop",
+      "program": "${workspaceFolder}/main.py",
+      "console": "internalConsole",
+      "stopOnEntry": true
+    },
+    {
+      "type": "python",
+      "request": "launch",
+      "name": "Debug with preLaunchTask",
+      "program": "${workspaceFolder}/main.py",
+      "console": "internalConsole",
+      "stopOnEntry": true,
+      "preLaunchTask": "test-build"
+    },
+    {
+      "type": "python",
+      "request": "launch",
+      "name": "Debug with postDebugTask",
+      "program": "${workspaceFolder}/main.py",
+      "console": "internalConsole",
+      "stopOnEntry": true,
+      "postDebugTask": "test-cleanup"
+    },
+    {
+      "type": "python",
+      "request": "launch",
+      "name": "Debug with both tasks",
+      "program": "${workspaceFolder}/main.py",
+      "console": "internalConsole",
+      "stopOnEntry": true,
+      "preLaunchTask": "test-build",
+      "postDebugTask": "test-cleanup"
+    },
+    {
+      "type": "python",
+      "request": "launch",
+      "name": "Debug with failing task",
+      "program": "${workspaceFolder}/main.py",
+      "console": "internalConsole",
+      "stopOnEntry": true,
+      "preLaunchTask": "test-fail"
+    }
+  ]
+}

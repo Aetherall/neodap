@@ -1,0 +1,13 @@
+# Test artifacts
+.tests/
+
+# Nix
+result
+.direnv/
+
+# Misc
+.DS_Store
+*.log
+.gemini/
+.nvimmcp
+.claude/

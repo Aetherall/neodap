@@ -1,0 +1,20 @@
+{
+  "runtime": {
+    "version": "LuaJIT"
+  },
+  "workspace": {
+    "library": [
+      "$VIMRUNTIME/lua",
+      "$LUVIT_PATH"
+    ],
+    "workspaceRoots": [
+      "lua",
+      "tests"
+    ]
+  },
+  "diagnostics": {
+    "globals": [
+      "MiniTest"
+    ]
+  }
+}

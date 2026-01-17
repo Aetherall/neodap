@@ -1,0 +1,35 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "pwa-node",
+      "request": "launch",
+      "name": "Debug Jest",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "--inspect-brk",
+        "${workspaceFolder}/node_modules/.bin/jest",
+        "--runInBand"
+      ],
+      "console": "internalConsole",
+      "cwd": "${workspaceFolder}",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "type": "pwa-node",
+      "request": "launch",
+      "name": "Debug",
+      "program": "${workspaceFolder}/sum.js",
+      "console": "internalConsole",
+      "stopOnEntry": false
+    },
+    {
+      "type": "pwa-node",
+      "request": "launch",
+      "name": "Debug stop",
+      "program": "${workspaceFolder}/sum.js",
+      "console": "internalConsole",
+      "stopOnEntry": true
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "test-build",
+      "type": "shell",
+      "command": "echo",
+      "args": ["build"],
+      "problemMatcher": []
+    },
+    {
+      "label": "test-cleanup",
+      "type": "shell",
+      "command": "echo",
+      "args": ["cleanup"],
+      "problemMatcher": []
+    },
+    {
+      "label": "test-fail",
+      "type": "shell",
+      "command": "false",
+      "problemMatcher": []
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "pwa-node",
+      "request": "launch",
+      "name": "Debug",
+      "program": "${workspaceFolder}/main.js",
+      "sourceMaps": true,
+      "skipFiles": [],
+      "stopOnEntry": false
+    },
+    {
+      "type": "pwa-node",
+      "request": "launch",
+      "name": "Debug stop",
+      "program": "${workspaceFolder}/main.js",
+      "sourceMaps": true,
+      "skipFiles": [],
+      "stopOnEntry": true
+    },
+    {
+      "type": "pwa-node",
+      "request": "launch",
+      "name": "Debug with preLaunchTask",
+      "program": "${workspaceFolder}/main.js",
+      "sourceMaps": true,
+      "skipFiles": [],
+      "stopOnEntry": true,
+      "preLaunchTask": "test-build"
+    },
+    {
+      "type": "pwa-node",
+      "request": "launch",
+      "name": "Debug with postDebugTask",
+      "program": "${workspaceFolder}/main.js",
+      "sourceMaps": true,
+      "skipFiles": [],
+      "stopOnEntry": true,
+      "postDebugTask": "test-cleanup"
+    },
+    {
+      "type": "pwa-node",
+      "request": "launch",
+      "name": "Debug with both tasks",
+      "program": "${workspaceFolder}/main.js",
+      "sourceMaps": true,
+      "skipFiles": [],
+      "stopOnEntry": true,
+      "preLaunchTask": "test-build",
+      "postDebugTask": "test-cleanup"
+    },
+    {
+      "type": "pwa-node",
+      "request": "launch",
+      "name": "Debug with failing task",
+      "program": "${workspaceFolder}/main.js",
+      "sourceMaps": true,
+      "skipFiles": [],
+      "stopOnEntry": true,
+      "preLaunchTask": "test-fail"
+    }
+  ]
+}

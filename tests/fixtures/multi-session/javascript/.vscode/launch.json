@@ -1,0 +1,41 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "pwa-node",
+      "request": "launch",
+      "name": "Debug A",
+      "program": "${workspaceFolder}/program_a.js",
+      "sourceMaps": true,
+      "skipFiles": [],
+      "stopOnEntry": false
+    },
+    {
+      "type": "pwa-node",
+      "request": "launch",
+      "name": "Debug A stop",
+      "program": "${workspaceFolder}/program_a.js",
+      "sourceMaps": true,
+      "skipFiles": [],
+      "stopOnEntry": true
+    },
+    {
+      "type": "pwa-node",
+      "request": "launch",
+      "name": "Debug B",
+      "program": "${workspaceFolder}/program_b.js",
+      "sourceMaps": true,
+      "skipFiles": [],
+      "stopOnEntry": false
+    },
+    {
+      "type": "pwa-node",
+      "request": "launch",
+      "name": "Debug B stop",
+      "program": "${workspaceFolder}/program_b.js",
+      "sourceMaps": true,
+      "skipFiles": [],
+      "stopOnEntry": true
+    }
+  ]
+}
