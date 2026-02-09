@@ -19,6 +19,8 @@ local type_map = {
   sourcebinding = "SourceBinding",
   bpbinding = "BreakpointBinding",
   exfilter = "ExceptionFilter",
+  exfilterbind = "ExceptionFilterBinding",
+  exfilters = "ExceptionFiltersGroup",
 }
 
 --- Extract entity type from URI string
@@ -42,6 +44,13 @@ end
 ---@return string
 function M.debugger()
   return "debugger"
+end
+
+--- Build config URI
+---@param configId string
+---@return string
+function M.config(configId)
+  return "config:" .. configId
 end
 
 --- Build session URI
@@ -143,12 +152,19 @@ function M.output(sessionId, seq)
   return "output:" .. sessionId .. ":" .. seq
 end
 
---- Build exception filter URI
+--- Build exception filter URI (global, debugger-scoped)
+---@param filterId string
+---@return string
+function M.exceptionFilter(filterId)
+  return "exfilter:" .. filterId
+end
+
+--- Build exception filter binding URI (per-session)
 ---@param sessionId string
 ---@param filterId string
 ---@return string
-function M.exceptionFilter(sessionId, filterId)
-  return "exfilter:" .. sessionId .. ":" .. filterId
+function M.exceptionFilterBinding(sessionId, filterId)
+  return "exfilterbind:" .. sessionId .. ":" .. filterId
 end
 
 --- Build stdio URI (intermediate node for session outputs)
@@ -183,6 +199,18 @@ function M.targets()
   return "targets:group"
 end
 
+--- Build configs group URI (UI grouping node for Config instances)
+---@return string
+function M.configsGroup()
+  return "configs:group"
+end
+
+--- Build exception filters group URI (UI grouping node for exception filters)
+---@return string
+function M.exceptionFiltersGroup()
+  return "exfilters:group"
+end
+
 --- Parse URI and return type and components
 --- Returns nil if invalid
 ---@param uri string
@@ -203,7 +231,10 @@ function M.parse(uri)
   -- Parse based on entity type and fixed component count
   local result = { type = entity_type, components = {} }
 
-  if entity_type == "session" then
+  if entity_type == "config" then
+    -- config:{configId} - fixed: 1
+    result.components.configId = rest
+  elseif entity_type == "session" then
     -- session:{sessionId} - fixed: 1
     result.components.sessionId = rest
   elseif entity_type == "source" then
@@ -279,7 +310,10 @@ function M.parse(uri)
     result.components.sessionId = parts[1]
     result.components.seq = tonumber(parts[2])
   elseif entity_type == "exfilter" then
-    -- exfilter:{sessionId}:{filterId} - fixed: 1, free-form: filterId
+    -- exfilter:{filterId} - global, debugger-scoped
+    result.components.filterId = rest
+  elseif entity_type == "exfilterbind" then
+    -- exfilterbind:{sessionId}:{filterId} - per-session binding
     local sep = rest:find(":")
     if not sep then return nil end
     result.components.sessionId = rest:sub(1, sep - 1)

@@ -42,7 +42,7 @@
    26. Multi-Subscriber Events (MS-*) [Appendix D.5]
    27. Undefined Property Access (UP-*) [Appendix D.6]
 
-  Total: 244 tests (201 existing + 43 Appendix D)
+  Total: 256 tests (201 existing + 43 Appendix D + 12 additional)
 
   NOTE: Appendix D tests (Sections 22-27) verify planned improvements.
   Some tests document EXPECTED behavior and will FAIL until fixes are implemented.
@@ -3316,6 +3316,87 @@ test("RE12", "Deep multi-parent with eager recursive", function()
   -- Eager expands first level for both parents
   -- 2 roots + shared under each parent = 4
   assert_eq(enter_count, 4)
+end)
+
+-- Schema for recursive with sibling edges
+local function recursive_sibling_schema()
+  return {
+    Folder = {
+      name = "string",
+      level = "number",
+      children = { type = "edge", target = "Folder", reverse = "parent" },
+      tags = { type = "edge", target = "Tag", reverse = "folders" },
+      parent = { type = "edge", target = "Folder", reverse = "children" },
+      __indexes = {
+        { name = "default", fields = {} },
+        { name = "by_level", fields = { { name = "level" } } },
+      },
+    },
+    Tag = {
+      name = "string",
+      folders = { type = "edge", target = "Folder", reverse = "tags" },
+    },
+  }
+end
+
+test("RE13", "Recursive should apply sibling edges at all levels", function()
+  -- This test documents EXPECTED behavior - recursive = true on an edge
+  -- should cause its sibling edges in the same config to also apply recursively.
+  --
+  -- Currently FAILS: sibling edges only apply at the first level, not at
+  -- deeper recursive levels. This is a limitation that should be fixed.
+
+  local g = neo.create(recursive_sibling_schema())
+
+  -- Create folder hierarchy: root -> child -> grandchild
+  local root = g:insert("Folder", { name = "Root", level = 0 })
+  local child = g:insert("Folder", { name = "Child", level = 1 })
+  local grandchild = g:insert("Folder", { name = "Grandchild", level = 2 })
+  root.children:link(child)
+  child.children:link(grandchild)
+
+  -- Add tags at each level
+  local tag_root = g:insert("Tag", { name = "TagRoot" })
+  local tag_child = g:insert("Tag", { name = "TagChild" })
+  local tag_grandchild = g:insert("Tag", { name = "TagGrandchild" })
+  root.tags:link(tag_root)
+  child.tags:link(tag_child)
+  grandchild.tags:link(tag_grandchild)
+
+  local tag_enters = {}
+  local view = g:view({
+    type = "Folder",
+    filters = {{ field = "level", op = "eq", value = 0 }},
+    edges = {
+      children = { recursive = true },
+      tags = { eager = true },  -- sibling edge should apply at all recursive levels
+    }
+  }, {
+    callbacks = {
+      on_enter = function(node)
+        local name = node.name:get()
+        if name and name:match("^Tag") then
+          tag_enters[#tag_enters + 1] = name
+        end
+      end,
+    },
+  })
+
+  -- Expand children recursively
+  view:expand(root._id, "children")
+  view:expand(child._id, "children")
+
+  -- EXPECTED: tags should be visible at all levels (root, child, grandchild)
+  -- All three tags should have entered the view
+  assert_eq(#tag_enters, 3, "Expected 3 tags (one at each level), got " .. #tag_enters)
+
+  local function contains(tbl, val)
+    for _, v in ipairs(tbl) do if v == val then return true end end
+    return false
+  end
+  assert_true(contains(tag_enters, "TagRoot"), "TagRoot should be in view")
+  assert_true(contains(tag_enters, "TagChild"), "TagChild should be in view")
+  assert_true(contains(tag_enters, "TagGrandchild"), "TagGrandchild should be in view")
 end)
 
 --------------------------------------------------------------------------------

@@ -14,6 +14,8 @@
 ---   })
 
 local scoped = require("neodap.scoped")
+local log = require("neodap.logger")
+local a = require("neodap.async")
 
 local M = {}
 
@@ -224,58 +226,142 @@ local function setup_buffer(bufnr, scheme, url, options, reg)
     return
   end
 
-  -- Get initial entity
+  -- Get initial watched result
   local result = watch:get()
 
-  -- Validate entity type and cardinality
-  local entity, validation_error = validate_result(result, reg)
-  if validation_error then
-    set_content(bufnr, { "-- Error: " .. validation_error, "-- URL: " .. url })
-    vim.bo[bufnr].modifiable = false
-    if watch.dispose then watch:dispose() end
-    return
-  end
+  -- Subscribe to changes for an entity
+  local function setup_subscription(initial_entity)
+    scoped.withScope(buffer_scope, function()
+      local prev_entity = initial_entity
+      watch:use(function(new_result)
+        -- Apply resolve transform if provided
+        if reg.opts.resolve then
+          -- Run resolve async
+          a.run(function()
+            return reg.opts.resolve(new_result, options)
+          end, function(err, new_entity)
+            vim.schedule(function()
+              if not vim.api.nvim_buf_is_valid(bufnr) then return end
+              if err then return end -- Resolution failed - keep stale
 
-  -- Initial render
-  render_buffer(bufnr, reg, entity, true)
+              -- Check if entity actually changed
+              local changed = false
+              if reg.cardinality == "many" then
+                changed = true
+              else
+                local ok, result = pcall(function()
+                  local old_uri = prev_entity and prev_entity.uri and prev_entity.uri:get()
+                  local new_uri = new_entity and new_entity.uri and new_entity.uri:get()
+                  return old_uri ~= new_uri
+                end)
+                changed = not ok or result
+              end
 
-  -- Call setup if provided
-  if reg.opts.setup then
-    reg.opts.setup(bufnr, entity, options)
-  end
-
-  -- Subscribe to changes
-  scoped.withScope(buffer_scope, function()
-    local prev_entity = entity
-    watch:use(function(new_result)
-      vim.schedule(function()
-        if not vim.api.nvim_buf_is_valid(bufnr) then return end
-
-        local new_entity, err = validate_result(new_result, reg)
-        if err then
-          -- Entity no longer valid - could show error or keep stale
-          return
-        end
-
-        -- Check if entity actually changed
-        local changed = false
-        if reg.cardinality == "many" then
-          -- For collections, always re-render (array comparison is complex)
-          changed = true
+              if changed then
+                handle_entity_change(bufnr, reg, new_entity, prev_entity)
+                prev_entity = new_entity
+              end
+            end)
+          end)
         else
-          -- For single entities, compare URIs
-          local old_uri = prev_entity and prev_entity.uri and prev_entity.uri:get()
-          local new_uri = new_entity and new_entity.uri and new_entity.uri:get()
-          changed = old_uri ~= new_uri
-        end
+          vim.schedule(function()
+            if not vim.api.nvim_buf_is_valid(bufnr) then return end
 
-        if changed then
-          handle_entity_change(bufnr, reg, new_entity, prev_entity)
-          prev_entity = new_entity
+            local new_entity, err = validate_result(new_result, reg)
+            if err then return end -- Entity no longer valid - keep stale
+
+            -- Check if entity actually changed
+            local changed = false
+            if reg.cardinality == "many" then
+              changed = true
+            else
+              local ok, result = pcall(function()
+                local old_uri = prev_entity and prev_entity.uri and prev_entity.uri:get()
+                local new_uri = new_entity and new_entity.uri and new_entity.uri:get()
+                return old_uri ~= new_uri
+              end)
+              changed = not ok or result
+            end
+
+            if changed then
+              handle_entity_change(bufnr, reg, new_entity, prev_entity)
+              prev_entity = new_entity
+            end
+          end)
         end
       end)
     end)
-  end)
+  end
+
+  -- Helper to complete buffer setup after entity is resolved
+  local function complete_setup(entity)
+    -- Final validation for resolved entity
+    if entity == nil and not reg.opts.optional then
+      set_content(bufnr, { "-- Error: Entity resolved to nil", "-- URL: " .. url })
+      vim.bo[bufnr].modifiable = false
+      if watch.dispose then watch:dispose() end
+      return
+    end
+
+    -- Initial render
+    render_buffer(bufnr, reg, entity, true)
+
+    -- Call setup if provided
+    if reg.opts.setup then
+      reg.opts.setup(bufnr, entity, options)
+    end
+
+    -- Make read-only if no submit handler
+    if not reg.opts.submit then
+      vim.bo[bufnr].modifiable = false
+    end
+
+    -- Setup subscription for future changes
+    setup_subscription(entity)
+  end
+
+  -- Apply resolve transform if provided
+  if reg.opts.resolve then
+    -- Show loading state
+    set_content(bufnr, { "-- Loading..." })
+    vim.bo[bufnr].modifiable = false
+
+    -- Run resolve async (supports both sync and async resolve functions)
+    a.run(function()
+      return reg.opts.resolve(result, options)
+    end, function(err, entity)
+      vim.schedule(function()
+        if not vim.api.nvim_buf_is_valid(bufnr) then return end
+        vim.bo[bufnr].modifiable = true
+
+        if err then
+          -- Split error message by newlines and prefix each line
+          local err_str = tostring(err)
+          local err_lines = { "-- Error resolving entity:" }
+          for line in err_str:gmatch("[^\n]+") do
+            table.insert(err_lines, "-- " .. line)
+          end
+          set_content(bufnr, err_lines)
+          vim.bo[bufnr].modifiable = false
+          if watch.dispose then watch:dispose() end
+          return
+        end
+
+        complete_setup(entity)
+      end)
+    end)
+  else
+    -- Validate entity type and cardinality (only when no custom resolve)
+    local entity, validation_error = validate_result(result, reg)
+    if validation_error then
+      set_content(bufnr, { "-- Error: " .. validation_error, "-- URL: " .. url })
+      vim.bo[bufnr].modifiable = false
+      if watch.dispose then watch:dispose() end
+      return
+    end
+
+    complete_setup(entity)
+  end
 
   -- Setup submit handler for editable buffers
   if reg.opts.submit then
@@ -286,11 +372,6 @@ local function setup_buffer(bufnr, scheme, url, options, reg)
         vim.bo[bufnr].modified = false
       end,
     })
-  end
-
-  -- Make read-only if no submit
-  if not reg.opts.submit then
-    vim.bo[bufnr].modifiable = false
   end
 end
 
@@ -411,6 +492,13 @@ end
 ---@param entity_type string Expected entity type (e.g., "Variable")
 ---@param cardinality "one"|"many" Expected cardinality
 ---@param opts table Configuration options
+---  - render: function(bufnr, entity) -> string  Required. Render entity to buffer content
+---  - submit: function(bufnr, entity, content)   Optional. Handle content submission
+---  - setup: function(bufnr, entity, options)    Optional. Setup buffer keymaps etc.
+---  - cleanup: function(bufnr)                   Optional. Cleanup on buffer wipeout
+---  - resolve: function(watched, options) -> entity  Optional. Transform watched entity
+---  - on_change: "always"|"skip_if_dirty"|"prompt"|function  Optional. Default: "skip_if_dirty"
+---  - optional: boolean                          Optional. Allow nil entity
 function M.register(scheme, entity_type, cardinality, opts)
   assert(scheme, "scheme is required")
   assert(cardinality == "one" or cardinality == "many", "cardinality must be 'one' or 'many'")
@@ -439,7 +527,7 @@ function M.register(scheme, entity_type, cardinality, opts)
 
       local parsed_scheme, url, options = parse_uri(uri)
       if not parsed_scheme or parsed_scheme ~= scheme then
-        vim.notify("entity_buffer: invalid URI: " .. uri, vim.log.levels.ERROR)
+        log:error("entity_buffer: invalid URI", { uri = uri })
         return
       end
 
@@ -465,19 +553,19 @@ function M.submit(bufnr)
 
   local reg = registry[state.scheme]
   if not reg or not reg.opts.submit then
-    vim.notify("entity_buffer: buffer is not editable", vim.log.levels.WARN)
+    log:warn("entity_buffer: buffer is not editable")
     return
   end
 
   local is_dirty, content = check_dirty(bufnr)
   if not is_dirty then
-    vim.notify("entity_buffer: no changes to submit", vim.log.levels.INFO)
+    log:info("entity_buffer: no changes to submit")
     return
   end
 
   local entity = state.entity
   if not entity then
-    vim.notify("entity_buffer: no entity bound", vim.log.levels.ERROR)
+    log:error("entity_buffer: no entity bound")
     return
   end
 
@@ -493,7 +581,7 @@ function M.submit(bufnr)
       vim.api.nvim_buf_delete(bufnr, { force = true })
     end
   else
-    vim.notify("entity_buffer: submit failed: " .. tostring(err), vim.log.levels.ERROR)
+    log:error("entity_buffer: submit failed", { error = tostring(err) })
   end
 end
 

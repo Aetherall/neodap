@@ -62,6 +62,18 @@ local function create_debugger_instance(graph, parent_scope)
   })
   debugger.targets:link(targetsGroup)
 
+  -- Create configs group (UI node for Config instances)
+  local configsGroup = entities.Configs.new(graph, {
+    uri = uri.configsGroup(),
+  })
+  debugger.configsGroups:link(configsGroup)
+
+  -- Create exception filters group (UI node for exception filters)
+  local exceptionFiltersGroup = entities.ExceptionFiltersGroup.new(graph, {
+    uri = uri.exceptionFiltersGroup(),
+  })
+  debugger.exceptionFiltersGroups:link(exceptionFiltersGroup)
+
   ---Use a plugin with this debugger (scoped)
   ---@param plugin neodap.Plugin
   ---@param config? table Optional plugin configuration
@@ -81,6 +93,9 @@ local function create_debugger_instance(graph, parent_scope)
 
   -- Install identity methods (query, watch, queryAll, resolve)
   require("neodap.identity").install(debugger)
+
+  -- Install presentation registry (components, actions)
+  require("neodap.presentation").install(debugger)
 
   -- Initialize ctx API
   entities.Debugger.initCtx(debugger)

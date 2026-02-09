@@ -11,6 +11,7 @@
 
 local a = require("neodap.async")
 local entities = require("neodap.entities")
+local log = require("neodap.logger")
 local Debugger = entities.Debugger
 
 ---Run an overseer task by name and wait for completion
@@ -20,7 +21,7 @@ local Debugger = entities.Debugger
 local function run_task(task_name, config)
   local ok, overseer = pcall(require, "overseer")
   if not ok then
-    vim.notify("overseer.nvim not found", vim.log.levels.ERROR)
+    log:error("overseer.nvim not found")
     return false
   end
 
@@ -42,10 +43,7 @@ local function run_task(task_name, config)
   overseer.run_task(args, function(task, err)
     if err or not task then
       vim.schedule(function()
-        vim.notify(
-          string.format("Could not find task '%s': %s", task_name, err or "not found"),
-          vim.log.levels.ERROR
-        )
+        log:error("Could not find task", { task = task_name, error = err or "not found" })
       end)
       event:set(false)
       return
@@ -58,7 +56,9 @@ local function run_task(task_name, config)
       event:set(success)
     end
 
+    log:info("Starting task: " .. task_name)
     task:subscribe("on_complete", function(_, status)
+      log:info("Task completed: " .. task_name)
       on_done(status == STATUS.SUCCESS)
       return true -- Unsubscribe
     end)
@@ -89,12 +89,10 @@ return function(debugger, config)
     if launch_config and launch_config.preLaunchTask then
       local success = run_task(launch_config.preLaunchTask, launch_config)
       if not success then
-        vim.notify(
-          string.format("preLaunchTask '%s' failed, aborting debug", launch_config.preLaunchTask),
-          vim.log.levels.ERROR
-        )
+        log:error("preLaunchTask failed, aborting debug", { task = launch_config.preLaunchTask })
         return nil
       end
+      log:info("preLaunchTask succeeded, launching debug session")
     end
 
     -- Call original debug
@@ -105,6 +103,7 @@ return function(debugger, config)
       local task_name = launch_config.postDebugTask
       session.state:use(function(state)
         if state == "terminated" then
+          log:info("Running postDebugTask: " .. task_name)
           a.run(function()
             run_task(task_name, launch_config)
           end)

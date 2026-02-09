@@ -6,6 +6,32 @@ vim.o.swapfile = false
 local root = vim.fn.fnamemodify("./.tests", ":p")
 local pid = vim.fn.getpid()
 
+-- Coverage: initialize luacov if NEODAP_COVERAGE is set
+if vim.env.NEODAP_COVERAGE and vim.env.LUACOV_PATH then
+  -- Add luacov to package.path
+  package.path = vim.env.LUACOV_PATH .. "/?.lua;" .. package.path
+  package.path = vim.env.LUACOV_PATH .. "/?/init.lua;" .. package.path
+
+  local ok, luacov_runner = pcall(require, "luacov.runner")
+  if ok then
+    -- Each process writes to unique stats file
+    local stats_dir = root .. "/coverage"
+    vim.fn.mkdir(stats_dir, "p")
+    luacov_runner.init({
+      statsfile = stats_dir .. "/" .. pid .. ".stats",
+      include = { "lua/neodap/", "lua/neograph/" },
+      exclude = { "tests/", "%.tests/", "lazy%.nvim" },
+    })
+
+    -- Save stats on VimLeave since Neovim doesn't call os.exit() normally
+    vim.api.nvim_create_autocmd("VimLeave", {
+      callback = function()
+        luacov_runner.save_stats()
+      end,
+    })
+  end
+end
+
 -- Watchdog: crash after timeout to avoid hanging tests
 -- Set NEODAP_TEST_TIMEOUT=0 to disable, or to a number for custom timeout
 local watchdog_timeout = tonumber(vim.env.NEODAP_TEST_TIMEOUT) or 60000
@@ -98,7 +124,7 @@ require("lazy").setup({
       require("overseer").setup({
         -- Minimal setup for tests
         strategy = "jobstart",
-        templates = { "builtin", "vscode" },
+        templates = { "builtin", "vscode", "neodap" },
       })
     end,
   },
@@ -129,3 +155,14 @@ vim.opt.runtimepath:prepend(vim.fn.fnamemodify(".", ":p"))
 local cwd = vim.fn.getcwd()
 package.path = cwd .. "/tests/?.lua;" .. package.path
 package.path = cwd .. "/tests/?/init.lua;" .. package.path
+
+-- Configure logger for tests
+-- If NEODAP_TEST_LOG is set, write logs there (used by parallel runner to capture logs)
+local log_file = vim.env.NEODAP_TEST_LOG
+if log_file then
+  local log = require("neodap.logger")
+  log:setup({
+    file = log_file,
+    level = "debug", -- Capture debug-level logs in tests
+  })
+end

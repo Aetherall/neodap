@@ -90,8 +90,10 @@ return function(debugger, config)
           -- Each identifier evaluates and renders itself
           for id, lines in pairs(id_lines) do
             a.run(function()
-              local result = frame:evaluate(id)
+              local result, _, result_type = frame:evaluate(id, { silent = true })
               if not result then return end
+              -- Skip functions - their definitions aren't useful as inline values
+              if result_type and result_type:lower():match("function") then return end
               local v = tostring(result):gsub("%s+", " ")
               local display = #v > config.max_length and v:sub(1, config.max_length) .. "..." or v
               vim.schedule(function()

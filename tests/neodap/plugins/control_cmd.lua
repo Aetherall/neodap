@@ -27,9 +27,9 @@ return harness.integration("dap_continue", function(T, ctx)
     h:wait_url("/sessions/threads/stacks(seq=1)[0]/frames[0]")
     h:cmd("DapFocus /sessions/threads/stacks(seq=1)[0]/frames[0]")
 
-    -- Open the file and add breakpoint at line 3
+    -- Open the file and add breakpoint at line 10
     h:edit_main()
-    h:cmd("DapBreakpoint 3")
+    h:cmd("DapBreakpoint 10")
     -- Wait for breakpoint to be created and binding to sync
     h:wait_url("/breakpoints[0]/bindings[0]")
 
@@ -38,7 +38,7 @@ return harness.integration("dap_continue", function(T, ctx)
     h:wait_url("/sessions/threads/stacks(seq=2)[0]/frames[0]")
     h:cmd("DapFocus /sessions/threads/stacks(seq=2)[0]/frames[0]")
 
-    MiniTest.expect.equality(h:query_field("@frame", "line"), 3)
+    MiniTest.expect.equality(h:query_field("@frame", "line"), 10)
   end
 
   T[":DapTerminate ends session"] = function()

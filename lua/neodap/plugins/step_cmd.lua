@@ -49,6 +49,7 @@ local function parse_args(args, default_granularity)
 end
 
 local query = require("neodap.plugins.utils.query")
+local log = require("neodap.logger")
 
 ---@param debugger neodap.entities.Debugger
 ---@param config? DapStepConfig
@@ -70,13 +71,13 @@ return function(debugger, config)
       return debugger.ctx.thread:get()
     end)
     if #entities == 0 then
-      vim.notify("DapStep: No thread found", vim.log.levels.WARN)
+      log:warn("DapStep: No thread found")
       return false
     end
 
     local step_fn = method_map[method]
     if not step_fn then
-      vim.notify("DapStep: Unknown method: " .. method, vim.log.levels.ERROR)
+      log:error("DapStep: Unknown method", { method = method })
       return false
     end
 
@@ -90,9 +91,10 @@ return function(debugger, config)
     end
 
     if count > 0 then
+      log:info("Step " .. method .. " executed")
       return true
     else
-      vim.notify("DapStep: No threads to step", vim.log.levels.WARN)
+      log:warn("DapStep: No threads to step")
       return false
     end
   end

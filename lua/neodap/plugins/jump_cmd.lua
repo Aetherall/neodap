@@ -15,6 +15,7 @@
 
 local url_completion = require("neodap.plugins.utils.url_completion")
 local uri_picker = require("neodap.plugins.uri_picker")
+local log = require("neodap.logger")
 
 ---@class neodap.plugins.DapJumpConfig
 ---@field select_jump_window? fun(): number? Function to select a window (e.g., nvim-window-picker)
@@ -60,7 +61,7 @@ local function dap_jump(debugger, config)
 
     local loc = frame:location()
     if not loc then
-      vim.notify("Frame has no source location", vim.log.levels.WARN)
+      log:warn("Frame has no source location")
       return false
     end
 
@@ -88,7 +89,7 @@ local function dap_jump(debugger, config)
       elseif strategy == "silent" then
         return false
       else -- "error"
-        vim.notify("DapJump: Current window has winfixbuf set", vim.log.levels.ERROR)
+        log:error("DapJump: Current window has winfixbuf set")
         return false
       end
     end
@@ -103,8 +104,13 @@ local function dap_jump(debugger, config)
       return true
     end
 
-    -- Open file and jump to location
-    vim.cmd("edit " .. vim.fn.fnameescape(path))
+    -- Open file — reuse existing buffer if already loaded to avoid reloading from disk
+    local bufnr = vim.fn.bufnr(path)
+    if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) then
+      vim.api.nvim_win_set_buf(0, bufnr)
+    else
+      vim.cmd("edit " .. vim.fn.fnameescape(path))
+    end
 
     -- Clamp line and column to buffer bounds
     local line_count = vim.api.nvim_buf_line_count(0)
@@ -113,8 +119,12 @@ local function dap_jump(debugger, config)
     local safe_col = math.max(0, math.min(column - 1, #line_text))
     vim.api.nvim_win_set_cursor(0, { safe_line, safe_col })
 
-    -- Center the view
-    vim.cmd("normal! zz")
+    -- Center only if the target line is outside the visible window
+    local win_top = vim.fn.line("w0")
+    local win_bot = vim.fn.line("w$")
+    if safe_line < win_top or safe_line > win_bot then
+      vim.cmd("normal! zz")
+    end
 
     return true
   end
@@ -124,21 +134,21 @@ local function dap_jump(debugger, config)
   ---@param callback? fun(success: boolean) Optional callback for async picker
   function api.jump(target, callback)
     if not target or target == "" then
-      vim.notify("Usage: DapJump <url|uri>", vim.log.levels.ERROR)
+      log:error("Usage: DapJump <url|uri>")
       if callback then callback(false) end
       return
     end
 
     picker:resolve(target, function(frame)
       if not frame then
-        vim.notify("Could not resolve: " .. target, vim.log.levels.ERROR)
+        log:error("Could not resolve", { target = target })
         if callback then callback(false) end
         return
       end
 
       -- Verify it's a frame by checking entity type
       if frame:type() ~= "Frame" then
-        vim.notify("Target is not a frame: " .. target, vim.log.levels.ERROR)
+        log:error("Target is not a frame", { target = target })
         if callback then callback(false) end
         return
       end

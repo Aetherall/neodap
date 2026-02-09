@@ -1,4 +1,7 @@
 -- Source management methods for Debugger (neograph-native)
+--
+-- Performance note: Sources are indexed by key in the graph schema.
+-- The `by_key` index on Debugger.sources enables O(1) lookup.
 
 local uri_module = require("neodap.uri")
 
@@ -13,12 +16,14 @@ local function find(self, loc)
 end
 
 ---Find source by key (stable identifier, same as path)
+---O(1) lookup using graph index
 ---@param self neodap.entities.Debugger
 ---@param key string Source key (path or name)
 ---@return neodap.entities.Source?
 local function find_by_key(self, key)
-  for source in self.sources:iter() do
-    if source.key:get() == key then return source end
+  -- Use graph's by_key index for O(1) lookup
+  for source in self.sources:filter({ filters = {{ field = "key", op = "eq", value = key }} }):iter() do
+    return source  -- Return first match
   end
 end
 
@@ -27,9 +32,9 @@ end
 ---@param path string Source path
 ---@return neodap.entities.Source?
 local function find_by_path(self, path)
-  for source in self.sources:iter() do
-    local source_path = source.path:get() or source.name:get()
-    if source_path == path then return source end
+  -- Use graph's by_path index for O(1) lookup
+  for source in self.sources:filter({ filters = {{ field = "path", op = "eq", value = path }} }):iter() do
+    return source  -- Return first match
   end
 end
 

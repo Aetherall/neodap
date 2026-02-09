@@ -64,7 +64,7 @@ return harness.integration("dap_breakpoint", function(T, ctx)
     h:edit_main()
     h:cmd("DapBreakpoint 1")
     h:cmd("DapBreakpoint 2")
-    h:cmd("DapBreakpoint 3")
+    h:cmd("DapBreakpoint 10")
 
     MiniTest.expect.equality(h:query_count("/breakpoints"), 3)
   end

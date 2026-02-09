@@ -8,21 +8,51 @@ local Session = entities.Session
 local Debugger = entities.Debugger
 local get_dap_session = context.get_dap_session
 
+---Update Config state after session terminates
+---@param session neodap.entities.Session
+local function update_config_state(session)
+  local cfg = session.config:get()
+  if cfg then
+    cfg:updateState()
+  end
+end
+
 function Session:disconnect()
   local dap_session = get_dap_session(self)
   if not dap_session then error("No DAP session", 0) end
   a.wait(function(cb) dap_session:disconnect(cb) end)
   self:update({ state = "terminated" })
+  update_config_state(self)
 end
 Session.disconnect = a.fn(Session.disconnect)
 
 function Session:terminate()
   local dap_session = get_dap_session(self)
   if not dap_session then error("No DAP session", 0) end
+  -- Mark the entire dap_session tree as terminating (vs disconnecting)
+  -- so the "closing" handler knows to kill terminal processes
+  context.mark_terminating(dap_session)
   a.wait(function(cb) dap_session:terminate(cb) end)
   self:update({ state = "terminated" })
+  update_config_state(self)
 end
 Session.terminate = a.fn(Session.terminate)
+
+function Session:supportsRestart()
+  local dap_session = get_dap_session(self)
+  if not dap_session or not dap_session.capabilities then return false end
+  return dap_session.capabilities.supportsRestartRequest or false
+end
+
+function Session:restart(args)
+  local dap_session = get_dap_session(self)
+  if not dap_session then error("No DAP session", 0) end
+  if not self:supportsRestart() then
+    error("Adapter does not support restart request", 0)
+  end
+  a.wait(function(cb) dap_session.client:request("restart", args or {}, cb) end)
+end
+Session.restart = a.fn(Session.restart)
 
 function Session:fetchThreads()
   local dap_session = get_dap_session(self)
@@ -57,12 +87,15 @@ function Session:syncExceptionFilters()
     dap_session.capabilities.supportsExceptionFilterOptions
 
   local filters, filterOptions = {}, {}
-  for ef in self.exceptionFilters:iter() do
-    if ef:isEnabled() then
+  for binding in self.exceptionFilterBindings:iter() do
+    if binding:getEffectiveEnabled() then
+      local ef = binding.exceptionFilter:get()
       local filter_id = ef.filterId:get()
       table.insert(filters, filter_id)
+
       if supports_filter_options then
-        local condition = ef.condition:get()
+        -- Use binding condition override, or global filter condition if set
+        local condition = binding.condition:get()
         if condition and condition ~= "" then
           table.insert(filterOptions, { filterId = filter_id, condition = condition })
         end

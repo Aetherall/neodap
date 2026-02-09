@@ -12,64 +12,52 @@ local a = require("neodap.async")
 local ns_id = vim.api.nvim_create_namespace("neodap-variable-edit")
 
 --------------------------------------------------------------------------------
--- Helper Functions
---------------------------------------------------------------------------------
-
----Format variable info for virtual text
----@param variable any Variable entity
----@return string
-local function format_variable_info(variable)
-  if not variable then
-    return " No variable"
-  end
-
-  local name = variable.name:get() or "?"
-  local varType = variable.varType:get()
-
-  if varType and varType ~= "" then
-    return string.format(" %s: %s", name, varType)
-  else
-    return string.format(" %s", name)
-  end
-end
-
----Update virtual text indicator
----@param bufnr number
----@param variable any Variable entity
----@param status? string "modified"|"saved"|"error:..."|nil
-local function update_indicator(bufnr, variable, status)
-  if not vim.api.nvim_buf_is_valid(bufnr) then return end
-
-  vim.api.nvim_buf_clear_namespace(bufnr, ns_id, 0, -1)
-
-  local info = format_variable_info(variable)
-  local info_hl = variable and "Comment" or "WarningMsg"
-
-  local virt_text = { { info, info_hl } }
-
-  if status then
-    if status == "modified" then
-      table.insert(virt_text, { " [modified]", "DiffChange" })
-    elseif status == "saved" then
-      table.insert(virt_text, { " [saved]", "DiffAdd" })
-    elseif status:match("^error:") then
-      local err_msg = status:gsub("^error:", "")
-      table.insert(virt_text, { " [" .. err_msg .. "]", "ErrorMsg" })
-    end
-  end
-
-  vim.api.nvim_buf_set_extmark(bufnr, ns_id, 0, 0, {
-    virt_text = virt_text,
-    virt_text_pos = "right_align",
-  })
-end
-
---------------------------------------------------------------------------------
 -- Plugin
 --------------------------------------------------------------------------------
 
 ---@param debugger neodap.entities.Debugger
 return function(debugger)
+
+  ---Format variable info for virtual text
+  ---@param variable any Variable entity
+  ---@return string
+  local function format_variable_info(variable)
+    if not variable then
+      return " No variable"
+    end
+    return debugger:render_text(variable, { { "title", prefix = " " }, { "type", prefix = ": " } })
+  end
+
+  ---Update virtual text indicator
+  ---@param bufnr number
+  ---@param variable any Variable entity
+  ---@param status? string "modified"|"saved"|"error:..."|nil
+  local function update_indicator(bufnr, variable, status)
+    if not vim.api.nvim_buf_is_valid(bufnr) then return end
+
+    vim.api.nvim_buf_clear_namespace(bufnr, ns_id, 0, -1)
+
+    local info = format_variable_info(variable)
+    local info_hl = variable and "Comment" or "WarningMsg"
+
+    local virt_text = { { info, info_hl } }
+
+    if status then
+      if status == "modified" then
+        table.insert(virt_text, { " [modified]", "DiffChange" })
+      elseif status == "saved" then
+        table.insert(virt_text, { " [saved]", "DiffAdd" })
+      elseif status:match("^error:") then
+        local err_msg = status:gsub("^error:", "")
+        table.insert(virt_text, { " [" .. err_msg .. "]", "ErrorMsg" })
+      end
+    end
+
+    vim.api.nvim_buf_set_extmark(bufnr, ns_id, 0, 0, {
+      virt_text = virt_text,
+      virt_text_pos = "right_align",
+    })
+  end
   -- Initialize entity_buffer with debugger
   entity_buffer.init(debugger)
 

@@ -79,6 +79,76 @@ local T = harness.integration("tree_duplication", function(T, ctx)
         table.concat(lines, "\n")))
   end
 
+  T["expanding Output under Sessions preserves Threads under Targets"] = function()
+    local h = ctx.create()
+    h:fixture("simple-vars")
+    h:use_plugin("neodap.plugins.tree_buffer")
+    h:cmd("DapLaunch Debug stop")
+    h:wait_url("/sessions/threads/stacks[0]/frames[0]")
+    h:cmd("DapFocus /sessions/threads/stacks[0]/frames[0]")
+    h:wait(500)
+
+    -- Open tree at debugger root
+    h:open_tree("@debugger")
+    h:wait(300)
+
+    -- Expand Sessions group
+    h.child.fn.search("Sessions")
+    h.child.type_keys("<CR>")
+    h:wait(300)
+
+    -- Get lines and verify both Output and Threads appear under Targets
+    local lines = h.child.api.nvim_buf_get_lines(0, 0, -1, false)
+
+    -- Find Targets section and count Output/Threads under it
+    local in_targets = false
+    local targets_has_output = false
+    local targets_has_threads = false
+    for _, line in ipairs(lines) do
+      if line:match("Targets") then
+        in_targets = true
+      elseif in_targets and (line:match("Sessions") or line:match("Breakpoints")) then
+        in_targets = false
+      elseif in_targets then
+        if line:match("Output") then targets_has_output = true end
+        if line:match("Threads") then targets_has_threads = true end
+      end
+    end
+
+    MiniTest.expect.equality(targets_has_output, true,
+      string.format("Targets should have Output before expansion. Lines:\n%s", table.concat(lines, "\n")))
+    MiniTest.expect.equality(targets_has_threads, true,
+      string.format("Targets should have Threads before expansion. Lines:\n%s", table.concat(lines, "\n")))
+
+    -- Now expand Output under Sessions > child session (not under Targets)
+    -- First find the Output that's under Sessions (appears before Targets in the tree)
+    h.child.fn.search("Output")  -- First Output match should be under Sessions
+    h.child.type_keys("<CR>")     -- Expand it
+    h:wait(300)
+
+    -- Get lines again and verify Targets still has both Output and Threads
+    lines = h.child.api.nvim_buf_get_lines(0, 0, -1, false)
+
+    in_targets = false
+    targets_has_output = false
+    targets_has_threads = false
+    for _, line in ipairs(lines) do
+      if line:match("Targets") then
+        in_targets = true
+      elseif in_targets and (line:match("Sessions") or line:match("Breakpoints")) then
+        in_targets = false
+      elseif in_targets then
+        if line:match("Output") then targets_has_output = true end
+        if line:match("Threads") then targets_has_threads = true end
+      end
+    end
+
+    MiniTest.expect.equality(targets_has_output, true,
+      string.format("Targets should still have Output after expanding Sessions' Output. Lines:\n%s", table.concat(lines, "\n")))
+    MiniTest.expect.equality(targets_has_threads, true,
+      string.format("Targets should still have Threads after expanding Sessions' Output. Lines:\n%s", table.concat(lines, "\n")))
+  end
+
   T["data model has correct entity counts"] = function()
     local h = ctx.create()
     h:fixture("simple-vars")

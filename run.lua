@@ -1,5 +1,8 @@
 #!/usr/bin/env -S nvim -u NONE -S
 
+vim.opt.messagesopt="wait:0,history:500"
+
+
 -- neodap Demo Script
 -- Run with: nvim -u NONE -S run.lua
 -- Or make executable and run: ./run.lua
@@ -46,7 +49,7 @@ vim.cmd("runtime plugin/neotest.lua")
 -- Set up overseer for task running (preLaunchTask/postDebugTask support)
 require("overseer").setup({
   strategy = "jobstart",
-  templates = { "builtin", "vscode" },
+  templates = { "builtin", "vscode", "neodap" },
 })
 
 -- Use test harness treesitter parsers (already symlinked from nix)
@@ -275,7 +278,7 @@ write_file(launch_json, launch_content)
 local adapters = {}
 
 -- Node.js adapter (js-debug) - spawns server, detects port, connects
-adapters["pwa-node"] = {
+local javascript_adapter = {
   type = "server",
   command = JSDBG_PATH,
   args = { "0" },  -- port 0 = auto-assign
@@ -284,7 +287,15 @@ adapters["pwa-node"] = {
     local port = output:match(":(%d+)%s*$")
     if port then return tonumber(port), "::1" end
   end,
+  on_config = function(config)
+    -- js-debug expects type "pwa-node" internally
+    config.type = "pwa-node"
+    return config
+  end,
 }
+
+adapters["pwa-node"] = javascript_adapter
+adapters["node"] = javascript_adapter
 
 -- Python adapter (debugpy)
 if DEBUGPY_PATH then
@@ -309,6 +320,7 @@ end
 local neodap = require("neodap")
 local debugger = require("neodap.boost").setup({
   adapters = adapters,
+  backend = "overseer",
   keys = true,
 })
 
@@ -479,7 +491,6 @@ vim.api.nvim_create_autocmd("VimEnter", {
     -- Set breakpoint on line 12 (inside main/loop)
     vim.defer_fn(function()
       vim.cmd("Dap breakpoint 12")
-      vim.cmd("DapLaunch jsfile")
     end, 200)
   end,
 })
@@ -489,4 +500,6 @@ vim.api.nvim_create_user_command("DapDemoHelp", show_help, {
   desc = "Show neodap demo help",
 })
 
+local log = require("neodap.logger")
 print("neodap Demo loaded! Use <leader>ds or :DapLaunch to start debugging.")
+print("Log file: " .. log:get_log_file())

@@ -2,11 +2,14 @@
 -- This file contains the core session management and event wiring.
 -- Entity methods are split into separate files for maintainability.
 
+local dap = require("dap-lua")
 local DapSession = require("dap-lua.session")
 local entities = require("neodap.entities")
 local neoword = require("neoword")
 local uri = require("neodap.uri")
 local a = require("neodap.async")
+local backends = require("neodap.backends")
+local log = require("neodap.logger")
 
 -- Import shared context and utilities
 local context = require("neodap.plugins.dap.context")
@@ -17,6 +20,7 @@ require("neodap.plugins.dap.thread")
 require("neodap.plugins.dap.frame")
 require("neodap.plugins.dap.scope")
 require("neodap.plugins.dap.variable")
+require("neodap.plugins.dap.output")
 require("neodap.plugins.dap.source")
 require("neodap.plugins.dap.breakpoint")
 require("neodap.plugins.dap.session")
@@ -34,13 +38,19 @@ local create_exception_filters = utils.create_exception_filters
 local dap_sessions = context.dap_sessions
 local session_entities = context.session_entities
 local output_seqs = context.output_seqs
+local next_global_seq = context.next_global_seq
 
 ---Subscribe to DapSession events and update Session entity state
 ---@param session neodap.entities.Session
 ---@param dap_session DapSession
 local function wire_session_events(session, dap_session)
+  -- Track if user-initiated termination is in progress
+  -- "closing" event fires when dap_session:terminate() or :disconnect() is called
+  local user_closing = false
+
   dap_session:on("stopped", function(body)
     session:update({ state = "stopped" })
+    log:info("Session stopped: " .. session.uri:get())
 
     -- Clear previous hit states for this session's bindings
     for source_binding in session.sourceBindings:iter() do
@@ -59,6 +69,7 @@ local function wire_session_events(session, dap_session)
           for _, hit_id in ipairs(body.hitBreakpointIds) do
             if bp_id == hit_id then
               bp_binding:update({ hit = true })
+              log:info("Breakpoint hit: " .. bp_binding.uri:get())
               break
             end
           end
@@ -71,8 +82,8 @@ local function wire_session_events(session, dap_session)
       -- Helper to update thread when found
       local function update_thread_stopped(thread)
         -- Increment stop sequence (new stop = new potential stack)
-        local current_seq = thread.stops:get() or 0
-        thread:update({ state = "stopped", stops = current_seq + 1 })
+        thread:update({ state = "stopped", stops = (thread.stops:get() or 0) + 1 })
+        log:info("Thread stopped: " .. thread.uri:get())
 
         -- Auto-fetch stack trace if enabled (default: true)
         if vim.g.neodap__autofetch_stack ~= false then
@@ -99,6 +110,7 @@ local function wire_session_events(session, dap_session)
 
   dap_session:on("continued", function(body)
     session:update({ state = "running" })
+    log:info("Session continued: " .. session.uri:get())
 
     -- Clear hit states when continuing
     for source_binding in session.sourceBindings:iter() do
@@ -114,12 +126,14 @@ local function wire_session_events(session, dap_session)
       local thread = session:findThreadById(body.threadId)
       if thread then
         thread:update({ state = "running" })
+        log:info("Thread continued: " .. thread.uri:get())
       end
     end
   end)
 
   dap_session:on("terminated", function(body)
     session:update({ state = "terminated" })
+    log:info("Session terminated: " .. session.uri:get())
     -- Clear focus if this was the focused session
     local debugger = session.debugger:get()
     if debugger then
@@ -127,14 +141,26 @@ local function wire_session_events(session, dap_session)
       if focused == session then
         debugger.ctx:focus("")
       end
+    end
+    -- Update Config state (may become terminated if all sessions are done)
+    local cfg = session.config:get()
+    if cfg then
+      cfg:updateState()
     end
     -- Clean up all bindings for this session
     -- This causes breakpoint signs to update (verified -> unverified)
     cleanup_session_bindings(session)
+    -- Auto-close transport if adapter terminated unexpectedly (not user-initiated)
+    -- Skip if user called terminate/disconnect (user_closing = true) since
+    -- those methods handle client cleanup themselves
+    if not user_closing and dap_session.client and not dap_session.client.is_closing() then
+      dap_session.client:close()
+    end
   end)
 
   dap_session:on("exited", function(body)
     session:update({ state = "terminated" })
+    log:info("Session exited: " .. session.uri:get())
     -- Clear focus if this was the focused session
     local debugger = session.debugger:get()
     if debugger then
@@ -143,19 +169,37 @@ local function wire_session_events(session, dap_session)
         debugger.ctx:focus("")
       end
     end
+    -- Update Config state (may become terminated if all sessions are done)
+    local cfg = session.config:get()
+    if cfg then
+      cfg:updateState()
+    end
     -- Clean up all bindings for this session
     cleanup_session_bindings(session)
+    -- Auto-close transport if debuggee exited unexpectedly (not user-initiated)
+    -- Skip if user called terminate/disconnect (user_closing = true) since
+    -- those methods handle client cleanup themselves
+    if not user_closing and dap_session.client and not dap_session.client.is_closing() then
+      dap_session.client:close()
+    end
   end)
 
   -- Closing event fires when disconnect/terminate is called, before actual disconnect
   -- This ensures focus is cleared even if adapter doesn't send terminated event
   dap_session:on("closing", function()
+    -- Mark that user initiated termination so we don't auto-close in terminated/exited handlers
+    user_closing = true
     local debugger = session.debugger:get()
     if debugger then
       local focused = debugger.ctx.session:get()
       if focused == session then
         debugger.ctx:focus("")
       end
+    end
+    -- Kill terminal processes only on terminate (not disconnect, which keeps processes alive)
+    if context.terminating_sessions[dap_session] then
+      context.terminating_sessions[dap_session] = nil
+      context.kill_terminal_tasks(session)
     end
     -- Clean up bindings as safety net (in case terminated/exited not received)
     cleanup_session_bindings(session)
@@ -190,6 +234,7 @@ local function wire_session_events(session, dap_session)
               -- forward edge subscribers (neograph-native limitation).
               vim.schedule(function()
                 session.threads:link(thread)
+                log:info("Thread created: " .. thread.uri:get())
               end)
               break
             end
@@ -201,6 +246,7 @@ local function wire_session_events(session, dap_session)
       -- Find and update thread state
       local thread = session:findThreadById(thread_id)
       if thread then
+        log:info("Thread exited: " .. thread.uri:get())
         thread:update({ state = "exited" })
       end
     end
@@ -217,7 +263,7 @@ local function wire_session_events(session, dap_session)
     if not dap_source then return end
 
     -- Get or create the Source entity
-    local source = get_or_create_source(graph, debugger, dap_source)
+    local source = get_or_create_source(graph, debugger, dap_source, session)
     if not source then return end
 
     -- Create SourceBinding for this session if sourceReference is present
@@ -245,7 +291,10 @@ local function wire_session_events(session, dap_session)
       session.sourceBindings:link(binding)
 
       -- Sync any existing breakpoints to this new binding
-      binding:syncBreakpoints()
+      local has_breakpoints = source.breakpoints:iter()() ~= nil
+      if has_breakpoints then
+        binding:syncBreakpoints()
+      end
     end
   end)
 
@@ -306,10 +355,8 @@ local function wire_session_events(session, dap_session)
   output_seqs[session] = 0
 
   dap_session:on("output", function(body)
-    -- Skip telemetry events
-    if body.category == "telemetry" then
-      return
-    end
+    local text = (body.output or ""):gsub("\n", "\\n"):sub(1, 100)
+    log:debug("Output event: " .. session.sessionId:get() .. " [" .. (body.category or "?") .. "] " .. text)
 
     local graph = session._graph
     local session_id = session.sessionId:get()
@@ -317,24 +364,58 @@ local function wire_session_events(session, dap_session)
     output_seqs[session] = (output_seqs[session] or 0) + 1
     local seq = output_seqs[session]
 
+    -- visible = false for telemetry, true otherwise (used by console view filtering)
+    local is_visible = body.category ~= "telemetry"
+
     local output = entities.Output.new(graph, {
       uri = uri.output(session_id, seq),
       seq = seq,
+      globalSeq = next_global_seq(),
       text = body.output,
       category = body.category,
       group = body.group,
       line = body.line,
       column = body.column,
       variablesReference = body.variablesReference,
+      visible = is_visible,
+      matched = true,
     })
 
     session.outputs:link(output)
+
+    -- Append to log file on disk (skip telemetry)
+    local log_dir = session.logDir:get()
+    if log_dir and body.output and is_visible then
+      local log_file = log_dir .. "/output.log"
+      local f = io.open(log_file, "a")
+      if f then
+        f:write(body.output)
+        f:close()
+      end
+    end
+
+    -- Link to allOutputs for this session, propagate to ancestors and descendants
+    session.allOutputs:link(output)
+    -- Propagate upward to all ancestor sessions
+    local ancestor = session.parent and session.parent:get()
+    while ancestor do
+      ancestor.allOutputs:link(output)
+      ancestor = ancestor.parent and ancestor.parent:get()
+    end
+    -- Propagate downward to all descendant sessions
+    local function propagate_to_descendants(sess)
+      for child in sess.children:iter() do
+        child.allOutputs:link(output)
+        propagate_to_descendants(child)
+      end
+    end
+    propagate_to_descendants(session)
 
     -- Link to source if provided
     if body.source then
       local debugger_entity = session.debugger:get()
       if debugger_entity then
-        local source = get_or_create_source(graph, debugger_entity, body.source)
+        local source = get_or_create_source(graph, debugger_entity, body.source, session)
         if source then
           source.outputs:link(output)
         end
@@ -343,13 +424,15 @@ local function wire_session_events(session, dap_session)
   end)
 end
 
----Start a debug session
+---Start a debug session using the backend for process management
 ---@param self neodap.entities.Debugger
----@param opts { adapter?: table, config: table }
+---@param opts { adapter?: table, config: table, handlers?: table, config_entity?: table, parent_task_id?: number }
 ---@return neodap.entities.Session
 function Debugger:debug(opts)
+  log:info("debug() called", { name = opts.config and opts.config.name, type = opts.config and opts.config.type })
   local graph = self._graph
   local debugger = self
+  local backend = backends.get_backend()
 
   -- Auto-resolve adapter from config.type if not provided
   local adapter = opts.adapter
@@ -365,30 +448,82 @@ function Debugger:debug(opts)
       if type(adapter) == "function" then
         adapter = adapter(opts.config)
       end
+      -- Allow adapter to transform config before launch
+      if adapter.on_config then
+        opts.config = adapter.on_config(opts.config) or opts.config
+      end
     else
       error("opts.adapter or opts.config.type required")
     end
   end
-  opts.adapter = adapter
 
   -- Session will be created in onSessionCreated hook
   local root_session = nil
 
-  -- Build handlers
+  -- Track adapter task for the current session being created
+  local current_adapter_task_id = nil
+
+  -- Build handlers with backend integration
   local handlers = vim.tbl_extend("force", opts.handlers or {}, {
+    -- runInTerminal using backend
+    runInTerminal = function(dap_session, args, callback)
+      local task = backend.run_in_terminal({
+        args = args.args or {},
+        cwd = args.cwd,
+        env = args.env,
+        kind = args.kind,
+        title = args.title,
+      })
+      -- Store terminal buffer on session entity for console_buffer to use
+      local session_entity = session_entities[dap_session]
+      if session_entity then
+        if task.bufnr then
+          session_entity:update({ terminalBufnr = task.bufnr })
+        end
+        -- Store task handle so we can kill the process on session terminate
+        context.add_terminal_task(session_entity, task)
+      end
+      callback(nil, { processId = task.pid })
+    end,
+
+    -- Called when backend spawns/connects adapter process
+    onAdapterProcess = function(process)
+      current_adapter_task_id = process.task_id
+    end,
+
     -- Called when a dap_session is created (before initialization)
     -- This fires for ALL sessions (root and child)
     onSessionCreated = function(dap_session)
       local parent_session = dap_session.parent and session_entities[dap_session.parent]
 
       local new_sessionId = neoword.generate()
+      -- Store session ID on dap_session so backend can use it for buffer URIs
+      dap_session.neodap_session_id = new_sessionId
+
+      -- Create temp directory for session logs
+      local log_dir = vim.fn.tempname() .. "-neodap-" .. new_sessionId
+      vim.fn.mkdir(log_dir, "p")
+
+      -- Get fallbackFiletype from adapter config (for virtual sources)
+      local fallback_ft = adapter and adapter.fallbackFiletype
+      -- Child sessions inherit from parent if not set
+      if not fallback_ft and parent_session then
+        fallback_ft = parent_session.fallbackFiletype:get()
+      end
+
       local new_session = entities.Session.new(graph, {
         uri = uri.session(new_sessionId),
         sessionId = new_sessionId,
         name = dap_session.config.name or dap_session.config.type or (parent_session and "child" or "session"),
         state = "starting",
         leaf = true,
+        adapterTaskId = current_adapter_task_id,
+        logDir = log_dir,
+        fallbackFiletype = fallback_ft,
       })
+
+      -- Reset for next session
+      current_adapter_task_id = nil
 
       -- Create Stdio intermediate node for outputs
       local stdio = entities.Stdio.new(graph, {
@@ -408,9 +543,27 @@ function Debugger:debug(opts)
         -- This ensures leafSessionCount never double-counts
         parent_session:update({ leaf = false })
         parent_session.children:link(new_session)
+
+        -- Copy parent's allOutputs to child session so child can see ancestor outputs
+        for output in parent_session.allOutputs:iter() do
+          new_session.allOutputs:link(output)
+        end
+
+        -- Inherit Config from parent (propagation)
+        local parent_config = parent_session.config:get()
+        if parent_config then
+          parent_config.sessions:link(new_session)
+          -- isConfigRoot stays false (default) for child sessions
+        end
       else
         -- Root sessions also go in rootSessions (for tree display)
         debugger.rootSessions:link(new_session)
+
+        -- Link to Config entity if provided (root sessions are config roots)
+        if opts.config_entity then
+          new_session:update({ isConfigRoot = true })
+          opts.config_entity.sessions:link(new_session)
+        end
       end
 
       -- All sessions go in debugger.sessions (SDK consistency)
@@ -418,6 +571,8 @@ function Debugger:debug(opts)
       dap_sessions[new_session] = dap_session
       session_entities[dap_session] = new_session
       wire_session_events(new_session, dap_session)
+
+      log:info("Session created: " .. new_session.uri:get())
 
       -- Store root session for return value
       if not parent_session then
@@ -433,7 +588,7 @@ function Debugger:debug(opts)
         local current_sessionId = current_session.sessionId:get()
 
         -- Create exception filters from capabilities (now available)
-        create_exception_filters(graph, current_session, dap_session.capabilities)
+        create_exception_filters(graph, self, current_session, dap_session.capabilities)
 
         -- Collect sources that have breakpoints
         local sources_with_breakpoints = {}
@@ -479,13 +634,16 @@ function Debugger:debug(opts)
     end,
   })
 
-  -- Start dap-lua session asynchronously
+  -- Start DAP session with backend for process management
+  -- The backend handles stdio, tcp, and server adapters uniformly
   DapSession.create({
-    adapter = opts.adapter,
+    adapter = adapter,
     config = opts.config,
     handlers = handlers,
+    backend = backend,
   }, function(err, dap_session)
     if err then
+      log:error(err)
       if root_session then
         root_session:update({ state = "terminated" })
       end
@@ -495,6 +653,7 @@ function Debugger:debug(opts)
     -- Session is ready (mappings and events already wired in onSessionCreated)
     if root_session then
       root_session:update({ state = "running" })
+      log:info("Session started: " .. root_session.uri:get())
     end
   end)
 

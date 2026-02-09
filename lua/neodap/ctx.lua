@@ -102,7 +102,7 @@ end
 ---@return table? entity
 function Accessor:get()
   local url = self._ctx._debugger.focusedUrl:get()
-  if not url then return nil end
+  if not url or url == "" then return nil end
 
   -- Resolve URI/URL to entity
   local result = self._ctx._debugger:resolve(url)
@@ -184,7 +184,7 @@ function Ctx:focus(url)
 
   -- Empty string clears focus
   if url == "" then
-    self._debugger.focusedUrl:set(nil)
+    self._debugger.focusedUrl:set("")
     return
   end
 

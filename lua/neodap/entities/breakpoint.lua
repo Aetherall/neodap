@@ -82,6 +82,37 @@ return function(Breakpoint)
     return "bound"
   end
 
+  ---Get display-oriented state string
+  ---Unlike state() which returns "unbound"/"bound", this accounts for enabled status
+  ---and uses display-oriented names.
+  ---@return string "disabled"|"hit"|"adjusted"|"verified"|"unverified"
+  function Breakpoint:displayState()
+    if not self:isEnabled() then return "disabled" end
+    local binding, is_hit = self:dominatedBinding()
+    if not binding then return "unverified" end
+    if is_hit then return "hit" end
+    local bp_line = self.line:get()
+    local b_line = binding.actualLine:get()
+    if b_line and b_line ~= bp_line then return "adjusted" end
+    return "verified"
+  end
+
+  ---Is execution stopped on this breakpoint?
+  ---@return boolean
+  function Breakpoint:isHit()
+    return self.hitBinding:get() ~= nil
+  end
+
+  ---Did the adapter move this breakpoint from its requested line?
+  ---@return boolean
+  function Breakpoint:isAdjusted()
+    local binding = self.verifiedBinding:get()
+    if not binding then return false end
+    local bp_line = self.line:get()
+    local b_line = binding.actualLine:get()
+    return b_line ~= nil and b_line ~= bp_line
+  end
+
   ---Compute current mark state (synchronous, not reactive)
   ---@return {state: string, line: number, column: number, path: string?}?
   function Breakpoint:getMark()

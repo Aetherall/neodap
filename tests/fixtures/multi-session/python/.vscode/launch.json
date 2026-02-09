@@ -32,6 +32,44 @@
       "program": "${workspaceFolder}/program_b.py",
       "console": "internalConsole",
       "stopOnEntry": true
+    },
+    {
+      "type": "python",
+      "request": "launch",
+      "name": "Debug A with task",
+      "program": "${workspaceFolder}/program_a.py",
+      "console": "internalConsole",
+      "stopOnEntry": true,
+      "preLaunchTask": "build-a"
+    },
+    {
+      "type": "python",
+      "request": "launch",
+      "name": "Debug B with task",
+      "program": "${workspaceFolder}/program_b.py",
+      "console": "internalConsole",
+      "stopOnEntry": true,
+      "preLaunchTask": "build-b"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Both Programs",
+      "configurations": ["Debug A stop", "Debug B stop"]
+    },
+    {
+      "name": "Both with compound task",
+      "configurations": ["Debug A stop", "Debug B stop"],
+      "preLaunchTask": "build-all"
+    },
+    {
+      "name": "Both with individual tasks",
+      "configurations": ["Debug A with task", "Debug B with task"]
+    },
+    {
+      "name": "Both with all tasks",
+      "configurations": ["Debug A with task", "Debug B with task"],
+      "preLaunchTask": "build-all"
     }
   ]
 }

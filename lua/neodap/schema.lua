@@ -13,6 +13,115 @@ local M = {}
 
 M.schema = {
   ---------------------------------------------------------------------------
+  -- Config (running instance of a configuration/compound)
+  ---------------------------------------------------------------------------
+  Config = {
+    -- Properties
+    uri = "string",
+    configId = "string",
+    name = "string",
+    index = "number",
+    state = "string",              -- "active" | "terminated"
+    isCompound = "bool",
+    stopAll = "bool",              -- compound: terminate all sessions when any terminates
+    postDebugTask = "string",      -- compound: overseer task to run when Config terminates
+    viewMode = "string",           -- "targets" | "roots" (for tree display)
+
+    -- Stored data (not edges) - for restart capability
+    specifications = "table",      -- original configuration specs
+
+    -- Edges
+    debuggers = {
+      type = "edge",
+      target = "Debugger",
+      reverse = "configs",
+    },
+    sessions = {
+      type = "edge",
+      target = "Session",
+      reverse = "configs",
+      __indexes = {
+        { name = "default", fields = {} },
+        { name = "by_leaf", fields = { { name = "leaf" } } },
+        { name = "by_isConfigRoot", fields = { { name = "isConfigRoot" } } },
+        { name = "by_state", fields = { { name = "state" } } },
+        { name = "by_leaf_state", fields = { { name = "leaf" }, { name = "state" } } },
+      },
+    },
+
+    -- Derived collections (reactive)
+    roots = {
+      type = "collection",
+      edge = "sessions",
+      filter = { isConfigRoot = true },
+    },
+    targets = {
+      type = "collection",
+      edge = "sessions",
+      filter = { leaf = true },
+    },
+    activeTargets = {
+      type = "collection",
+      edge = "sessions",
+      filters = {
+        { field = "leaf", value = true },
+        { field = "state", value = "terminated", op = "ne" },
+      },
+    },
+    stoppedTargets = {
+      type = "collection",
+      edge = "sessions",
+      filters = {
+        { field = "leaf", value = true },
+        { field = "state", value = "stopped" },
+      },
+    },
+
+    -- Rollups: reference
+    debugger = { type = "reference", edge = "debuggers" },
+    firstTarget = {
+      type = "reference",
+      edge = "sessions",
+      filter = { leaf = true },
+    },
+    firstStoppedTarget = {
+      type = "reference",
+      edge = "sessions",
+      filters = {
+        { field = "leaf", value = true },
+        { field = "state", value = "stopped" },
+      },
+    },
+
+    -- Rollups: property
+    rootCount = { type = "count", edge = "sessions", filter = { isConfigRoot = true } },
+    targetCount = { type = "count", edge = "sessions", filter = { leaf = true } },
+    activeTargetCount = {
+      type = "count",
+      edge = "sessions",
+      filters = {
+        { field = "leaf", value = true },
+        { field = "state", value = "terminated", op = "ne" },
+      },
+    },
+    stoppedTargetCount = {
+      type = "count",
+      edge = "sessions",
+      filters = {
+        { field = "leaf", value = true },
+        { field = "state", value = "stopped" },
+      },
+    },
+
+    __indexes = {
+      { name = "default", fields = { { name = "uri" } } },
+      { name = "by_configId", fields = { { name = "configId" } } },
+      { name = "by_state", fields = { { name = "state" } } },
+      { name = "by_name", fields = { { name = "name" } } },
+    },
+  },
+
+  ---------------------------------------------------------------------------
   -- Debugger (singleton root)
   ---------------------------------------------------------------------------
   Debugger = {
@@ -21,6 +130,22 @@ M.schema = {
     focusedUrl = "string",
 
     -- Edges
+    configs = {
+      type = "edge",
+      target = "Config",
+      reverse = "debuggers",
+      __indexes = {
+        { name = "default", fields = {} },
+        { name = "by_state", fields = { { name = "state" } } },
+        { name = "by_index", fields = { { name = "index" } } },
+        { name = "by_name", fields = { { name = "name" } } },
+      },
+    },
+    activeConfigs = {
+      type = "collection",
+      edge = "configs",
+      filters = { { field = "state", value = "terminated", op = "ne" } },
+    },
     sessions = {
       type = "edge",
       target = "Session",
@@ -44,6 +169,7 @@ M.schema = {
       reverse = "debuggers",
       __indexes = {
         { name = "default", fields = {} },
+        { name = "by_key",  fields = { { name = "key" } } },
         { name = "by_path", fields = { { name = "path" } } },
       }
     },
@@ -62,8 +188,20 @@ M.schema = {
       }
     },
     breakpointsGroups = { type = "edge", target = "Breakpoints", reverse = "debuggers" },
+    configsGroups = { type = "edge", target = "Configs", reverse = "debuggers" },
     sessionsGroups = { type = "edge", target = "Sessions", reverse = "debuggers" },
     targets = { type = "edge", target = "Targets", reverse = "debuggers" },
+    exceptionFiltersGroups = { type = "edge", target = "ExceptionFiltersGroup", reverse = "debuggers" },
+    exceptionFilters = {
+      type = "edge",
+      target = "ExceptionFilter",
+      reverse = "debuggers",
+      __indexes = {
+        { name = "default",          fields = {} },
+        { name = "by_filterId",      fields = { { name = "filterId" } } },
+        { name = "by_defaultEnabled", fields = { { name = "defaultEnabled" } } },
+      }
+    },
 
     -- Rollups: reference
     firstSession = { type = "reference", edge = "sessions" },
@@ -79,6 +217,18 @@ M.schema = {
     },
     breakpointCount = { type = "count", edge = "breakpoints" },
     sourceCount = { type = "count", edge = "sources" },
+    exceptionFilterCount = { type = "count", edge = "exceptionFilters" },
+    enabledExceptionFilterCount = {
+      type = "count",
+      edge = "exceptionFilters",
+      filter = { defaultEnabled = true }
+    },
+    configCount = { type = "count", edge = "configs" },
+    activeConfigCount = {
+      type = "count",
+      edge = "configs",
+      filters = { { field = "state", value = "terminated", op = "ne" } },
+    },
 
     __indexes = {
       { name = "default", fields = { { name = "uri" } } },
@@ -95,6 +245,8 @@ M.schema = {
     path = "string",
     name = "string",
     content = "string",
+    fallbackFiletype = "string", -- Fallback filetype from adapter (for virtual sources)
+    presentationHint = "string", -- "normal" | "emphasize" | "deemphasize"
 
     -- Edges
     debuggers = { type = "edge", target = "Debugger", reverse = "sources" },
@@ -252,6 +404,11 @@ M.schema = {
     message = "string",
     actualLine = "number",
     actualColumn = "number",
+    -- Override properties (nil = inherit from Breakpoint)
+    enabled = "bool",
+    condition = "string",
+    hitCondition = "string",
+    logMessage = "string",
 
     -- Edges
     breakpoints = { type = "edge", target = "Breakpoint", reverse = "bindings" },
@@ -278,8 +435,15 @@ M.schema = {
     name = "string",
     state = "string",
     leaf = "bool",
+    isConfigRoot = "bool",      -- true if this session was created directly from a configuration
+    adapterTaskId = "number",   -- Backend task ID for adapter process
+    sessionTaskId = "number",   -- Backend task ID for session lifecycle
+    terminalBufnr = "number",   -- Buffer number for integratedTerminal (nil if using DAP output events)
+    logDir = "string",          -- Temp directory for session logs (stdout.log, stderr.log, etc.)
+    fallbackFiletype = "string", -- Fallback filetype for virtual sources (from adapter config)
 
     -- Edges
+    configs = { type = "edge", target = "Config", reverse = "sessions" },
     debuggers = { type = "edge", target = "Debugger", reverse = "sessions" },
     rootOfs = { type = "edge", target = "Debugger", reverse = "rootSessions" },
     rootGroups = { type = "edge", target = "Sessions", reverse = "sessions" },
@@ -304,24 +468,40 @@ M.schema = {
       reverse = "sessions",
       __indexes = {
         { name = "default", fields = {} },
-        { name = "by_seq",  fields = { { name = "seq", dir = "asc" } } },
+        { name = "by_seq",      fields = { { name = "seq", dir = "asc" } } },
+        { name = "by_seq_desc", fields = { { name = "seq", dir = "desc" } } },
+        { name = "by_visible", fields = { { name = "visible" } } },
+        { name = "by_visible_seq_desc", fields = { { name = "visible" }, { name = "seq", dir = "desc" } } },
       }
     },
-    exceptionFilters = {
+    -- All outputs visible to this session (own outputs + ancestor outputs)
+    -- Populated by linking ancestor outputs when child sessions are created,
+    -- and by propagating new outputs to descendant sessions
+    allOutputs = {
       type = "edge",
-      target = "ExceptionFilter",
+      target = "Output",
+      reverse = "allSessions",
+      __indexes = {
+        { name = "default", fields = {} },
+        { name = "by_globalSeq", fields = { { name = "globalSeq", dir = "asc" } } },
+        { name = "by_visible", fields = { { name = "visible" } } },
+        { name = "by_visible_globalSeq", fields = { { name = "visible" }, { name = "globalSeq", dir = "asc" } } },
+        { name = "by_visible_matched_globalSeq_desc", fields = { { name = "visible" }, { name = "matched" }, { name = "globalSeq", dir = "desc" } } },
+      }
+    },
+    exceptionFilterBindings = {
+      type = "edge",
+      target = "ExceptionFilterBinding",
       reverse = "sessions",
       __indexes = {
-        { name = "default",             fields = {} },
-        { name = "by_filterId",         fields = { { name = "filterId" } } },
-        { name = "by_filterId_enabled", fields = { { name = "filterId" }, { name = "enabled" } } },
-        { name = "by_enabled_filterId", fields = { { name = "enabled" }, { name = "filterId" } } },
+        { name = "default", fields = {} },
       }
     },
     stdios = { type = "edge", target = "Stdio", reverse = "sessions" },
     threadGroups = { type = "edge", target = "Threads", reverse = "sessions" },
 
     -- Rollups: reference
+    config = { type = "reference", edge = "configs" },
     debugger = { type = "reference", edge = "debuggers" },
     rootOf = { type = "reference", edge = "rootOfs" },
     rootGroup = { type = "reference", edge = "rootGroups" },
@@ -353,7 +533,11 @@ M.schema = {
       filters = { { field = "state", value = "stopped" } }
     },
     childCount = { type = "count", edge = "children" },
-    outputCount = { type = "count", edge = "outputs" },
+    outputCount = {
+      type = "count",
+      edge = "outputs",
+      filters = { { field = "visible", value = true } }
+    },
 
     -- Rollups: collection
     stoppedThreads = {
@@ -365,6 +549,12 @@ M.schema = {
       type = "collection",
       edge = "threads",
       filters = { { field = "state", value = "running" } }
+    },
+    consoleOutputs = {
+      type = "collection",
+      edge = "allOutputs",
+      filters = { { field = "visible", value = true } },
+      sort = { field = "globalSeq", dir = "asc" }
     },
 
     __indexes = {
@@ -495,6 +685,7 @@ M.schema = {
     column = "number",
     focused = "bool",
     active = "bool",
+    presentationHint = "string", -- "normal" | "label" | "subtle"
 
     -- Edges
     stacks = { type = "edge", target = "Stack", reverse = "frames" },
@@ -507,6 +698,15 @@ M.schema = {
         { name = "default",             fields = {} },
         { name = "by_name",             fields = { { name = "name" } } },
         { name = "by_presentationHint", fields = { { name = "presentationHint" } } },
+      }
+    },
+    variables = {
+      type = "edge",
+      target = "Variable",
+      reverse = "frames",
+      __indexes = {
+        { name = "default",         fields = {} },
+        { name = "by_evaluateName", fields = { { name = "evaluateName" } } },
       }
     },
 
@@ -581,11 +781,24 @@ M.schema = {
     -- Edges
     scopes = { type = "edge", target = "Scope", reverse = "variables" },
     parents = { type = "edge", target = "Variable", reverse = "children" },
-    children = { type = "edge", target = "Variable", reverse = "parents" },
+    outputs = { type = "edge", target = "Output", reverse = "children" },
+    frames = { type = "edge", target = "Frame", reverse = "variables" },
+    repl = { type = "edge", target = "Output", reverse = "variables" },
+    children = {
+      type = "edge",
+      target = "Variable",
+      reverse = "parents",
+      __indexes = {
+        { name = "default", fields = {} },
+        { name = "by_name", fields = { { name = "name" } } },
+      }
+    },
 
     -- Rollups: reference
     scope = { type = "reference", edge = "scopes" },
     parent = { type = "reference", edge = "parents" },
+    output = { type = "reference", edge = "outputs" },
+    frame = { type = "reference", edge = "frames" },
 
     -- Rollups: property
     childCount = { type = "count", edge = "children" },
@@ -604,30 +817,50 @@ M.schema = {
     -- Properties
     uri = "string",
     seq = "number",
+    globalSeq = "number",  -- Global sequence across all sessions for ordering
     text = "string",
     category = "string",
     group = "string",
     line = "number",
     column = "number",
     variablesReference = "number",
+    visible = "bool",  -- false for telemetry, true otherwise (used by console view)
+    matched = "bool",  -- true by default, set to false when a console regex filter excludes this output
 
     -- Edges
     sessions = { type = "edge", target = "Session", reverse = "outputs" },
+    allSessions = { type = "edge", target = "Session", reverse = "allOutputs" },  -- Sessions where this output is visible
     sources = { type = "edge", target = "Source", reverse = "outputs" },
+    variables = { type = "edge", target = "Variable", reverse = "repl" },
+    children = {
+      type = "edge",
+      target = "Variable",
+      reverse = "outputs",
+      __indexes = {
+        { name = "default", fields = {} },
+        { name = "by_name", fields = { { name = "name" } } },
+      }
+    },
 
     -- Rollups: reference
     session = { type = "reference", edge = "sessions" },
     source = { type = "reference", edge = "sources" },
+    variable = { type = "reference", edge = "variables" },
+
+    -- Rollups: property
+    childCount = { type = "count", edge = "children" },
+    hasChildren = { type = "any", edge = "children" },
 
     __indexes = {
       { name = "default",     fields = { { name = "uri" } } },
       { name = "by_seq",      fields = { { name = "seq", dir = "asc" } } },
+      { name = "by_globalSeq", fields = { { name = "globalSeq", dir = "asc" } } },
       { name = "by_category", fields = { { name = "category" } } },
     },
   },
 
   ---------------------------------------------------------------------------
-  -- ExceptionFilter
+  -- ExceptionFilter (global, persistent across sessions)
   ---------------------------------------------------------------------------
   ExceptionFilter = {
     -- Properties
@@ -635,21 +868,50 @@ M.schema = {
     filterId = "string",
     label = "string",
     description = "string",
-    defaultEnabled = "bool",
+    defaultEnabled = "bool",      -- global default state
     supportsCondition = "bool",
     conditionDescription = "string",
-    enabled = "bool",
-    condition = "string",
 
     -- Edges
-    sessions = { type = "edge", target = "Session", reverse = "exceptionFilters" },
+    debuggers = { type = "edge", target = "Debugger", reverse = "exceptionFilters" },
+    bindings = {
+      type = "edge",
+      target = "ExceptionFilterBinding",
+      reverse = "exceptionFilters",
+      __indexes = {
+        { name = "default", fields = {} },
+      }
+    },
 
     -- Rollups: reference
+    debugger = { type = "reference", edge = "debuggers" },
+
+    __indexes = {
+      { name = "default",          fields = { { name = "uri" } } },
+      { name = "by_filterId",      fields = { { name = "filterId" } } },
+      { name = "by_defaultEnabled", fields = { { name = "defaultEnabled" } } },
+    },
+  },
+
+  ---------------------------------------------------------------------------
+  -- ExceptionFilterBinding (per-session overrides)
+  ---------------------------------------------------------------------------
+  ExceptionFilterBinding = {
+    -- Properties
+    uri = "string",
+    enabled = "bool",           -- session override (nil = use global default)
+    condition = "string",       -- session-specific condition
+
+    -- Edges
+    exceptionFilters = { type = "edge", target = "ExceptionFilter", reverse = "bindings" },
+    sessions = { type = "edge", target = "Session", reverse = "exceptionFilterBindings" },
+
+    -- Rollups: reference
+    exceptionFilter = { type = "reference", edge = "exceptionFilters" },
     session = { type = "reference", edge = "sessions" },
 
     __indexes = {
-      { name = "default",     fields = { { name = "uri" } } },
-      { name = "by_filterId", fields = { { name = "filterId" } } },
+      { name = "default", fields = { { name = "uri" } } },
     },
   },
 
@@ -708,7 +970,45 @@ M.schema = {
   },
 
   ---------------------------------------------------------------------------
-  -- Sessions (group entity)
+  -- ExceptionFiltersGroup (group entity)
+  ---------------------------------------------------------------------------
+  ExceptionFiltersGroup = {
+    -- Properties
+    uri = "string",
+
+    -- Edges (uses inline hop: ExceptionFiltersGroup → debuggers → Debugger → exceptionFilters)
+    debuggers = { type = "edge", target = "Debugger", reverse = "exceptionFiltersGroups" },
+
+    -- Rollups: reference
+    debugger = { type = "reference", edge = "debuggers" },
+
+    __indexes = {
+      { name = "default", fields = { { name = "uri" } } },
+    },
+  },
+
+  ---------------------------------------------------------------------------
+  -- Configs (UI group entity for Config instances)
+  -- Primary top-level grouping in debugger tree
+  -- Uses inline hop: Configs → debuggers → Debugger → activeConfigs
+  ---------------------------------------------------------------------------
+  Configs = {
+    -- Properties
+    uri = "string",
+
+    -- Edges
+    debuggers = { type = "edge", target = "Debugger", reverse = "configsGroups" },
+
+    -- Rollups: reference
+    debugger = { type = "reference", edge = "debuggers" },
+
+    __indexes = {
+      { name = "default", fields = { { name = "uri" } } },
+    },
+  },
+
+  ---------------------------------------------------------------------------
+  -- Sessions (group entity) - Legacy, kept for backwards compatibility
   ---------------------------------------------------------------------------
   Sessions = {
     -- Properties
@@ -726,7 +1026,7 @@ M.schema = {
   },
 
   ---------------------------------------------------------------------------
-  -- Targets (UI group entity for leaf sessions)
+  -- Targets (UI group entity for leaf sessions) - Legacy
   -- Uses inline hop: Targets → debuggers → Debugger → leafSessions
   ---------------------------------------------------------------------------
   Targets = {

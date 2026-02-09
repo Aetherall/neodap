@@ -3,6 +3,7 @@
 --   -j N      Number of parallel workers (default: CPU count)
 --   -t MS     Per-test timeout in milliseconds (default: 10000)
 --   -f FILE   Run only tests matching FILE pattern
+--   -n NAME   Run only tests matching NAME pattern (matches test description)
 --   -v        Verbose output (show all test output, not just failures)
 
 local uv = vim.uv or vim.loop
@@ -11,6 +12,10 @@ local uv = vim.uv or vim.loop
 local ENV = {
   DEBUGPY_PATH = vim.env.DEBUGPY_PATH,
   JSDBG_PATH = vim.env.JSDBG_PATH,
+  NEODAP_TEST_BACKEND = vim.env.NEODAP_TEST_BACKEND or "overseer",
+  -- Coverage
+  NEODAP_COVERAGE = vim.env.NEODAP_COVERAGE,
+  LUACOV_PATH = vim.env.LUACOV_PATH,
 }
 
 -- Check if setpriv with pdeathsig is available (Linux only)
@@ -25,6 +30,7 @@ local function parse_args()
   local args = {
     concurrency = default_concurrency,
     filter_file = nil,
+    filter_name = nil,
     verbose = false,
     timeout = 10000,  -- Per-test timeout in ms (10s default)
   }
@@ -45,6 +51,9 @@ local function parse_args()
       elseif a == "-f" then
         i = i + 1
         args.filter_file = argv[i]
+      elseif a == "-n" then
+        i = i + 1
+        args.filter_name = argv[i]
       elseif a == "-t" then
         i = i + 1
         args.timeout = tonumber(argv[i]) or args.timeout
@@ -73,21 +82,28 @@ local function discover_files(filter_file)
 end
 
 -- Collect all test cases
-local function collect_cases(files)
+local function collect_cases(files, filter_name)
   local cases = MiniTest.collect({
     find_files = function() return files end,
   })
 
   local result = {}
   for _, case in ipairs(cases) do
-    table.insert(result, {
-      desc = case.desc,
-      id = table.concat(case.desc, " / "),
-      file = case.desc[1],
-    })
+    local id = table.concat(case.desc, " / ")
+    -- Filter by test name if specified
+    if not filter_name or id:match(filter_name) then
+      table.insert(result, {
+        desc = case.desc,
+        id = id,
+        file = case.desc[1],
+      })
+    end
   end
   return result
 end
+
+-- Counter for unique log file names
+local log_counter = 0
 
 -- Build command to run a single test
 local function build_test_command(test, timeout)
@@ -131,13 +147,22 @@ local function build_test_command(test, timeout)
     }
   end
 
+  -- Generate unique log file path for this test
+  log_counter = log_counter + 1
+  local log_file = string.format(".tests/logs/%d_%d.log", vim.fn.getpid(), log_counter)
+
   return {
     cmd = cmd,
     env = {
       NEODAP_TEST_TIMEOUT = tostring(timeout),
+      NEODAP_TEST_LOG = log_file,
       DEBUGPY_PATH = ENV.DEBUGPY_PATH,
       JSDBG_PATH = ENV.JSDBG_PATH,
+      -- Coverage
+      NEODAP_COVERAGE = ENV.NEODAP_COVERAGE,
+      LUACOV_PATH = ENV.LUACOV_PATH,
     },
+    log_file = log_file,
   }
 end
 
@@ -207,6 +232,7 @@ local function run_parallel(tests, concurrency, verbose, timeout)
         code = timed_out and 124 or obj.code,
         stdout = table.concat(stdout_chunks),
         stderr = table.concat(stderr_chunks) .. (timed_out and "\n[TIMEOUT: test killed after " .. timeout .. "ms]\n" or ""),
+        log_file = spec.log_file,
       }
       table.insert(results, result)
 
@@ -283,6 +309,18 @@ local function truncate_lines(text, max_lines)
   return result
 end
 
+-- Read log file contents if it exists
+local function read_log_file(path)
+  if not path then return nil end
+  local file = io.open(path, "r")
+  if not file then return nil end
+  local content = file:read("*a")
+  file:close()
+  -- Clean up the log file after reading
+  os.remove(path)
+  return content
+end
+
 -- Print results
 local function print_results(results, verbose)
   local failures = {}
@@ -294,6 +332,10 @@ local function print_results(results, verbose)
       print("\n" .. string.rep("-", 60))
       print("PASS: " .. r.test.id)
       if #r.stdout > 0 then print(r.stdout) end
+    end
+    -- Clean up log files for passing tests
+    if r.code == 0 and r.log_file then
+      os.remove(r.log_file)
     end
   end
 
@@ -311,6 +353,12 @@ local function print_results(results, verbose)
       if #r.stderr > 0 then
         print("STDERR:")
         print(truncate_lines(r.stderr, 10))
+      end
+      -- Show logs for failed tests
+      local logs = read_log_file(r.log_file)
+      if logs and #logs > 0 then
+        print("LOGS:")
+        print(truncate_lines(logs, 50))
       end
     end
   end
@@ -334,28 +382,136 @@ local function cleanup_test_dirs()
       if is_pid_dir or is_fixture_dir then
         vim.fn.delete(root .. "/" .. name, "rf")
       end
+      -- Clean up old log files from previous runs
+      if name == "logs" then
+        local logs_handle = uv.fs_scandir(root .. "/logs")
+        if logs_handle then
+          while true do
+            local log_name = uv.fs_scandir_next(logs_handle)
+            if not log_name then break end
+            -- Remove logs from other PIDs
+            local log_pid = log_name:match("^(%d+)_")
+            if log_pid and log_pid ~= current_pid then
+              os.remove(root .. "/logs/" .. log_name)
+            end
+          end
+        end
+      end
     end
   end
 end
 
 -- Main
+-- Generate coverage report from collected stats files
+local function generate_coverage_report()
+  if not ENV.NEODAP_COVERAGE or not ENV.LUACOV_PATH then
+    return
+  end
+
+  local stats_dir = ".tests/coverage"
+  local merged_stats = stats_dir .. "/luacov.stats.out"
+
+  -- Find all stats files
+  local stats_files = vim.fn.glob(stats_dir .. "/*.stats", false, true)
+  if #stats_files == 0 then
+    io.write("Warning: No coverage stats files found\n")
+    return
+  end
+
+  io.write(string.format("\nMerging %d coverage stats files...\n", #stats_files))
+
+  -- LuaCov stats format:
+  --   linecount:filepath
+  --   space-separated hit counts (one per line)
+  --
+  -- We merge by file path, summing hit counts per line.
+  local merged = {} -- filepath -> { counts = {...}, linecount = n }
+
+  for _, stats_file in ipairs(stats_files) do
+    local f = io.open(stats_file, "r")
+    if f then
+      local current_file = nil
+      for line in f:lines() do
+        -- Check if this is a header line: linecount:filepath
+        local linecount, filepath = line:match("^(%d+):(.+)$")
+        if linecount and filepath then
+          current_file = filepath
+          if not merged[filepath] then
+            merged[filepath] = { counts = {}, linecount = tonumber(linecount) }
+          end
+        elseif current_file then
+          -- This is a counts line - space-separated numbers
+          local entry = merged[current_file]
+          local idx = 1
+          for count_str in line:gmatch("%S+") do
+            local count = tonumber(count_str) or 0
+            entry.counts[idx] = (entry.counts[idx] or 0) + count
+            idx = idx + 1
+          end
+        end
+      end
+      f:close()
+      os.remove(stats_file)
+    end
+  end
+
+  -- Write merged stats in luacov format
+  local out = io.open(merged_stats, "w")
+  if out then
+    -- Sort files for deterministic output
+    local files = {}
+    for filepath in pairs(merged) do
+      table.insert(files, filepath)
+    end
+    table.sort(files)
+
+    for _, filepath in ipairs(files) do
+      local entry = merged[filepath]
+      -- Write header
+      out:write(string.format("%d:%s\n", entry.linecount, filepath))
+      -- Write counts
+      local counts = {}
+      for i = 1, entry.linecount do
+        counts[i] = tostring(entry.counts[i] or 0)
+      end
+      out:write(table.concat(counts, " ") .. " \n")
+    end
+    out:close()
+    io.write(string.format("Coverage stats written to: %s\n", merged_stats))
+  end
+
+  io.write("To generate a report, run: luacov -c .luacov\n")
+end
+
 local function main()
   local args = parse_args()
 
   -- Clean up stale PID directories from previous runs
   cleanup_test_dirs()
 
+  -- Create logs directory
+  vim.fn.mkdir(".tests/logs", "p")
+
+  -- Create coverage directory if coverage enabled
+  if ENV.NEODAP_COVERAGE then
+    vim.fn.mkdir(".tests/coverage", "p")
+  end
+
   -- Orchestrator watchdog: total timeout based on test count and per-test timeout
   -- Will be set after we know how many tests there are
   local watchdog
 
+  io.write(string.format("Backend: %s\n", ENV.NEODAP_TEST_BACKEND))
   io.write("Discovering test files...\n")
   local files = discover_files(args.filter_file)
   io.write(string.format("Found %d test files\n", #files))
 
   io.write("Collecting test cases...\n")
-  local tests = collect_cases(files)
+  local tests = collect_cases(files, args.filter_name)
   io.write(string.format("Found %d test cases\n", #tests))
+  if args.filter_name then
+    io.write(string.format("Filtered by name: %s\n", args.filter_name))
+  end
 
   -- Set orchestrator watchdog: (tests / concurrency) * timeout + 30s buffer
   local total_timeout = math.ceil(#tests / args.concurrency) * args.timeout + 30000
@@ -374,6 +530,9 @@ local function main()
   print(string.rep("=", 60))
   print(string.format("TOTAL: %d passed, %d failed, %d total", passed, failed, #results))
   print(string.rep("=", 60))
+
+  -- Generate coverage report if enabled
+  generate_coverage_report()
 
   os.exit(failed > 0 and 1 or 0)
 end

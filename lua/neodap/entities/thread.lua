@@ -11,6 +11,12 @@ return function(Thread)
     return self.state:get() == "running"
   end
 
+  ---Get display-oriented state string
+  ---@return string "running"|"stopped"|"exited"|"unknown"
+  function Thread:displayState()
+    return self.state:get() or "unknown"
+  end
+
   ---Check if thread's session is terminated
   ---Returns true if terminated OR if unable to determine (safe default)
   ---@return boolean

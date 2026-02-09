@@ -11,6 +11,7 @@
 
 local query = require("neodap.plugins.utils.query")
 local url_completion = require("neodap.plugins.utils.url_completion")
+local log = require("neodap.logger")
 
 ---@param debugger neodap.entities.Debugger
 ---@return table api Plugin API
@@ -23,7 +24,7 @@ return function(debugger)
   function api.enable(url)
     local entities = query.query_or_quickfix(debugger, url)
     if #entities == 0 then
-      vim.notify("DapEnable: No entities found", vim.log.levels.WARN)
+      log:warn("DapEnable: No entities found")
       return false
     end
 
@@ -36,10 +37,10 @@ return function(debugger)
     end
 
     if count > 0 then
-      vim.notify(string.format("DapEnable: %d entities enabled", count), vim.log.levels.INFO)
+      log:info("DapEnable", { count = count })
       return true
     else
-      vim.notify("DapEnable: No entities support enable", vim.log.levels.WARN)
+      log:warn("DapEnable: No entities support enable")
       return false
     end
   end
@@ -50,7 +51,7 @@ return function(debugger)
   function api.disable(url)
     local entities = query.query_or_quickfix(debugger, url)
     if #entities == 0 then
-      vim.notify("DapDisable: No entities found", vim.log.levels.WARN)
+      log:warn("DapDisable: No entities found")
       return false
     end
 
@@ -63,10 +64,10 @@ return function(debugger)
     end
 
     if count > 0 then
-      vim.notify(string.format("DapDisable: %d entities disabled", count), vim.log.levels.INFO)
+      log:info("DapDisable", { count = count })
       return true
     else
-      vim.notify("DapDisable: No entities support disable", vim.log.levels.WARN)
+      log:warn("DapDisable: No entities support disable")
       return false
     end
   end
@@ -77,7 +78,7 @@ return function(debugger)
   function api.remove(url)
     local entities = query.query_or_quickfix(debugger, url)
     if #entities == 0 then
-      vim.notify("DapRemove: No entities found", vim.log.levels.WARN)
+      log:warn("DapRemove: No entities found")
       return false
     end
 
@@ -105,10 +106,10 @@ return function(debugger)
     end
 
     if count > 0 then
-      vim.notify(string.format("DapRemove: %d entities removed", count), vim.log.levels.INFO)
+      log:info("DapRemove", { count = count })
       return true
     else
-      vim.notify("DapRemove: No entities support remove", vim.log.levels.WARN)
+      log:warn("DapRemove: No entities support remove")
       return false
     end
   end

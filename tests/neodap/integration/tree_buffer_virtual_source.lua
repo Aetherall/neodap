@@ -11,23 +11,25 @@ T["tree_buffer_virtual_source"] = MiniTest.new_set()
 
 T["tree_buffer_virtual_source"]["gd on frame with file source opens file buffer"] = function()
   local h = adapter.harness()
+  h:setup_visual()
   local fixture_path = h:fixture("simple-vars")
+
+  h:use_plugin("neodap.plugins.tree_buffer", { show_root = true })
 
   h:cmd("DapLaunch Debug stop")
   h:wait_url("/sessions/threads/stacks[0]/frames[0]")
   h:cmd("DapFocus /sessions/threads/stacks[0]/frames[0]")
 
-  -- Use show_root=true so the Frame is visible at root level
-  h:use_plugin("neodap.plugins.tree_buffer", { show_root = true })
-
-  -- Open tree at frame and get expected line
-  h.child.cmd("edit dap://tree/@frame")
-  h:wait(100)
+  -- Get expected line before opening tree
   local expected_line = h:query_field("@frame", "line")
 
-  -- Press gd on frame
+  -- Open tree at frame (harness helper)
+  h:open_tree("@frame")
+
+  -- Press gd on frame to go to source
   h.child.type_keys("gd")
-  vim.loop.sleep(100)
+  -- Use parent-side sleep to avoid child blocking issues
+  vim.loop.sleep(200)
 
   -- Verify we're in the source file (not dap://source)
   local bufname = h.child.api.nvim_buf_get_name(0)

@@ -23,6 +23,23 @@ local neo = {}
 neo.NIL = setmetatable({}, { __tostring = function() return "neo.NIL" end })
 
 --============================================================================
+-- DEBUG LOGGING
+--============================================================================
+
+local _neo_debug = false
+local _neo_log_file = nil
+local function neo_log(...)
+  if not _neo_debug then return end
+  if not _neo_log_file then
+    _neo_log_file = io.open("/tmp/neograph-debug.log", "a")
+  end
+  if _neo_log_file then
+    _neo_log_file:write(table.concat({...}, " ") .. "\n")
+    _neo_log_file:flush()
+  end
+end
+
+--============================================================================
 -- HELPERS
 --============================================================================
 
@@ -422,6 +439,26 @@ local function compare_values(a, b, dir)
   return dir == "asc" and 1 or -1
 end
 
+--[[
+  Comparator optimization: Needle caching
+
+  Problem: During skiplist insert/remove/search, the same "needle" node is compared
+  against many existing nodes. Each comparison calls get_node() on both arguments,
+  resulting in O(2 * log n) hash lookups per operation.
+
+  Solution: Cache the second argument (the needle). In skiplist operations, the needle
+  is always passed as the second argument: compare(existing, needle). By caching it,
+  we reduce lookups to O(log n) per operation.
+
+  Alternative approaches considered:
+  1. Store sort keys directly in skiplist entries - faster but increases memory and
+     complexity when sort keys change (need to update skiplist entry on property change)
+  2. Two-element LRU cache for both arguments - more complex, marginal benefit since
+     the first argument changes every comparison anyway
+  3. Pass pre-resolved needle to skiplist - requires changing skiplist API
+
+  This approach (needle caching) was chosen for simplicity and effectiveness.
+--]]
 local function make_comparator(fields, get_node)
   if not fields or #fields == 0 then
     return function(a, b)
@@ -431,8 +468,22 @@ local function make_comparator(fields, get_node)
     end
   end
 
+  -- Cache for second argument (needle) - avoids repeated lookups during skiplist traversal
+  local cached_id, cached_node
+
   return function(a, b)
-    local na, nb = get_node(a), get_node(b)
+    -- First argument (existing node) - always lookup, changes every comparison
+    local na = get_node(a)
+
+    -- Second argument (needle) - cache it, same value compared repeatedly
+    local nb
+    if b == cached_id then
+      nb = cached_node
+    else
+      nb = get_node(b)
+      cached_id, cached_node = b, nb
+    end
+
     if not na and not nb then return a < b and -1 or (a > b and 1 or 0) end
     if not na then return 1 end
     if not nb then return -1 end
@@ -1936,6 +1987,9 @@ function neo.Graph:_on_prop_change(id, prop, new_val, old_val)
   self:_resort_edges(id, prop, new_val, old_val)
   self:_notify_views(node._type, "_on_change", node, prop, new_val, old_val)
 
+  -- Notify ALL views about property changes (for nodes in expanded edges)
+  self:_notify_views(nil, "_on_child_change", id, prop, new_val, old_val)
+
   self:_update_rollups_for_prop(id, prop, old_val, new_val)
   self:_update_derived_edges_for_prop(id, prop, old_val, new_val)
 
@@ -2475,11 +2529,24 @@ local function get_config_for_edge(edge_tree, edge_path, edge_name)
   local node = edge_tree[edge_path[1]]
   if not node then return nil end
 
+  -- If the first edge in path is recursive, sibling edges at this level
+  -- should also be available at all recursive depths
+  if node.recursive then
+    local sibling = edge_tree[edge_name]
+    if sibling then return sibling end
+  end
+
   for i = 2, #edge_path do
     if not node or not node.edges then break end
-    node = node.edges[edge_path[i]]
+    local parent_edges = node.edges
+    node = parent_edges[edge_path[i]]
+    -- Same-edge recursive case
     if node and node.recursive and edge_path[i] == edge_name then
       return node
+    end
+    -- Sibling recursive case: if current edge is recursive, siblings should be available
+    if node and node.recursive and parent_edges[edge_name] then
+      return parent_edges[edge_name]
     end
   end
 
@@ -2616,6 +2683,11 @@ function neo.Graph:view(query_def, opts)
     _viewport_dirty = true,
 
     _initializing = true,
+
+    -- Track items that have had on_enter fired (lazy firing)
+    _entered = {},
+    -- Track items pending eager expansion check
+    _pending_eager = {},
   }
 
   self.views[view] = view
@@ -2639,6 +2711,8 @@ function neo.View:_initialize_roots()
     local pos = 0
     for id in sl.iter() do
       pos = pos + 1
+      local path_key = tostring(id)
+      self._entered[path_key] = true  -- Mark as entered to prevent duplicate in items()
       self:_subscribe_node(id)
       if on_enter then
         local node = self.graph:get(id)
@@ -2653,6 +2727,8 @@ function neo.View:_initialize_roots()
       if raw_node and node_matches_filters(raw_node, self.filters, self.graph) then
         count = count + 1
         pos = pos + 1
+        local path_key = tostring(id)
+        self._entered[path_key] = true  -- Mark as entered to prevent duplicate in items()
         self:_subscribe_node(id)
         if on_enter then
           local node = self.graph:get(id)
@@ -2709,10 +2785,11 @@ end
 -- VIRTUALIZED OFFSET CALCULATION
 --============================================================================
 
-function neo.View:_expansion_size_at(path_key)
+function neo.View:_expansion_size_at(path_key, _log_prefix)
   local exp = self.expansions[path_key]
   if not exp then return 0 end
 
+  local log_prefix = _log_prefix or ""
   local total = 0
   local graph = self.graph
   local parent_id = self:_path_key_to_id(path_key)
@@ -2725,28 +2802,48 @@ function neo.View:_expansion_size_at(path_key)
 
     if is_inline then
       local cfg = get_config_for_edge(self.edge_tree, edge_path, edge_name)
+      local child_count = 0
       for child_id in make_child_iterator(graph, parent_id, edge_name, cfg) do
+        child_count = child_count + 1
         local child_path_key = path_key .. ":" .. edge_name .. ":" .. child_id
-        total = total + self:_expansion_size_at(child_path_key)
+        local child_size = self:_expansion_size_at(child_path_key, log_prefix .. "  ")
+        neo_log(log_prefix .. "[_expansion_size_at] inline edge=" .. edge_name .. " child_path=" .. child_path_key .. " child_size=" .. child_size)
+        total = total + child_size
       end
+      neo_log(log_prefix .. "[_expansion_size_at] inline edge=" .. edge_name .. " total_children=" .. child_count .. " total_size=" .. total)
     else
+      local nested = self:_nested_expansion_size(path_key, edge_name)
+      neo_log(log_prefix .. "[_expansion_size_at] edge=" .. edge_name .. " count=" .. edge_exp.count .. " nested=" .. nested)
       total = total + edge_exp.count
-      total = total + self:_nested_expansion_size(path_key, edge_name)
+      total = total + nested
     end
   end
+  neo_log(log_prefix .. "[_expansion_size_at] path=" .. path_key .. " total=" .. total)
   return total
 end
 
 function neo.View:_nested_expansion_size(parent_path_key, edge_name)
   local prefix = parent_path_key .. ":" .. edge_name .. ":"
   local total = 0
+  local graph = self.graph
 
   for child_path_key in pairs(self.expanded_at) do
     if child_path_key:sub(1, #prefix) == prefix then
       local child_exp = self.expansions[child_path_key]
       if child_exp then
-        for _, edge_exp in pairs(child_exp) do
-          total = total + edge_exp.count
+        local child_id = self:_path_key_to_id(child_path_key)
+        local child_node = child_id and graph.nodes[child_id]
+        local child_edge_path = self:_path_key_to_edge_path(child_path_key)
+
+        for child_edge_name, edge_exp in pairs(child_exp) do
+          -- Check if this edge is inline - inline edges don't contribute directly to visible count
+          local edge_path_for_check = copy_array(child_edge_path)
+          table.insert(edge_path_for_check, child_edge_name)
+          local is_inline = check_edge_config(self.edge_tree, edge_path_for_check, child_edge_name, "inline", child_node)
+
+          if not is_inline then
+            total = total + edge_exp.count
+          end
         end
       end
     end
@@ -2797,6 +2894,8 @@ function neo.View:_resolve_subtree_position(parent_path_key, offset, parent_dept
   for edge_name in pairs(exp) do edge_names[#edge_names + 1] = edge_name end
   table.sort(edge_names)
 
+  neo_log("[_resolve_subtree] parent=" .. parent_path_key .. " offset=" .. offset .. " edges=" .. table.concat(edge_names, ","))
+
   for _, edge_name in ipairs(edge_names) do
     local edge_exp = exp[edge_name]
     local edge_path = self:_path_key_to_edge_path(parent_path_key)
@@ -2813,12 +2912,14 @@ function neo.View:_resolve_subtree_position(parent_path_key, offset, parent_dept
 
       if is_inline then
         local child_exp_size = self:_expansion_size_at(child_path_key)
+        neo_log("[_resolve_subtree] inline edge=" .. edge_name .. " child_path=" .. child_path_key .. " pos=" .. pos .. " child_exp_size=" .. child_exp_size .. " offset=" .. offset)
         if child_exp_size > 0 and offset <= pos + child_exp_size then
           return self:_resolve_subtree_position(child_path_key, offset - pos, child_depth, child_node)
         end
         pos = pos + child_exp_size
       else
         pos = pos + 1
+        neo_log("[_resolve_subtree] edge=" .. edge_name .. " child_id=" .. child_id .. " pos=" .. pos .. " offset=" .. offset)
         if pos == offset then
           return child_id, child_path_key, child_depth, edge_name
         end
@@ -2835,6 +2936,7 @@ function neo.View:_resolve_subtree_position(parent_path_key, offset, parent_dept
     end
   end
 
+  neo_log("[_resolve_subtree] returning nil, pos=" .. pos .. " offset=" .. offset)
   return nil
 end
 
@@ -3012,8 +3114,10 @@ function neo.View:_is_expanded(path_key, edge_name)
 end
 
 function neo.View:_expand(path_key, edge_name, context)
+  neo_log("[_expand] path_key=" .. path_key .. " edge_name=" .. edge_name)
   local exp = self.expansions[path_key]
   if exp and exp[edge_name] then
+    neo_log("[_expand] already expanded, returning false")
     return false
   end
 
@@ -3050,11 +3154,11 @@ function neo.View:_expand(path_key, edge_name, context)
   self:_subscribe_edge(path_key, edge_name, parent_id)
 
   -- Fire on_expand callback with context
-  local cb = self.callbacks.on_expand
-  if cb then
+  local on_expand_cb = self.callbacks.on_expand
+  if on_expand_cb then
     local node_proxy = self.graph:get(parent_id)
     if node_proxy then
-      cb(node_proxy, edge_name, {
+      on_expand_cb(node_proxy, edge_name, {
         eager = context and context.eager or false,
         path_key = path_key,
         inline = is_inline,
@@ -3062,36 +3166,74 @@ function neo.View:_expand(path_key, edge_name, context)
     end
   end
 
-  local depth = self:_path_key_depth(path_key)
-  local child_depth = is_inline and depth or (depth + 1)
+  -- Fire on_enter for children (limited by cursor take/skip)
+  -- Use view.limit as default cap when no take is configured
+  -- This makes expansion O(visible) instead of O(all children)
+  -- Note: For inline edges, children are "invisible" and should NOT fire on_enter
+  local on_enter_cb = self.callbacks.on_enter
 
-  for child_id in make_child_iterator(self.graph, parent_id, edge_name, cfg) do
+  -- Create a limited iterator with default cap based on view.limit
+  local effective_cfg = cfg and { skip = cfg.skip, take = cfg.take, filters = cfg.filters, index_name = cfg.index_name } or {}
+  if effective_cfg.take == nil then
+    -- Use view.limit as default cap to make expansion O(visible)
+    effective_cfg.take = self.limit
+  end
+  local child_iter = make_child_iterator(self.graph, parent_id, edge_name, effective_cfg)
+  local child_depth = self:_path_key_depth(path_key) + 1
+  local children_to_eager_expand = {}
+
+  for child_id in child_iter do
     local child_path_key = path_key .. ":" .. edge_name .. ":" .. child_id
-    self:_subscribe_node(child_id)
 
-    if not is_inline then
-      local cb_enter = self.callbacks.on_enter
-      if cb_enter then
-        local child_node = self.graph:get(child_id)
-        if child_node then
-          cb_enter(child_node, nil, edge_name, parent_id)
-        end
+    -- Mark as entered to prevent duplicate on_enter in items()
+    self._entered[child_path_key] = true
+
+    -- Fire on_enter callback with signature: (node, position, edge_name, parent_id)
+    -- Skip on_enter for inline edges since inline children are invisible/skipped
+    if on_enter_cb and not is_inline then
+      local child_proxy = self.graph:get(child_id)
+      if child_proxy then
+        on_enter_cb(child_proxy, nil, edge_name, parent_id)
       end
     end
 
+    -- Queue for eager expansion check
     local child_node = self.graph.nodes[child_id]
     if child_node then
-      local cep = self:_path_key_to_edge_path(child_path_key)
-      local available_edges = self:_get_available_edges(child_node._type)
-      for _, edef_name in ipairs(available_edges) do
-        if check_edge_config(self.edge_tree, cep, edef_name, "eager", child_node) then
-          self:_expand(child_path_key, edef_name, { eager = true })
-        end
+      table.insert(children_to_eager_expand, {
+        id = child_id,
+        path_key = child_path_key,
+        node = child_node,
+      })
+    end
+  end
+
+  -- Process eager expansions for children
+  for _, child in ipairs(children_to_eager_expand) do
+    local available_edges = self:_get_available_edges(child.node._type)
+    local child_edge_path = self:_path_key_to_edge_path(child.path_key)
+    for _, child_edge_name in ipairs(available_edges) do
+      if check_edge_config(self.edge_tree, child_edge_path, child_edge_name, "eager", child.node) then
+        self:_expand(child.path_key, child_edge_name, { eager = true })
       end
     end
   end
 
   self._viewport_dirty = true
+
+  -- Debug: log expansion state for targets path
+  if path_key:match("stdios.*sessions") then
+    neo_log("[_expand] After inline session hop, checking targets expansion:")
+    for pk, exp in pairs(self.expansions) do
+      if pk:match("targets") then
+        local edges = {}
+        for e, v in pairs(exp) do
+          table.insert(edges, e .. "=" .. tostring(v.count))
+        end
+        neo_log("  " .. pk .. " -> " .. table.concat(edges, ", "))
+      end
+    end
+  end
 
   return true
 end
@@ -3218,9 +3360,25 @@ function neo.View:_edges_at_path(path_key)
   local edge_path = self:_path_key_to_edge_path(path_key)
   local node = self.edge_tree
 
-  for _, edge in ipairs(edge_path) do
+  for i, edge in ipairs(edge_path) do
     if not node or not node[edge] then return {} end
-    node = node[edge].edges
+    local edge_cfg = node[edge]
+    -- Handle recursive edges: if recursive and no explicit edges, stay at parent level
+    -- for subsequent same-edge traversals
+    if edge_cfg.recursive and not edge_cfg.edges then
+      -- For recursive edge without explicit edges, the edge config itself
+      -- should be available for children. Stay at current node level.
+      -- Check if remaining path is all the same edge
+      local all_same = true
+      for j = i + 1, #edge_path do
+        if edge_path[j] ~= edge then all_same = false; break end
+      end
+      if all_same then
+        -- Return edges at current level (the recursive edge itself)
+        return { edge }
+      end
+    end
+    node = edge_cfg.edges
   end
 
   local edges = {}
@@ -3295,11 +3453,13 @@ end
 neo.Item = {}
 
 function neo.Item:expand(edge_name)
-  self._view:expand(self.id, edge_name)
+  local path_key = path_to_key(self._path)
+  self._view:_expand(path_key, edge_name, { eager = false })
 end
 
 function neo.Item:collapse(edge_name)
-  self._view:collapse(self.id, edge_name)
+  local path_key = path_to_key(self._path)
+  self._view:_collapse(path_key, edge_name)
 end
 
 function neo.Item:is_expanded(edge_name)
@@ -3451,7 +3611,76 @@ end
 
 --============================================================================
 -- ITEMS ITERATOR
+-- Optimized O(n) implementation - walks tree once instead of resolving each position
 --============================================================================
+
+-- Helper: recursively walk expanded subtree, yielding items in visible range
+local function iter_subtree(view, graph, parent_path_key, parent_depth, parent_node, ctx)
+  local exp = view.expansions[parent_path_key]
+  if not exp then return end
+
+  -- Get sorted edge names for deterministic order
+  local edge_names = {}
+  for edge_name in pairs(exp) do
+    edge_names[#edge_names + 1] = edge_name
+  end
+  table.sort(edge_names)
+
+  for _, edge_name in ipairs(edge_names) do
+    local edge_path = view:_path_key_to_edge_path(parent_path_key)
+    table.insert(edge_path, edge_name)
+    local cfg = get_config_for_edge(view.edge_tree, edge_path, edge_name)
+    local is_inline = check_edge_config(view.edge_tree, edge_path, edge_name, "inline", parent_node)
+    local child_depth = is_inline and parent_depth or (parent_depth + 1)
+
+    local parent_id = view:_path_key_to_id(parent_path_key)
+
+    for child_id in make_child_iterator(graph, parent_id, edge_name, cfg) do
+      local child_path_key = parent_path_key .. ":" .. edge_name .. ":" .. child_id
+      local child_node = graph.nodes[child_id]
+
+      if is_inline then
+        -- Inline edges: recurse without counting the child itself
+        iter_subtree(view, graph, child_path_key, child_depth, child_node, ctx)
+        if ctx.done then return end
+      else
+        -- Non-inline edges: count and maybe yield the child
+        ctx.pos = ctx.pos + 1
+
+        if ctx.pos >= ctx.start_pos and ctx.pos <= ctx.end_pos then
+          -- Fire on_enter lazily
+          if ctx.on_enter and not view._entered[child_path_key] then
+            view._entered[child_path_key] = true
+            local node_proxy = graph:get(child_id)
+            ctx.on_enter(node_proxy, ctx.pos, child_depth, edge_name)
+            table.insert(ctx.pending_eager, { node_id = child_id, path_key = child_path_key, raw_node = child_node })
+          end
+
+          local item = setmetatable({
+            id = child_id,
+            node = graph:get(child_id),
+            depth = child_depth,
+            edge = edge_name,
+            _view = view,
+            _path = path_key_to_path(child_path_key),
+          }, { __index = neo.Item })
+
+          coroutine.yield(item)
+        end
+
+        -- Early exit if past visible range
+        if ctx.pos > ctx.end_pos then
+          ctx.done = true
+          return
+        end
+
+        -- Recurse into child's expansions
+        iter_subtree(view, graph, child_path_key, child_depth, child_node, ctx)
+        if ctx.done then return end
+      end
+    end
+  end
+end
 
 function neo.View:items()
   local view = self
@@ -3464,21 +3693,62 @@ function neo.View:items()
 
     if end_pos > total then end_pos = total end
 
-    for virtual_pos = start_pos, end_pos do
-      local node_id, path_key, depth, edge_name = view:_resolve_position(virtual_pos)
-      if node_id then
-        local raw_node = graph.nodes[node_id]
-        if raw_node then
+    -- Shared context for tree walk
+    local ctx = {
+      pos = 0,
+      start_pos = start_pos,
+      end_pos = end_pos,
+      on_enter = view.callbacks.on_enter,
+      pending_eager = {},
+      done = false,
+    }
+
+    -- Walk through roots
+    local sl = graph.indexes[view.index_key]
+
+    for root_id in sl.iter() do
+      local root = graph.nodes[root_id]
+      if root and node_matches_filters(root, view.filters, graph) then
+        ctx.pos = ctx.pos + 1
+        local path_key = tostring(root_id)
+
+        if ctx.pos >= start_pos and ctx.pos <= end_pos then
+          -- Fire on_enter lazily
+          if ctx.on_enter and not view._entered[path_key] then
+            view._entered[path_key] = true
+            local node_proxy = graph:get(root_id)
+            ctx.on_enter(node_proxy, ctx.pos, 0, nil)
+            table.insert(ctx.pending_eager, { node_id = root_id, path_key = path_key, raw_node = root })
+          end
+
           local item = setmetatable({
-            id = node_id,
-            node = graph:get(node_id),
-            depth = depth,
-            edge = edge_name,
+            id = root_id,
+            node = graph:get(root_id),
+            depth = 0,
+            edge = nil,
             _view = view,
             _path = path_key_to_path(path_key),
           }, { __index = neo.Item })
 
           coroutine.yield(item)
+        end
+
+        -- Early exit if past visible range
+        if ctx.pos > end_pos then break end
+
+        -- Walk into root's expansions
+        iter_subtree(view, graph, path_key, 0, root, ctx)
+        if ctx.done then break end
+      end
+    end
+
+    -- Process eager expansions after iteration
+    for _, pending in ipairs(ctx.pending_eager) do
+      local available_edges = view:_get_available_edges(pending.raw_node._type)
+      local edge_path = view:_path_key_to_edge_path(pending.path_key)
+      for _, edge_name in ipairs(available_edges) do
+        if check_edge_config(view.edge_tree, edge_path, edge_name, "eager", pending.raw_node) then
+          view:_expand(pending.path_key, edge_name, { eager = true })
         end
       end
     end
@@ -3595,6 +3865,45 @@ end
 
 function neo.View:_on_unlink(src_id, edge_name, tgt_id)
   self:_clear_expansion_matching(":" .. edge_name .. ":" .. tgt_id)
+end
+
+function neo.View:_on_child_change(node_id, prop, new_val, old_val)
+  -- Check if this node is visible in any of our expanded edges
+  -- by looking at reverse edges to find if any parent has this edge expanded
+  local cb = self.callbacks.on_change
+  if not cb then return end
+
+  local graph = self.graph
+  local node = graph.nodes[node_id]
+  if not node then return end
+
+  -- Check all reverse edges to find parent nodes
+  local reverse_edges = graph.reverse[node_id]
+  if not reverse_edges then return end
+
+  local fire_count = 0
+  for reverse_edge_name, parent_ids in pairs(reverse_edges) do
+    for _, parent_id in ipairs(parent_ids) do
+      local parent_node = graph.nodes[parent_id]
+      if parent_node then
+        -- Find the forward edge name from the reverse
+        local parent_type = parent_node._type
+        for edge_name, edef in pairs(graph.edge_defs) do
+          if edge_name:sub(1, #parent_type + 1) == parent_type .. ":" and edef.reverse == reverse_edge_name then
+            local actual_edge = edge_name:sub(#parent_type + 2)
+            -- Check if this parent has this edge expanded in any path
+            for path_key, exp in pairs(self.expansions) do
+              if exp[actual_edge] and self:_path_key_to_id(path_key) == parent_id then
+                -- This node is in an expanded edge - fire callback once per path
+                fire_count = fire_count + 1
+                cb(graph:get(node_id), prop, new_val, old_val)
+              end
+            end
+          end
+        end
+      end
+    end
+  end
 end
 
 --============================================================================

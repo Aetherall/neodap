@@ -54,11 +54,17 @@ return function(debugger, config)
 
     local line_count = vim.api.nvim_buf_line_count(bufnr)
     local line_idx = math.max(0, math.min(mark.line - 1, line_count - 1))
-    local col_idx = math.max(0, mark.column - 1)
 
     local lines = vim.api.nvim_buf_get_lines(bufnr, line_idx, line_idx + 1, false)
-    if col_idx > #(lines[1] or "") then
-      col_idx = #(lines[1] or "")
+    local line_text = lines[1] or ""
+
+    -- Place at first non-whitespace character so the sign is visible
+    -- (placing at column 0 hides it in indentation)
+    local col_idx = line_text:find("%S")
+    if col_idx then
+      col_idx = col_idx - 1 -- convert to 0-based
+    else
+      col_idx = #line_text -- empty/whitespace-only line: place at end
     end
 
     return vim.api.nvim_buf_set_extmark(bufnr, ns, line_idx, col_idx, {

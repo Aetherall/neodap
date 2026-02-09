@@ -43,4 +43,13 @@ return function(Output)
     local ref = self.variablesReference:get()
     return ref ~= nil and ref > 0
   end
+
+  ---Check if output's session is terminated
+  ---Returns true if terminated OR if unable to determine (safe default)
+  ---@return boolean
+  function Output:isSessionTerminated()
+    local session = self.session:get()
+    if not session then return true end
+    return session:isTerminated()
+  end
 end

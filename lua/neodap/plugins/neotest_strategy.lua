@@ -169,6 +169,8 @@ return function(debugger, config)
       return nil -- Adapter doesn't support debug strategy
     end
 
+    require("neodap.logger"):trace("neotest strategy dap_config", dap_config)
+
     return Process.new(debugger, dap_config)
   end
 

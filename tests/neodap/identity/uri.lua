@@ -72,7 +72,13 @@ T["builders"]["output"] = function()
 end
 
 T["builders"]["exceptionFilter"] = function()
-  MiniTest.expect.equality(uri.exceptionFilter("xotat", "all"), "exfilter:xotat:all")
+  -- exceptionFilter is now global (debugger-scoped), just filterId
+  MiniTest.expect.equality(uri.exceptionFilter("all"), "exfilter:all")
+end
+
+T["builders"]["exceptionFilterBinding"] = function()
+  -- exceptionFilterBinding is per-session
+  MiniTest.expect.equality(uri.exceptionFilterBinding("xotat", "all"), "exfilterbind:xotat:all")
 end
 
 T["builders"]["stdio"] = function()

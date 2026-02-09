@@ -216,9 +216,9 @@ local T = harness.integration("breakpoint_signs", function(T, ctx)
     h:wait_url("/sessions/threads/stacks(seq=2)[0]/frames[0]")
     h:cmd("DapFocus /sessions/threads/stacks[0]/frames[0]")
 
-    -- Add second breakpoint on line 3 while stopped at first
-    h:cmd("DapBreakpoint 3")
-    h:wait_url("/breakpoints(line=3)/bindings(verified=true)")
+    -- Add second breakpoint on line 10 while stopped at first
+    h:cmd("DapBreakpoint 10")
+    h:wait_url("/breakpoints(line=10)/bindings(verified=true)")
     h:wait(100)
 
     -- Screenshot should show signs on BOTH line 2 and line 3

@@ -1,18 +1,15 @@
 -- ExceptionFilter entity methods for neograph-native
+-- ExceptionFilter is now global (debugger-scoped), with per-session overrides via ExceptionFilterBinding
 return function(ExceptionFilter)
-  ---Check if filter is enabled
+  ---Check if filter is enabled (global default)
   ---@return boolean
   function ExceptionFilter:isEnabled()
-    local enabled = self.enabled:get()
-    if enabled == nil then
-      return self.defaultEnabled:get() or false
-    end
-    return enabled
+    return self.defaultEnabled:get() or false
   end
 
-  ---Toggle enabled state
+  ---Toggle global default enabled state
   function ExceptionFilter:toggle()
-    self:update({ enabled = not self:isEnabled() })
+    self:update({ defaultEnabled = not self:isEnabled() })
   end
 
   ---Check if filter supports conditions

@@ -8,6 +8,7 @@
 
 local quickfix = require("neodap.plugins.utils.quickfix")
 local url_completion = require("neodap.plugins.utils.url_completion")
+local log = require("neodap.logger")
 
 ---@class neodap.plugins.DapListConfig
 ---@field open_quickfix? boolean Whether to open quickfix after list (default: true)
@@ -22,21 +23,23 @@ return function(debugger, config)
   local api = {}
 
   -- Re-export for backwards compatibility
-  api.to_quickfix = quickfix.entry
+  function api.to_quickfix(entity)
+    return quickfix.entry(debugger, entity)
+  end
 
   ---List entities matching a URL query
   ---@param url string URL query string
   ---@return boolean success
   function api.list(url)
     if not url or url == "" then
-      vim.notify("DapList: Missing URL", vim.log.levels.ERROR)
+      log:error("DapList: Missing URL")
       return false
     end
 
     local entities = debugger:query(url)
 
     if not entities then
-      vim.notify("DapList: Invalid URL: " .. url, vim.log.levels.ERROR)
+      log:error("DapList: Invalid URL", { url = url })
       return false
     end
 
@@ -46,7 +49,7 @@ return function(debugger, config)
     end
 
     if #entities == 0 then
-      vim.notify("DapList: No matches for " .. url, vim.log.levels.INFO)
+      log:info("DapList: No matches", { url = url })
       return true
     end
 
@@ -65,7 +68,7 @@ return function(debugger, config)
       vim.cmd("copen")
     end
 
-    vim.notify(string.format("DapList: %d items", #items), vim.log.levels.INFO)
+    log:info("DapList", { count = #items })
     return true
   end
 

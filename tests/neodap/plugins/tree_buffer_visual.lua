@@ -71,7 +71,7 @@ local T = harness.integration("tree_buffer_visual", function(T, ctx)
     h:wait_url("/sessions/threads(state=stopped)/stacks[0]/frames(line=2)[0]")
     h:cmd("DapFocus /sessions/threads/stacks[0]/frames[0]")
     h:cmd("DapStep over")
-    h:wait_url("/sessions/threads(state=stopped)/stacks[0]/frames(line=3)[0]")
+    h:wait_url("/sessions/threads(state=stopped)/stacks[0]/frames(line=4)[0]")
     h:cmd("DapFocus /sessions/threads/stacks[0]/frames[0]")
 
     h:query_call("@frame", "fetchScopes")
@@ -348,7 +348,7 @@ local T = harness.integration("tree_buffer_visual", function(T, ctx)
     h:wait_url("/sessions/threads(state=stopped)/stacks[0]/frames(line=2)[0]")
     h:cmd("DapFocus /sessions/threads/stacks[0]/frames[0]")
     h:cmd("DapStep over")
-    h:wait_url("/sessions/threads(state=stopped)/stacks[0]/frames(line=3)[0]")
+    h:wait_url("/sessions/threads(state=stopped)/stacks[0]/frames(line=4)[0]")
     h:cmd("DapFocus /sessions/threads/stacks[0]/frames[0]")
 
     -- Fetch scopes and variables for all scopes

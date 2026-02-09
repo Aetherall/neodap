@@ -60,31 +60,36 @@ local function make_defaults(get_state, toggle_expand, render_buffer, show_root)
     ["h"] = function(ctx)
       if not ctx.item then return end
       if ctx.item.expanded then toggle_expand(ctx.bufnr); return end
+      -- Navigate to parent using _path (works regardless of viewport)
+      local path = ctx.item._path
+      if not path or #path < 3 then return end
+      local parent_id = path[#path - 2]
+      if not parent_id then return end
       local state = get_state(ctx.bufnr)
-      if not state then return end
+      if not state or not state.view then return end
       local win = vim.fn.bufwinid(ctx.bufnr)
       if win == -1 then return end
-      local cursor = vim.api.nvim_win_get_cursor(win)[1]
+      local parent_path_key = state.view:_find_path_to(parent_id)
+      if not parent_path_key then return end
+      local pos = state.view:_compute_virtual_position(parent_path_key)
+      if not pos then return end
+      -- Adjust for hidden root: position shifts down by 1 when root is visible
+      if hide_root then pos = pos - 1 end
       local offset = state.offset or 0
-      local items = {}
-      for item in state.view:items() do
-        -- Skip root when hidden (matches render_tree and get_cursor_item)
-        if not (hide_root and (item.depth or 0) == 0) then
-          local adjusted_depth = hide_root and (item.depth or 0) - 1 or item.depth
-          item.depth = adjusted_depth
-          table.insert(items, item)
-        end
+      -- If parent is within the current viewport, just move cursor
+      local h = vim.api.nvim_win_get_height(win)
+      local cursor_line = pos - offset
+      if cursor_line >= 1 and cursor_line <= h then
+        local col = state.cursor_anchors and state.cursor_anchors[pos - 1] or 0
+        vim.api.nvim_win_set_cursor(win, { cursor_line, col })
+      else
+        -- Parent is outside viewport, scroll to put it near the top
+        local new_offset = math.max(0, pos - 1)
+        if state.view.scroll then state.view:scroll(new_offset) end
+        state.offset = new_offset
+        render_buffer(ctx.bufnr)
+        pcall(vim.api.nvim_win_set_cursor, win, { pos - new_offset, 0 })
       end
-      local idx = cursor - offset
-      for i = idx - 1, 1, -1 do
-        if items[i].depth < ctx.item.depth then
-          local line = offset + i
-          local col = state.cursor_anchors and state.cursor_anchors[line - 1] or 0
-          vim.api.nvim_win_set_cursor(win, { line, col })
-          return
-        end
-      end
-      if ctx.item.depth > 0 and state.view.scroll_by then state.view:scroll_by(-10) end
     end,
 
     -- TODO: implement expand_all/collapse_all on View
@@ -114,14 +119,35 @@ local function make_defaults(get_state, toggle_expand, render_buffer, show_root)
       end,
     },
 
-    ["<Space>"] = {
-      Frame = function(_, ctx) if ctx.entity then ctx.debugger.ctx:focus(ctx.entity.uri:get()) end end,
-      Session = function(_, ctx) if ctx.entity then ctx.debugger.ctx:focus(ctx.entity.uri:get()) end end,
+    ["gf"] = {
+      Frame = function(_, ctx)
+        if not ctx.entity then return end
+        local src = ctx.entity.source:get()
+        if src then
+          local win = find_source_window()
+          vim.api.nvim_set_current_win(win)
+          src:open({ line = ctx.entity.line:get() or 1 })
+        end
+      end,
+      Breakpoint = function(_, ctx)
+        if not ctx.entity then return end
+        local src = ctx.entity.source:get()
+        if src then
+          local win = find_source_window()
+          vim.api.nvim_set_current_win(win)
+          src:open({ line = ctx.entity.line:get() or 1 })
+        end
+      end,
     },
+
+    ["<Space>"] = function(ctx)
+      if ctx.entity then ctx.debugger:action("focus", ctx.entity) end
+    end,
 
     ["e"] = {
       Variable = function(_, ctx)
-        if ctx.entity then vim.cmd("edit dap-var:" .. ctx.entity.uri:get()) end
+        if not ctx.entity then return end
+        vim.cmd("edit " .. vim.fn.fnameescape("dap://var/" .. ctx.entity.uri:get()))
       end,
     },
 
@@ -191,89 +217,56 @@ local function make_defaults(get_state, toggle_expand, render_buffer, show_root)
       end,
     },
 
-    -- Session control
+    -- Session and Config terminate
     ["X"] = {
       Session = function(_, ctx)
         if ctx.entity then ctx.entity:terminate() end
       end,
+      Config = function(_, ctx)
+        if ctx.entity then ctx.entity:terminate() end
+      end,
+    },
+
+    ["D"] = {
+      Session = function(_, ctx)
+        if ctx.entity then ctx.entity:disconnect() end
+      end,
     },
 
     -- Breakpoint management
-    ["t"] = {
-      Breakpoint = function(_, ctx)
-        if ctx.entity then
-          ctx.entity:toggle()
-          ctx.entity:sync()
-        end
-      end,
-    },
+    ["t"] = function(ctx)
+      if ctx.entity then ctx.debugger:action("toggle", ctx.entity) end
+    end,
 
-    ["dd"] = {
-      Breakpoint = function(_, ctx)
-        if ctx.entity then ctx.entity:remove() end
-      end,
-    },
+    ["dd"] = function(ctx)
+      if ctx.entity then ctx.debugger:action("remove", ctx.entity) end
+    end,
 
-    ["C"] = {
-      Breakpoint = function(_, ctx)
-        if not ctx.entity then return end
-        vim.ui.input({ prompt = "Condition: ", default = ctx.entity.condition:get() or "" }, function(input)
-          if input then
-            ctx.entity:update({ condition = input ~= "" and input or nil })
-            ctx.entity:sync()
-          end
-        end)
-      end,
-    },
+    -- Clear override (revert to global default)
+    ["x"] = function(ctx)
+      if ctx.entity then ctx.debugger:action("clear_override", ctx.entity) end
+    end,
 
-    ["H"] = {
-      Breakpoint = function(_, ctx)
-        if not ctx.entity then return end
-        vim.ui.input({ prompt = "Hit condition: ", default = ctx.entity.hitCondition:get() or "" }, function(input)
-          if input then
-            ctx.entity:update({ hitCondition = input ~= "" and input or nil })
-            ctx.entity:sync()
-          end
-        end)
-      end,
-    },
+    ["C"] = function(ctx)
+      if ctx.entity then ctx.debugger:action("edit_condition", ctx.entity) end
+    end,
 
-    ["L"] = {
-      Breakpoint = function(_, ctx)
-        if not ctx.entity then return end
-        vim.ui.input({ prompt = "Log message: ", default = ctx.entity.logMessage:get() or "" }, function(input)
-          if input then
-            ctx.entity:update({ logMessage = input ~= "" and input or nil })
-            ctx.entity:sync()
-          end
-        end)
-      end,
-    },
+    ["H"] = function(ctx)
+      if ctx.entity then ctx.debugger:action("edit_hit_condition", ctx.entity) end
+    end,
+
+    ["L"] = function(ctx)
+      if ctx.entity then ctx.debugger:action("edit_log_message", ctx.entity) end
+    end,
 
     -- Variable actions
-    ["y"] = {
-      Variable = function(_, ctx)
-        if ctx.entity then
-          local value = ctx.entity.value:get()
-          if value then
-            vim.fn.setreg('"', value)
-            vim.notify("Yanked: " .. (value:sub(1, 50)) .. (value:len() > 50 and "..." or ""))
-          end
-        end
-      end,
-    },
+    ["y"] = function(ctx)
+      if ctx.entity then ctx.debugger:action("yank_value", ctx.entity) end
+    end,
 
-    ["Y"] = {
-      Variable = function(_, ctx)
-        if ctx.entity then
-          local name = ctx.entity.name:get()
-          if name then
-            vim.fn.setreg('"', name)
-            vim.notify("Yanked: " .. name)
-          end
-        end
-      end,
-    },
+    ["Y"] = function(ctx)
+      if ctx.entity then ctx.debugger:action("yank_name", ctx.entity) end
+    end,
 
     -- Frame actions
     ["E"] = {
@@ -285,10 +278,30 @@ local function make_defaults(get_state, toggle_expand, render_buffer, show_root)
       end,
     },
 
-    -- Scope actions
+    -- Scope actions and Config restart
     ["r"] = {
       Scope = function(_, ctx)
         if ctx.entity then ctx.entity:fetchVariables() end
+      end,
+      Config = function(_, ctx)
+        if ctx.entity and ctx.entity.restart then
+          ctx.entity:restart()
+        end
+      end,
+    },
+
+    -- Config view mode toggle (switch between targets and roots view)
+    ["v"] = {
+      Config = function(_, ctx)
+        if ctx.entity and ctx.entity.toggleViewMode then
+          local new_mode = ctx.entity:toggleViewMode()
+          vim.notify("Config view: " .. new_mode, vim.log.levels.INFO)
+          -- Refresh buffer to rebuild tree with new view mode
+          -- The tree query is built once, so we need to re-edit to pick up new edges
+          vim.schedule(function()
+            vim.cmd("edit")
+          end)
+        end
       end,
     },
   }

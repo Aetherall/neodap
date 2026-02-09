@@ -18,6 +18,22 @@ return function(Variable)
     return string.format("%s = %s", name, value)
   end
 
+  ---Get value with newlines normalized to spaces
+  ---@return string
+  function Variable:displayValue()
+    local value = self.value:get() or ""
+    return value:gsub("\n", " ")
+  end
+
+  ---Get type name, or nil if unavailable
+  ---@return string|nil
+  function Variable:displayType()
+    local vtype = self.varType:get()
+    if vtype == vim.NIL then return nil end
+    if vtype and vtype ~= "" then return vtype end
+    return nil
+  end
+
   ---Check if key matches this variable
   ---@param key string
   ---@return boolean

@@ -1,222 +1,184 @@
--- Plugin: Create stdout/stderr buffers for each debug session
--- Each session gets dedicated buffers that receive output in real-time
+-- Plugin: Output buffer backed by temp file on disk
+-- Output is written to session.logDir/output.log, buffer just views that file.
+--
+-- The dap://output URI scheme redirects to open the actual file.
 
----@class StdioBuffersConfig
----@field stdout? boolean Create stdout buffer (default: true)
----@field stderr? boolean Create stderr buffer (default: true)
----@field console? boolean Create console/debug output buffer (default: false)
----@field max_lines? number Maximum lines to keep in buffer (default: 10000)
-
-local default_config = {
-  stdout = true,
-  stderr = true,
-  console = false,
-  max_lines = 10000,
-}
+local log = require("neodap.logger")
 
 ---@param debugger neodap.entities.Debugger
----@param config? StdioBuffersConfig
 ---@return table api Plugin API
-return function(debugger, config)
-  config = vim.tbl_deep_extend("force", default_config, config or {})
+return function(debugger)
+  local group = vim.api.nvim_create_augroup("neodap-stdio-buffers", { clear = true })
 
-  local api = {}
+  -- Track file buffers per session for auto-reload
+  local session_buffers = {} -- session_id -> bufnr
 
-  -- Track buffers per session: { [session_id] = { stdout = bufnr, stderr = bufnr, ... } }
-  local session_buffers = {}
+  ---Get log file path for a session
+  ---@param session neodap.entities.Session
+  ---@return string|nil path
+  local function get_log_path(session)
+    local log_dir = session.logDir and session.logDir:get()
+    if not log_dir then return nil end
+    return log_dir .. "/output.log"
+  end
 
-  ---Create a buffer for a specific output category
-  ---@param session_id string
-  ---@param category string stdout|stderr|console
-  ---@return number bufnr
-  local function create_buffer(session_id, category)
-    local bufname = string.format("dap://%s/%s", category, session_id)
-    local bufnr = vim.api.nvim_create_buf(false, true)
-    vim.api.nvim_buf_set_name(bufnr, bufname)
-    vim.bo[bufnr].buftype = "nofile"
-    vim.bo[bufnr].bufhidden = "hide"
-    vim.bo[bufnr].swapfile = false
-    vim.bo[bufnr].modifiable = false
+  ---Open the log file buffer for a session
+  ---@param session neodap.entities.Session
+  ---@param opts? { split?: "horizontal"|"vertical"|"tab" }
+  local function open_log(session, opts)
+    opts = opts or {}
+    local path = get_log_path(session)
+    if not path then
+      vim.notify("Session has no log directory", vim.log.levels.WARN)
+      return
+    end
+
+    -- Ensure file exists
+    if vim.fn.filereadable(path) == 0 then
+      local f = io.open(path, "w")
+      if f then f:close() end
+    end
+
+    local cmd
+    if opts.split == "horizontal" then
+      cmd = "split"
+    elseif opts.split == "vertical" then
+      cmd = "vsplit"
+    elseif opts.split == "tab" then
+      cmd = "tabedit"
+    else
+      cmd = "edit"
+    end
+
+    vim.cmd(cmd .. " " .. vim.fn.fnameescape(path))
+    local bufnr = vim.api.nvim_get_current_buf()
+
+    -- Configure buffer
     vim.bo[bufnr].filetype = "dap-output"
+    vim.bo[bufnr].bufhidden = "hide"
+
+    -- Track buffer for auto-reload
+    local session_id = session.sessionId:get()
+    session_buffers[session_id] = bufnr
+
+    -- Jump to end of file
+    vim.cmd("normal! G")
+
     return bufnr
   end
 
-  ---Append text to a buffer (with line limit)
-  ---@param bufnr number
-  ---@param text string
-  local function append_to_buffer(bufnr, text)
-    if not vim.api.nvim_buf_is_valid(bufnr) then return end
+  ---Reload log buffer if it exists and is visible
+  ---@param session_id string
+  local function reload_log_buffer(session_id)
+    local bufnr = session_buffers[session_id]
+    if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then return end
 
-    local lines = vim.split(text, "\n", { plain = true })
-    if lines[#lines] == "" then
-      table.remove(lines)
-    end
-    if #lines == 0 then return end
+    -- Only reload if buffer is displayed in a window
+    local wins = vim.fn.win_findbuf(bufnr)
+    if #wins == 0 then return end
 
-    vim.bo[bufnr].modifiable = true
-
-    -- Check if buffer is empty (single empty line)
-    local line_count = vim.api.nvim_buf_line_count(bufnr)
-    local is_empty = line_count == 1 and vim.api.nvim_buf_get_lines(bufnr, 0, 1, false)[1] == ""
-
-    if is_empty then
-      vim.api.nvim_buf_set_lines(bufnr, 0, 1, false, lines)
-    else
-      vim.api.nvim_buf_set_lines(bufnr, -1, -1, false, lines)
-    end
-
-    -- Truncate from start if over limit
-    line_count = vim.api.nvim_buf_line_count(bufnr)
-    if line_count > config.max_lines then
-      local overflow = line_count - config.max_lines
-      vim.api.nvim_buf_set_lines(bufnr, 0, overflow, false, {})
-    end
-
-    vim.bo[bufnr].modifiable = false
-  end
-
-  ---Get or create buffers for a session
-  ---@param session neodap.entities.Session
-  ---@return table<string, number> buffers
-  local function get_session_buffers(session)
-    local session_id = session.sessionId:get()
-    if session_buffers[session_id] then
-      return session_buffers[session_id]
-    end
-
-    local buffers = {}
-    if config.stdout then
-      buffers.stdout = create_buffer(session_id, "stdout")
-    end
-    if config.stderr then
-      buffers.stderr = create_buffer(session_id, "stderr")
-    end
-    if config.console then
-      buffers.console = create_buffer(session_id, "console")
-    end
-
-    session_buffers[session_id] = buffers
-    return buffers
-  end
-
-  -- Subscribe to sessions and their outputs
-  debugger.sessions:each(function(session)
-    local buffers = get_session_buffers(session)
-
-    -- Subscribe to outputs
-    session.outputs:each(function(output)
-      local category = output.category:get()
-      local text = output.text:get() or ""
-
-      -- Skip telemetry
-      if category == "telemetry" then return end
-
-      -- Map category to buffer
-      local bufnr = buffers[category]
-      if not bufnr then
-        -- Default: stdout for unknown categories (except stderr/console)
-        if category ~= "stderr" and category ~= "console" then
-          bufnr = buffers.stdout
+    -- Reload file content
+    vim.schedule(function()
+      if vim.api.nvim_buf_is_valid(bufnr) then
+        -- Save cursor position
+        local cursor_positions = {}
+        for _, win in ipairs(wins) do
+          cursor_positions[win] = vim.api.nvim_win_get_cursor(win)
         end
-      end
 
-      if bufnr then
+        -- Check if cursor was at the end (for auto-scroll)
+        local was_at_end = {}
+        for _, win in ipairs(wins) do
+          local cursor = cursor_positions[win]
+          local line_count = vim.api.nvim_buf_line_count(bufnr)
+          was_at_end[win] = cursor[1] >= line_count
+        end
+
+        -- Reload
+        vim.api.nvim_buf_call(bufnr, function()
+          vim.cmd("silent! checktime")
+        end)
+
+        -- Restore cursor or scroll to end
         vim.schedule(function()
-          append_to_buffer(bufnr, text)
+          for _, win in ipairs(wins) do
+            if vim.api.nvim_win_is_valid(win) then
+              if was_at_end[win] then
+                -- Auto-scroll to end
+                local new_line_count = vim.api.nvim_buf_line_count(bufnr)
+                pcall(vim.api.nvim_win_set_cursor, win, { new_line_count, 0 })
+              else
+                -- Restore previous position
+                pcall(vim.api.nvim_win_set_cursor, win, cursor_positions[win])
+              end
+            end
+          end
         end)
       end
     end)
+  end
 
-    -- Cleanup on session termination
-    session.state:use(function(state)
-      if state == "terminated" then
-        local session_id = session.sessionId:get()
-        local bufs = session_buffers[session_id]
-        if bufs then
-          vim.schedule(function()
-            for _, bufnr in pairs(bufs) do
-              if vim.api.nvim_buf_is_valid(bufnr) then
-                local name = vim.api.nvim_buf_get_name(bufnr)
-                vim.api.nvim_buf_set_name(bufnr, name .. " [terminated]")
-              end
-            end
-          end)
-        end
-      end
+  -- Watch for new outputs and reload buffers
+  debugger.sessions:each(function(session)
+    local session_id = session.sessionId:get()
+
+    -- Watch for outputs to trigger reload
+    session.outputs:each(function(output)
+      reload_log_buffer(session_id)
     end)
   end)
 
-  ---Get stdout buffer for a session
+  -- Handle dap://output URI scheme
+  -- Redirect to open the actual log file
+  vim.api.nvim_create_autocmd("BufReadCmd", {
+    group = group,
+    pattern = "dap://output/*",
+    callback = function(ev)
+      local uri = ev.file
+      local session_id = uri:match("dap://output/session:([^/]+)")
+      if not session_id then return end
+
+      -- Find session
+      for session in debugger.sessions:iter() do
+        if session.sessionId:get() == session_id then
+          -- Delete the URI buffer and open the actual file
+          vim.api.nvim_buf_delete(ev.buf, { force = true })
+          open_log(session)
+          return
+        end
+      end
+
+      -- Session not found
+      vim.bo[ev.buf].buftype = "nofile"
+      vim.api.nvim_buf_set_lines(ev.buf, 0, -1, false, { "-- Session not found: " .. session_id })
+    end,
+  })
+
+  local api = {}
+
+  ---Open output log for a session
   ---@param session neodap.entities.Session
-  ---@return number|nil bufnr
-  function api.stdout(session)
-    local session_id = session.sessionId:get()
-    local bufs = session_buffers[session_id]
-    return bufs and bufs.stdout
+  ---@param opts? { split?: "horizontal"|"vertical"|"tab" }
+  function api.open(session, opts)
+    return open_log(session, opts)
   end
 
-  ---Get stderr buffer for a session
+  ---Get log file path for a session
   ---@param session neodap.entities.Session
-  ---@return number|nil bufnr
-  function api.stderr(session)
-    local session_id = session.sessionId:get()
-    local bufs = session_buffers[session_id]
-    return bufs and bufs.stderr
+  ---@return string|nil
+  function api.get_path(session)
+    return get_log_path(session)
   end
 
-  ---Get console buffer for a session
-  ---@param session neodap.entities.Session
-  ---@return number|nil bufnr
-  function api.console(session)
-    local session_id = session.sessionId:get()
-    local bufs = session_buffers[session_id]
-    return bufs and bufs.console
-  end
-
-  ---Get all buffers for a session
-  ---@param session neodap.entities.Session
-  ---@return table<string, number>|nil buffers
-  function api.buffers(session)
-    local session_id = session.sessionId:get()
-    return session_buffers[session_id]
-  end
-
-  ---Open stdout buffer for focused session
-  function api.open_stdout()
+  -- Command for focused session
+  vim.api.nvim_create_user_command("DapOutput", function()
     local session = debugger.ctx.session:get()
     if not session then
       vim.notify("No focused session", vim.log.levels.WARN)
       return
     end
-    local bufnr = api.stdout(session)
-    if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
-      vim.cmd("split")
-      vim.api.nvim_set_current_buf(bufnr)
-    end
-  end
-
-  ---Open stderr buffer for focused session
-  function api.open_stderr()
-    local session = debugger.ctx.session:get()
-    if not session then
-      vim.notify("No focused session", vim.log.levels.WARN)
-      return
-    end
-    local bufnr = api.stderr(session)
-    if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
-      vim.cmd("split")
-      vim.api.nvim_set_current_buf(bufnr)
-    end
-  end
-
-  -- Commands
-  vim.api.nvim_create_user_command("DapStdout", function()
-    api.open_stdout()
-  end, { desc = "Open stdout buffer for focused debug session" })
-
-  vim.api.nvim_create_user_command("DapStderr", function()
-    api.open_stderr()
-  end, { desc = "Open stderr buffer for focused debug session" })
+    api.open(session)
+  end, { desc = "Open output log for focused debug session" })
 
   return api
 end

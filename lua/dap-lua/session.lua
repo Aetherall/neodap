@@ -1,4 +1,5 @@
 local dap = require("dap-lua")
+local log = require("neolog").new("dap-lua")
 
 local M = {}
 
@@ -16,13 +17,17 @@ local M = {}
 ---@class DapSessionOpts
 ---@field adapter DapAdapter|{ type: "stdio"|"tcp"|"server", command?: string, args?: string[], cwd?: string, env?: table, host?: string, port?: number, connect_condition?: fun(chunk: string): number?, string? }
 ---@field config { request: "launch"|"attach", [string]: any }
----@field handlers? { runInTerminal?: fun(args: dap.RunInTerminalRequestArguments, callback: fun(err: string?, response: dap.RunInTerminalResponse?)) }
+---@field handlers? { runInTerminal?: fun(session: DapSession, args: dap.RunInTerminalRequestArguments, callback: fun(err: string?, response: dap.RunInTerminalResponse?)), onAdapterProcess?: fun(process: neodap.ProcessHandle) }
 ---@field parent? DapSession Parent session (internal, set automatically for child sessions)
+---@field client? DapClient Pre-created client (bypasses adapter:connect())
+---@field process_handle? neodap.ProcessHandle Backend process handle (creates client from process)
+---@field backend? neodap.TaskBackend Backend for process management (uses backend instead of dap-lua adapters)
 
 --- Default runInTerminal handler using vim.system
+---@param session DapSession The session that requested the terminal
 ---@param args dap.RunInTerminalRequestArguments
 ---@param callback fun(err: string?, response: dap.RunInTerminalResponse?)
-local function default_run_in_terminal(args, callback)
+local function default_run_in_terminal(session, args, callback)
   local cmd = args.args or {}
   local cwd = args.cwd
   local env = args.env
@@ -59,12 +64,16 @@ function M.create(opts, callback, depth)
     return
   end
 
-  -- Accept either an adapter instance or a config
+  -- Keep original adapter config for backend path
   local adapter = opts.adapter
+  local adapter_config = nil
   if type(adapter) == "table" and adapter.type then
-    -- It's a config, create the adapter
-    adapter = dap.adapter(opts.adapter)
+    -- It's a config - save it for backend path before converting
+    adapter_config = adapter
   end
+
+  -- For child sessions: may be updated to TCP adapter after server connects
+  local child_adapter = adapter
   local config = opts.config
   local handlers = opts.handlers or {}
   local parent = opts.parent
@@ -80,6 +89,7 @@ function M.create(opts, callback, depth)
     capabilities = nil,
     config = config,
     depth = depth,
+    adapter_task_id = nil,  -- Overseer task ID for visual hierarchy
   }
 
   ---@param event string
@@ -127,13 +137,16 @@ function M.create(opts, callback, depth)
     local child_request = args.request or child_config.request or "launch"
     child_config.request = child_request
 
-    -- Child reuses same adapter instance (same server, new connection)
+    -- Child reuses same adapter (for server adapters, this is a TCP adapter to same server)
     -- Pass depth + 1 to track recursion depth, and set parent for hierarchy
+    -- Child sessions inherit adapter_task_id for Overseer visual grouping
     M.create({
-      adapter = adapter,
+      adapter = child_adapter,
       config = child_config,
       handlers = handlers,
       parent = session,
+      backend = opts.backend,  -- Pass backend to child sessions
+      parent_task_id = session.adapter_task_id,  -- Children grouped under same adapter
     }, function(err, child_session)
       if err then
         respond({ success = false, message = err })
@@ -149,7 +162,8 @@ function M.create(opts, callback, depth)
   -- Handle runInTerminal reverse request
   local function handle_run_in_terminal(args, respond)
     local handler = handlers.runInTerminal or default_run_in_terminal
-    handler(args, function(err, response)
+    -- Pass session as first argument so handler can track terminal buffer
+    handler(session, args, function(err, response)
       if err then
         respond(nil, err)
       else
@@ -224,15 +238,8 @@ function M.create(opts, callback, depth)
     end
   end
 
-  -- Connect to adapter
-  adapter:connect(function(err, client)
-    if err then
-      vim.schedule(function()
-        vim.notify("Adapter connection failed: " .. tostring(err), vim.log.levels.ERROR)
-      end)
-      callback(err, nil)
-      return
-    end
+  -- Get or create client
+  local function setup_client(client)
     session.client = client
     forward_client_events(client)
 
@@ -324,6 +331,7 @@ function M.create(opts, callback, depth)
       supportsProgressReporting = true,
       supportsInvalidatedEvent = true,
       supportsMemoryEvent = true,
+      supportsANSIStyling = true,
     }, function(init_err, capabilities)
       if init_err then
         client:close()
@@ -375,6 +383,209 @@ function M.create(opts, callback, depth)
         orig_try_complete()
       end
     end)
+  end
+
+  -- If client is pre-provided, use it directly
+  if opts.client then
+    setup_client(opts.client)
+    return
+  end
+
+  -- If process_handle is provided, create client from it
+  if opts.process_handle then
+    local client = dap.create_client_from_process(opts.process_handle, {
+      on_close = handlers.on_close,
+    })
+    setup_client(client)
+    return
+  end
+
+  -- If backend is provided, use it for process management
+  local backend = opts.backend
+  if backend and adapter_config then
+    local adapter_type = adapter_config.type or "stdio"
+
+    ---Helper to create client from process handle and set up
+    ---@param process neodap.ProcessHandle
+    local function connect_with_process(process)
+      -- Notify caller of adapter process (for task tracking)
+      if handlers.onAdapterProcess then
+        handlers.onAdapterProcess(process)
+      end
+      local client = dap.create_client_from_process(process, {
+        on_close = handlers.on_close,
+      })
+      setup_client(client)
+    end
+
+    if adapter_type == "stdio" then
+      -- Spawn adapter process, then create session wrapping it
+      local session_name = config.name or config.type or "debug"
+      local adapter_process = backend.spawn({
+        command = adapter_config.command,
+        args = adapter_config.args,
+        cwd = adapter_config.cwd,
+        env = adapter_config.env,
+        name = session_name .. " (adapter)",
+        parent_task_id = opts.parent_task_id,
+      })
+
+      -- Notify caller of adapter process
+      if handlers.onAdapterProcess then
+        handlers.onAdapterProcess(adapter_process)
+      end
+
+      -- Track adapter task ID for child session inheritance
+      session.adapter_task_id = adapter_process.task_id
+
+      -- Create session task wrapping the adapter's stdio
+      -- Use original parent_task_id so session is sibling of adapter (not grandchild)
+      -- Overseer's list_tasks only shows one level of children
+      local session_handle = backend.connect({
+        process = adapter_process,
+        session_id = session.neodap_session_id,
+        name = session_name,
+        parent_task_id = opts.parent_task_id,
+      })
+      connect_with_process(session_handle)
+      return
+
+    elseif adapter_type == "tcp" then
+      -- Connect to TCP adapter, creates session task
+      local session_name = config.name or config.type or "debug"
+
+      -- Inherit adapter task ID from parent (TCP is used for child sessions)
+      session.adapter_task_id = opts.parent_task_id
+
+      local session_handle = backend.connect({
+        host = adapter_config.host or "127.0.0.1",
+        port = adapter_config.port,
+        retries = adapter_config.retries,
+        retry_delay = adapter_config.retry_delay,
+        session_id = session.neodap_session_id,
+        name = session_name,
+        parent_task_id = opts.parent_task_id,
+      })
+      connect_with_process(session_handle)
+      return
+
+    elseif adapter_type == "server" then
+      -- Server adapter: spawn server, wait for port, then connect
+      local session_name = config.name or config.type or "debug"
+      local server_process = backend.spawn({
+        command = adapter_config.command,
+        args = adapter_config.args,
+        cwd = adapter_config.cwd,
+        env = adapter_config.env,
+        name = session_name .. " (adapter)",
+        parent_task_id = opts.parent_task_id,
+        -- Server process doesn't get session_id - it's the adapter, not the session
+      })
+
+      -- Notify caller of server process
+      if handlers.onAdapterProcess then
+        handlers.onAdapterProcess(server_process)
+      end
+
+      -- Track adapter task ID for child session inheritance
+      session.adapter_task_id = server_process.task_id
+
+      local port_found = false
+      local timed_out = false
+
+      -- Set up timeout for port detection
+      local timeout = vim.uv.new_timer()
+      timeout:start(10000, 0, function()
+        if not port_found then
+          timed_out = true
+          timeout:stop()
+          timeout:close()
+          server_process.kill()
+          vim.schedule(function()
+            callback("Timeout waiting for server port", nil)
+          end)
+        end
+      end)
+
+      -- Listen for server output to detect port
+      server_process.on_data(function(data)
+        if not port_found and not timed_out and adapter_config.connect_condition then
+          local p, h = adapter_config.connect_condition(data)
+          if p then
+            port_found = true
+            timeout:stop()
+            timeout:close()
+
+            local host = h or adapter_config.host or "127.0.0.1"
+
+            -- Update child_adapter to TCP so children connect to same server
+            child_adapter = { type = "tcp", host = host, port = p }
+
+            -- Schedule connect outside of fast event context
+            vim.schedule(function()
+              -- Connect to the server, creates session task
+              -- Use original parent_task_id so session is sibling of adapter (not grandchild)
+              -- Overseer's list_tasks only shows one level of children
+              local session_handle = backend.connect({
+                host = host,
+                port = p,
+                retries = 5,
+                retry_delay = 100,
+                session_id = session.neodap_session_id,
+                name = session_name,
+                parent_task_id = opts.parent_task_id,
+                on_close = function()
+                  -- When connection closes, kill server if no other connections
+                  -- For now, just kill the server (single session per server)
+                  server_process.kill()
+                end,
+              })
+
+              local client = dap.create_client_from_process(session_handle, {
+                on_close = handlers.on_close,
+              })
+              setup_client(client)
+            end)
+          end
+        end
+      end)
+
+      -- Log stderr from adapter (via backend)
+      server_process.on_stderr(function(data)
+        log:warn("Adapter stderr (server)", { name = session_name, data = data })
+      end)
+
+      -- Handle server process exit
+      server_process.on_exit(function(code)
+        if not port_found and not timed_out then
+          timed_out = true
+          timeout:stop()
+          timeout:close()
+          vim.schedule(function()
+            callback("Server process exited before port was detected", nil)
+          end)
+        end
+      end)
+
+      return
+    end
+    -- Fall through to dap-lua adapter for unknown types
+  end
+
+  -- Fallback: Connect using dap-lua's adapter system
+  -- Convert adapter config to dap.adapter if needed
+  if adapter_config then
+    adapter = dap.adapter(adapter_config)
+  end
+  adapter:connect(function(err, client)
+    if err then
+      vim.schedule(function()
+        vim.notify("Adapter connection failed: " .. tostring(err), vim.log.levels.ERROR)
+      end)
+      callback(err, nil)
+      return
+    end
+    setup_client(client)
   end)
 end
 

@@ -42,15 +42,23 @@ return function(Source)
   end
 
   ---Get the buffer URI for this source
-  ---Returns dap://source/source:{key} for virtual sources, or the file path for file sources
+  ---Returns file path if it exists on disk, otherwise dap://source/source:{key} for virtual sources
   ---@return string? uri Buffer URI or nil if no path
   function Source:bufferUri()
+    -- Prefer real file if it exists, even for virtual sources
+    local path = self.path:get()
+    if path and vim.fn.filereadable(path) == 1 then
+      return path
+    end
+
+    -- Fall back to virtual source URI
     if self:isVirtual() then
       local key = self.key:get()
       if not key then return nil end
       return "dap://source/source:" .. key
     end
-    return self.path:get()
+
+    return path
   end
 
   ---Find binding for a specific session

@@ -1,5 +1,6 @@
 -- Coroutine-based async system for neodap
 -- See ASYNC.md for full documentation
+local log = require("neodap.logger")
 local M = {}
 
 local contexts = setmetatable({}, { __mode = "k" })
@@ -104,7 +105,7 @@ local function default_error_handler(err, result)
   if not err then return end -- Success, ignore
   if err == "cancelled" then return end
   vim.schedule(function()
-    vim.notify("async error: " .. tostring(err), vim.log.levels.ERROR)
+    log:error("async error", { error = tostring(err) })
   end)
 end
 

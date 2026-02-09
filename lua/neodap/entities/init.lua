@@ -8,6 +8,7 @@ local M = {}
 
 ---@class neodap.entities.Debugger
 M.Debugger = entity.class("Debugger")
+M.Config = entity.class("Config")
 M.Source = entity.class("Source")
 M.SourceBinding = entity.class("SourceBinding")
 M.Breakpoint = entity.class("Breakpoint")
@@ -20,23 +21,28 @@ M.Scope = entity.class("Scope")
 M.Variable = entity.class("Variable")
 M.Output = entity.class("Output")
 M.ExceptionFilter = entity.class("ExceptionFilter")
+M.ExceptionFilterBinding = entity.class("ExceptionFilterBinding")
 M.Stdio = entity.class("Stdio")
 M.Threads = entity.class("Threads")
 M.Breakpoints = entity.class("Breakpoints")
+M.Configs = entity.class("Configs")
 M.Sessions = entity.class("Sessions")
 M.Targets = entity.class("Targets")
+M.ExceptionFiltersGroup = entity.class("ExceptionFiltersGroup")
 
 -- Add common methods to all classes
 for _, class in pairs({
-  M.Debugger, M.Source, M.SourceBinding, M.Breakpoint, M.BreakpointBinding,
+  M.Debugger, M.Config, M.Source, M.SourceBinding, M.Breakpoint, M.BreakpointBinding,
   M.Session, M.Thread, M.Stack, M.Frame, M.Scope, M.Variable,
-  M.Output, M.ExceptionFilter, M.Stdio, M.Threads, M.Breakpoints, M.Sessions, M.Targets,
+  M.Output, M.ExceptionFilter, M.ExceptionFilterBinding, M.Stdio, M.Threads,
+  M.Breakpoints, M.Configs, M.Sessions, M.Targets, M.ExceptionFiltersGroup,
 }) do
   entity.add_common_methods(class)
 end
 
 -- Load entity-specific methods
 require("neodap.entities.debugger")(M.Debugger)
+require("neodap.entities.config")(M.Config)
 require("neodap.entities.source")(M.Source)
 require("neodap.entities.source_binding")(M.SourceBinding)
 require("neodap.entities.breakpoint")(M.Breakpoint)
@@ -49,9 +55,12 @@ require("neodap.entities.scope")(M.Scope)
 require("neodap.entities.variable")(M.Variable)
 require("neodap.entities.output")(M.Output)
 require("neodap.entities.exception_filter")(M.ExceptionFilter)
+require("neodap.entities.exception_filter_binding")(M.ExceptionFilterBinding)
 require("neodap.entities.stdio")(M.Stdio)
 require("neodap.entities.breakpoints")(M.Breakpoints)
+require("neodap.entities.configs")(M.Configs)
 require("neodap.entities.sessions")(M.Sessions)
 require("neodap.entities.targets")(M.Targets)
+require("neodap.entities.exception_filters_group")(M.ExceptionFiltersGroup)
 
 return M

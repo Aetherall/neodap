@@ -3,6 +3,7 @@
 
 local a = require("neodap.async")
 local Location = require("neodap.location")
+local log = require("neodap.logger")
 
 ---@param debugger neodap.entities.Debugger
 return function(debugger)
@@ -14,20 +15,20 @@ return function(debugger)
     local loc = Location.from_cursor()
 
     if loc.path == "" then
-      vim.notify("Buffer has no file path", vim.log.levels.WARN)
+      log:warn("Buffer has no file path")
       return false
     end
 
     local thread = debugger.ctx.thread:get()
     if not thread then
-      vim.notify("No focused thread", vim.log.levels.WARN)
+      log:warn("No focused thread")
       return false
     end
 
     local source = debugger:getOrCreateSource(loc)
     local temp_bp = source:addBreakpoint({ line = loc.line })
     if not temp_bp then
-      vim.notify("Failed to create breakpoint", vim.log.levels.ERROR)
+      log:error("Failed to create breakpoint")
       return false
     end
 

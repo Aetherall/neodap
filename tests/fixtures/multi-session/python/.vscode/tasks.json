@@ -1,0 +1,26 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build-all",
+      "type": "shell",
+      "command": "echo",
+      "args": ["building all"],
+      "problemMatcher": []
+    },
+    {
+      "label": "build-a",
+      "type": "shell",
+      "command": "echo",
+      "args": ["building A"],
+      "problemMatcher": []
+    },
+    {
+      "label": "build-b",
+      "type": "shell",
+      "command": "echo",
+      "args": ["building B"],
+      "problemMatcher": []
+    }
+  ]
+}

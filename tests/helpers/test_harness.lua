@@ -153,6 +153,7 @@ end
 function Harness:setup_neodap()
   local adapter_name = self.adapter.name
   local tmpdir = fixtures.get_tmpdir()
+  local backend = vim.env.NEODAP_TEST_BACKEND or "overseer"
   self.child.lua(string.format([[
     package.path = vim.fn.getcwd() .. "/tests/?.lua;" .. package.path
     package.path = vim.fn.getcwd() .. "/tests/?/init.lua;" .. package.path
@@ -161,6 +162,7 @@ function Harness:setup_neodap()
 
     local neodap = require("neodap")
     neodap.setup({
+      backend = %q,
       adapters = {
         python = _G.fixtures.debugpy_adapter(),
         ["pwa-node"] = _G.fixtures.jsdbg_adapter(),
@@ -216,7 +218,7 @@ function Harness:setup_neodap()
         }
       end
     end
-  ]], adapter_name, tmpdir))
+  ]], backend, adapter_name, tmpdir))
 end
 
 ---Open a file in the child
@@ -410,6 +412,7 @@ function Harness:terminate_root_session()
 end
 
 ---Check if child session format includes root session name (for leaf display)
+---The Session title component uses chainName() which includes root name for child sessions
 ---@return boolean
 function Harness:child_format_includes_root_name()
   self.child.lua([[
@@ -417,9 +420,9 @@ function Harness:child_format_includes_root_name()
     local child = _G.debugger:query("/sessions[1]")
     local root = _G.debugger:query("/sessions[0]")
     if child and root then
-      local fmt = child:format()
+      local title = _G.debugger:component("title", child)
       local root_name = root.name:get()
-      _G._format_ok = fmt:find(root_name, 1, true) ~= nil
+      _G._format_ok = title ~= nil and title.text:find(root_name, 1, true) ~= nil
     end
   ]])
   return self:get("_G._format_ok") or false
@@ -779,6 +782,9 @@ local function sanitize_screenshot(screenshot, hl_map)
         str = str:gsub("(stack:)" .. orig_id, "%1" .. norm_id)
         str = str:gsub("(output:)" .. orig_id, "%1" .. norm_id)
         str = str:gsub("(stdio:)" .. orig_id, "%1" .. norm_id)
+        -- Also replace standalone session IDs (e.g., ":tuger" at end of session labels)
+        str = str:gsub("(:[%s]*)" .. orig_id .. "([%s%p])", "%1" .. norm_id .. "%2")
+        str = str:gsub("(:[%s]*)" .. orig_id .. "$", "%1" .. norm_id)
       end
       -- Mask cursor position in status line (last 2 lines, rightmost portion)
       -- Neovim's ruler shows: "line,col-virtcol" then "All/Top/Bot/percentage"
@@ -1265,6 +1271,94 @@ end
 ---Dispose the debugger (cleanup all sessions, watchers, etc.)
 function Harness:dispose()
   self:query_call("/", "dispose")
+end
+
+-------------------------------------------------------------------------------
+-- Presentation Helpers (components + actions)
+-------------------------------------------------------------------------------
+
+---Get a single component segment for an entity resolved by URL
+---@param name string Component name (e.g., "icon", "title", "state")
+---@param url string URL to query entity (e.g., "@session", "/breakpoints[0]")
+---@return {text: string, hl?: string}|nil
+function Harness:query_component(name, url)
+  self.child.lua(string.format([[
+    local entity = _G.debugger:query(%q)
+    _G._query_component = nil
+    if entity then
+      _G._query_component = _G.debugger:component(%q, entity)
+    end
+  ]], url, name))
+  return self:get("_G._query_component")
+end
+
+---Get all component segments for an entity resolved by URL
+---@param url string URL to query entity
+---@return table<string, {text: string, hl?: string}>
+function Harness:query_components(url)
+  self.child.lua(string.format([[
+    local entity = _G.debugger:query(%q)
+    _G._query_components = {}
+    if entity then
+      _G._query_components = _G.debugger:components(entity)
+    end
+  ]], url))
+  return self:get("_G._query_components") or {}
+end
+
+---Get a component's text value (shorthand for query_component().text)
+---@param name string Component name
+---@param url string URL to query entity
+---@return string|nil
+function Harness:query_component_text(name, url)
+  self.child.lua(string.format([[
+    local entity = _G.debugger:query(%q)
+    _G._query_component_text = nil
+    if entity then
+      local segment = _G.debugger:component(%q, entity)
+      if segment then
+        _G._query_component_text = segment.text
+      end
+    end
+  ]], url, name))
+  return self:get("_G._query_component_text")
+end
+
+---Invoke a named action on an entity resolved by URL
+---@param name string Action name (e.g., "toggle", "focus")
+---@param url string URL to query entity
+---@param ctx? table Optional context to pass to action handler
+function Harness:run_action(name, url, ctx)
+  if ctx then
+    local ctx_str = vim.inspect(ctx)
+    self.child.lua(string.format([[
+      local entity = _G.debugger:query(%q)
+      if entity then
+        _G.debugger:action(%q, entity, %s)
+      end
+    ]], url, name, ctx_str))
+  else
+    self.child.lua(string.format([[
+      local entity = _G.debugger:query(%q)
+      if entity then
+        _G.debugger:action(%q, entity)
+      end
+    ]], url, name))
+  end
+end
+
+---Get list of action names available for an entity resolved by URL
+---@param url string URL to query entity
+---@return string[] Sorted list of action names
+function Harness:query_actions_for(url)
+  self.child.lua(string.format([[
+    local entity = _G.debugger:query(%q)
+    _G._query_actions_for = {}
+    if entity then
+      _G._query_actions_for = _G.debugger:actions_for(entity)
+    end
+  ]], url))
+  return self:get("_G._query_actions_for") or {}
 end
 
 -------------------------------------------------------------------------------

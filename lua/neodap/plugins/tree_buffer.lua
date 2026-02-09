@@ -18,6 +18,7 @@
 
 local entity_buffer = require("neodap.plugins.utils.entity_buffer")
 local cfg = require("neodap.plugins.tree_buffer.config")
+local log = require("neodap.logger")
 local edges = require("neodap.plugins.tree_buffer.edges")
 local render = require("neodap.plugins.tree_buffer.render")
 local keybinds = require("neodap.plugins.tree_buffer.keybinds")
@@ -56,7 +57,8 @@ return function(debugger, config)
     end
     if type(val) == "table" and type(val.get) == "function" then
       local signal_val = val:get()
-      return signal_val ~= nil and signal_val or default
+      if signal_val ~= nil then return signal_val end
+      return default
     end
     return val
   end
@@ -67,8 +69,8 @@ return function(debugger, config)
       return
     end
 
-    -- Use the cursor item ID saved by CursorMoved (before view changed)
-    local cursor_item_id = state.cursor_item_id
+    -- Use the cursor item path saved by CursorMoved (before view changed)
+    local cursor_item_path = state.cursor_item_path
     local win = vim.fn.bufwinid(bufnr)
 
     local view, offset = state.view, state.offset or 0
@@ -97,6 +99,7 @@ return function(debugger, config)
     end
     vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, placeholders)
 
+    log:trace("tree render: " .. #items .. " items")
     local guide_data = render.compute_guides(items)
     local rendered, highlights, anchors = {}, {}, {}
     local cursor_item_line = nil
@@ -105,7 +108,7 @@ return function(debugger, config)
       local line_idx = offset + i - 1
       local gd = guide_data[i] or { is_last = true, active_guides = {} }
       item.expanded = item:any_expanded()
-      local data = render.render_item(item, config.icons, config.guide_highlights, gd.is_last, gd.active_guides, get_prop, graph)
+      local data = render.render_item(item, config.icons, config.guide_highlights, gd.is_last, gd.active_guides, get_prop, graph, debugger, config.layouts)
       local text, hls, cursor_col = render.process_array(data, line_idx)
       rendered[line_idx] = text
       for _, hl in ipairs(hls) do
@@ -114,8 +117,8 @@ return function(debugger, config)
       if cursor_col then
         anchors[line_idx] = cursor_col
       end
-      -- Track where the previously-focused item ended up
-      if cursor_item_id and item.id == cursor_item_id then
+      -- Track where the previously-focused item ended up (using path to handle duplicates)
+      if cursor_item_path and item._path and table.concat(item._path, ":") == cursor_item_path then
         cursor_item_line = line_idx
       end
     end
@@ -176,8 +179,8 @@ return function(debugger, config)
       item.type = get_prop(item, "type", "Unknown")
       item.expanded = item:any_expanded()
     end
-    -- Use item.node directly (the entity reference from the view)
-    local entity = item and item.node
+    -- Use item.node if available, otherwise fetch from graph by id
+    local entity = item and (item.node or graph:get(item.id))
     return { item = item, entity = entity, bufnr = bufnr, debugger = debugger }
   end
 
@@ -270,13 +273,16 @@ return function(debugger, config)
   ---@param bufnr number
   ---@param entity any Root entity
   ---@param win_height? number Window height for viewport limit
-  local function init_tree(bufnr, entity, win_height)
+  ---@param edge_type? string Optional edge type override (e.g., "ExceptionFilters")
+  local function init_tree(bufnr, entity, win_height, edge_type)
     if not entity then
+      log:debug("init_tree: no entity")
       return
     end
 
     local root_type = entity:type()
     local root_uri = entity.uri:get()
+    log:debug("init_tree: " .. root_type .. " " .. root_uri .. (edge_type and (" edge=" .. edge_type) or ""))
 
     local win = vim.fn.bufwinid(bufnr)
     if win ~= -1 then
@@ -310,7 +316,8 @@ return function(debugger, config)
     -- Auto-fetch data for root entity using edge-based on_expand callbacks
     call_on_expand(entity, root_type)
 
-    local view = graph:view(edges.build_query(root_type, root_uri), { limit = limit })
+    -- Pass entity to build_query for dynamic edge resolution (e.g., Config viewMode)
+    local view = graph:view(edges.build_query(root_type, root_uri, edge_type, entity), { limit = limit })
 
     local subs = {}
     view_state[bufnr] = {
@@ -320,14 +327,29 @@ return function(debugger, config)
       viewport_limit = limit,
       offset = 0,
       root_id = entity:id(),
+      edge_type = edge_type,
     }
 
+    -- Debounced render to batch rapid updates (16ms = ~60fps)
+    local render_timer = nil
     local function on_change()
-      if vim.api.nvim_buf_is_valid(bufnr) then
-        render_tree(bufnr)
+      if render_timer then
+        return -- Already scheduled
       end
+      render_timer = vim.defer_fn(function()
+        render_timer = nil
+        if vim.api.nvim_buf_is_valid(bufnr) then
+          render_tree(bufnr)
+        end
+      end, 16)
     end
-    table.insert(subs, view:on("enter", on_change))
+    table.insert(subs, view:on("enter", function(entity)
+      -- Call on_expand for entering entity to fetch children (e.g., fetch_variables for Scope)
+      if entity and entity._type then
+        call_on_expand(entity, entity._type)
+      end
+      on_change()
+    end))
     table.insert(subs, view:on("leave", on_change))
     table.insert(subs, view:on("change", on_change))
 
@@ -345,14 +367,14 @@ return function(debugger, config)
           if entity and entity.uri then
             vim.b[bufnr].focused_uri = entity.uri:get()
           end
-          -- Save cursor item ID for restoration after re-render
+          -- Save cursor item path for restoration after re-render (path handles duplicates)
           if state then
-            state.cursor_item_id = item.id
+            state.cursor_item_path = item._path and table.concat(item._path, ":") or nil
           end
         else
           vim.b[bufnr].focused_uri = nil
           if state then
-            state.cursor_item_id = nil
+            state.cursor_item_path = nil
           end
         end
 
@@ -392,7 +414,8 @@ return function(debugger, config)
       end,
     })
 
-    keybinds.setup(bufnr, config, defaults, create_context)
+    -- Note: keybinds are set up in the entity_buffer setup callback (synchronously)
+    -- to ensure they're available immediately when buffer is displayed
     render_tree(bufnr)
   end
 
@@ -414,14 +437,18 @@ return function(debugger, config)
       -- Set filetype for tree buffer
       vim.bo[bufnr].filetype = "dap-tree"
 
-      -- Defer to get window height
+      -- Set up keybinds immediately (before vim.schedule) so they're available
+      -- when the buffer is displayed in a popup
+      keybinds.setup(bufnr, config, defaults, create_context)
+
+      -- Defer tree initialization to get window height
       vim.schedule(function()
         if not vim.api.nvim_buf_is_valid(bufnr) then
           return
         end
         local win = vim.fn.bufwinid(bufnr)
         local height = win ~= -1 and vim.api.nvim_win_get_height(win) or nil
-        init_tree(bufnr, entity, height)
+        init_tree(bufnr, entity, height, options and options.edge)
       end)
     end,
 
@@ -439,6 +466,9 @@ return function(debugger, config)
       local new_id = new_entity and new_entity:id()
 
       if old_id ~= new_id then
+        -- Preserve edge_type before cleanup
+        local edge_type = state and state.edge_type
+
         -- Root entity changed, recreate view
         if state then
           cleanup_view(bufnr)
@@ -449,7 +479,7 @@ return function(debugger, config)
             if vim.api.nvim_buf_is_valid(bufnr) then
               local win = vim.fn.bufwinid(bufnr)
               local height = win ~= -1 and vim.api.nvim_win_get_height(win) or nil
-              init_tree(bufnr, new_entity, height)
+              init_tree(bufnr, new_entity, height, edge_type)
             end
           end)
         end

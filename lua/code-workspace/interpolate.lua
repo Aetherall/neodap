@@ -27,17 +27,21 @@ function M.interpolate_string(str, state, folder_index)
   -- Get workspace folders
   local folders = {}
   if state.workspace and state.workspace.folders then
+    -- Use workspace_root_dir for resolving relative folder paths (from .code-workspace file)
+    -- Fall back to root_dir for backwards compatibility
+    local ws_root = state.workspace_root_dir or state.root_dir
     for _, folder in ipairs(state.workspace.folders) do
       local path = folder.path
-      if not vim.startswith(path, '/') and state.root_dir then
-        path = state.root_dir .. '/' .. path
+      if not vim.startswith(path, '/') and ws_root then
+        path = ws_root .. '/' .. path
       end
       table.insert(folders, vim.fn.resolve(path))
     end
   end
 
-  -- Default workspace folder
-  local workspace_folder = folders[1] or state.root_dir or vim.fn.getcwd()
+  -- Default workspace folder - prefer explicit root_dir (config's folder) over workspace folders
+  -- This ensures configs outside the loaded workspace resolve ${workspaceFolder} to their own folder
+  local workspace_folder = state.root_dir or folders[1] or vim.fn.getcwd()
 
   -- Variable replacements
   local replacements = {

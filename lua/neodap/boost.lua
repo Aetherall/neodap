@@ -33,7 +33,9 @@ function M.setup(opts)
   opts = vim.tbl_deep_extend("force", defaults, opts or {})
 
   -- 1. Core Setup
-  local debugger = neodap.setup({ adapters = opts.adapters })
+  local debugger = neodap.setup({
+    adapters = opts.adapters,
+  })
   local plugins_config = opts.plugins or {}
 
   ---Helper to use a plugin with merged config
@@ -48,6 +50,7 @@ function M.setup(opts)
 
   -- 2. Core Logic Plugins
   use(neodap.plugins.dap, "dap")
+  use(neodap.plugins.dap_log, "dap_log")
   use(neodap.plugins.command_router, "command_router")
   use(neodap.plugins.control_cmd, "control_cmd")
   use(neodap.plugins.step_cmd, "step_cmd")
@@ -55,6 +58,7 @@ function M.setup(opts)
   use(neodap.plugins.exception_cmd, "exception_cmd")
   use(neodap.plugins.jump_stop, "jump_stop")
   use(neodap.plugins.cursor_focus, "cursor_focus")
+  use(neodap.plugins.focus_sync, "focus_sync")
   use(neodap.plugins.leaf_session, "leaf_session")
   use(neodap.plugins.stack_nav, "stack_nav")
   use(neodap.plugins.code_workspace, "code_workspace")
@@ -105,7 +109,9 @@ function M.setup(opts)
   use(neodap.plugins.replline, "replline")
   use(neodap.plugins.completion, "completion")
   use(neodap.plugins.variable_edit, "variable_edit")
+  use(neodap.plugins.expression_edit, "expression_edit")
   use(neodap.plugins.stdio_buffers, "stdio_buffers")
+  use(neodap.plugins.console_buffer, "console_buffer")
 
   -- 5. Optional Keymaps
   if opts.keys then

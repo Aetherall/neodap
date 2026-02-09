@@ -1,45 +1,110 @@
 -- Plugin: Stack navigation commands
 --
 -- Provides convenience aliases for navigating the call stack:
---   :DapUp   - Focus caller frame (up the stack)
---   :DapDown - Focus callee frame (down the stack)
---   :DapTop  - Focus top of stack (most recent frame)
+--   :DapUp   - Focus caller frame (up the stack), skipping label frames
+--   :DapDown - Focus callee frame (down the stack), skipping label frames
+--   :DapTop  - Focus top of stack (first non-skippable frame)
+
+local navigate = require("neodap.plugins.utils.navigate")
+local log = require("neodap.logger")
+
+---@class neodap.plugins.StackNavConfig
+---@field skip_hints? table<string, boolean> Presentation hints to skip (default: { label = true })
+---@field auto_jump? boolean Jump to source after focusing frame (default: true)
+---@field pick_window? fun(path: string, line: number, column: number): number|{win: number, focus: boolean}|nil
+---@field create_window? fun(): number
+
+local default_config = {
+  skip_hints = { label = true },
+  auto_jump = true,
+  pick_window = nil,
+  create_window = nil,
+}
 
 ---@param debugger neodap.entities.Debugger
+---@param config? neodap.plugins.StackNavConfig
 ---@return table api Plugin API
-return function(debugger)
+return function(debugger, config)
+  config = vim.tbl_deep_extend("force", default_config, config or {})
+
   local api = {}
 
-  ---Focus a frame by URL, with error handling
-  ---@param url string
-  ---@param desc string Human-readable description for errors
-  ---@return boolean success
-  local function focus_frame(url, desc)
-    local frame = debugger:query(url)
-    if not frame then
-      vim.notify("No " .. desc .. " frame", vim.log.levels.WARN)
-      return false
-    end
-    debugger.ctx:focus(frame.uri:get())
-    return true
+  ---Check if a frame should be skipped during navigation
+  ---@param frame table Frame entity
+  ---@return boolean
+  local function is_skippable(frame)
+    return frame:isSkippable(config.skip_hints)
   end
 
-  ---Focus the caller frame (up the stack)
+  ---Focus a frame and optionally jump to its source
+  ---@param frame table Frame entity
+  local function focus_and_jump(frame)
+    debugger.ctx:focus(frame.uri:get())
+    if config.auto_jump then
+      navigate.goto_frame(frame, {
+        pick_window = config.pick_window,
+        create_window = config.create_window,
+      })
+    end
+  end
+
+  ---Focus the caller frame (up the stack), skipping label frames
   ---@return boolean success
   function api.up()
-    return focus_frame("@frame+1", "caller")
+    local n = 1
+    while true do
+      local frame = debugger:query("@frame+" .. n)
+      if not frame then break end
+      if not is_skippable(frame) then
+        focus_and_jump(frame)
+        return true
+      end
+      n = n + 1
+    end
+
+    log:warn("No caller frame (all remaining frames are skippable)")
+    return false
   end
 
-  ---Focus the callee frame (down the stack)
+  ---Focus the callee frame (down the stack), skipping label frames
   ---@return boolean success
   function api.down()
-    return focus_frame("@frame-1", "callee")
+    local n = 1
+    while true do
+      local frame = debugger:query("@frame-" .. n)
+      if not frame then break end
+      if not is_skippable(frame) then
+        focus_and_jump(frame)
+        return true
+      end
+      n = n + 1
+    end
+
+    log:warn("No callee frame (all remaining frames are skippable)")
+    return false
   end
 
-  ---Focus the top of stack (most recent frame)
+  ---Focus the top of stack (first non-skippable frame), with fallback to actual top
   ---@return boolean success
   function api.top()
-    return focus_frame("@thread/stack/frames[0]", "top")
+    local frames = debugger:queryAll("@thread/stack/frames")
+    if #frames == 0 then
+      log:warn("No frame", { desc = "top" })
+      return false
+    end
+
+    table.sort(frames, function(a, b) return a.index:get() < b.index:get() end)
+
+    for _, frame in ipairs(frames) do
+      if not is_skippable(frame) then
+        focus_and_jump(frame)
+        return true
+      end
+    end
+
+    -- All frames skippable: fall back to actual top
+    focus_and_jump(frames[1])
+    return true
   end
 
   vim.api.nvim_create_user_command("DapUp", function() api.up() end, {

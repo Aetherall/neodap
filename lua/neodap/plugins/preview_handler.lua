@@ -89,21 +89,16 @@ return function(debugger, config)
       table.insert(lines, "Type: " .. entity:type())
     end
 
-    -- Show some common properties
-    if entity.name then
-      local name = entity.name:get()
-      if name then
-        table.insert(lines, "Name: " .. name)
-      end
+    local title = debugger:render_text(entity, { "title" })
+    if title ~= "" then
+      table.insert(lines, "Name: " .. title)
     end
 
-    if entity.value then
-      local value = entity.value:get()
-      if value then
-        table.insert(lines, "")
-        table.insert(lines, "Value:")
-        table.insert(lines, value)
-      end
+    local value = debugger:render_text(entity, { "value" })
+    if value ~= "" then
+      table.insert(lines, "")
+      table.insert(lines, "Value:")
+      table.insert(lines, value)
     end
 
     return table.concat(lines, "\n")

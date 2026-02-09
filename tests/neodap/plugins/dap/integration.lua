@@ -11,22 +11,22 @@ return harness.integration("integration", function(T, ctx)
     h:wait_url("/sessions/threads/stacks[0]/frames[0]")
     h:cmd("DapFocus /sessions/threads/stacks[0]/frames[0]")
 
-    -- Add and sync breakpoint at line 3
+    -- Add and sync breakpoint at line 10
     h:edit_main()
-    h:cmd("DapBreakpoint 3")
-    h:wait_url("/breakpoints(line=3)/bindings(verified=true)")
+    h:cmd("DapBreakpoint 10")
+    h:wait_url("/breakpoints(line=10)/bindings(verified=true)")
 
     -- Verify breakpoint was set
-    MiniTest.expect.equality(h:query_count("/breakpoints(line=3)"), 1)
+    MiniTest.expect.equality(h:query_count("/breakpoints(line=10)"), 1)
     MiniTest.expect.equality(h:query_field("/breakpoints[0]/bindings[0]", "verified"), true)
 
-    -- Continue to hit the breakpoint at line 3
+    -- Continue to hit the breakpoint at line 10
     h:cmd("DapContinue")
-    h:wait_url("/sessions/threads(state=stopped)/stacks[0]/frames(line=3)[0]")
+    h:wait_url("/sessions/threads(state=stopped)/stacks[0]/frames(line=10)[0]")
     h:cmd("DapFocus /sessions/threads/stacks[0]/frames[0]")
 
-    -- Should be stopped at line 3
-    MiniTest.expect.equality(h:query_field("@frame", "line"), 3)
+    -- Should be stopped at line 10
+    MiniTest.expect.equality(h:query_field("@frame", "line"), 10)
 
     -- Fetch scopes and variables
     h:query_call("@frame", "fetchScopes")

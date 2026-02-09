@@ -117,6 +117,13 @@ end
 function M.goto_location(path, line, column, options)
   column = column or 0
 
+  -- For dap://source URIs, extract the file path and check if it exists on disk
+  -- Format: dap://source/source:/path/to/file
+  local real_path = path:match("^dap://source/source:(.+)$")
+  if real_path and vim.fn.filereadable(real_path) == 1 then
+    path = real_path
+  end
+
   -- Support legacy API: plain function as pick_window
   local pick_window, create_window
   if type(options) == "function" then
@@ -151,7 +158,14 @@ function M.goto_location(path, line, column, options)
   -- Open file in target window
   vim.api.nvim_set_current_win(win)
   vim.cmd("edit " .. vim.fn.fnameescape(path))
-  vim.api.nvim_win_set_cursor(win, { line, math.max(0, column) })
+
+  local log = require("neodap.logger")
+  local buf_line_count = vim.api.nvim_buf_line_count(vim.api.nvim_win_get_buf(win))
+  log:trace("goto_location", { path = path, line = line, column = column, buf_lines = buf_line_count })
+
+  -- Ensure line is within buffer bounds
+  local safe_line = math.max(1, math.min(line, buf_line_count))
+  vim.api.nvim_win_set_cursor(win, { safe_line, math.max(0, column) })
   vim.cmd("normal! zz")
 
   -- Restore focus if we shouldn't focus the target window

@@ -6,6 +6,7 @@
       "request": "launch",
       "name": "Debug",
       "program": "${workspaceFolder}/main.js",
+      "console": "internalConsole",
       "sourceMaps": true,
       "skipFiles": [],
       "stopOnEntry": false
@@ -15,6 +16,7 @@
       "request": "launch",
       "name": "Debug stop",
       "program": "${workspaceFolder}/main.js",
+      "console": "internalConsole",
       "sourceMaps": true,
       "skipFiles": [],
       "stopOnEntry": true

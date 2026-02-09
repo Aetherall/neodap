@@ -12,18 +12,18 @@ return harness.integration("dap_run_to_cursor", function(T, ctx)
     local initial_line = h:query_field("@frame", "line")
     MiniTest.expect.equality(initial_line, 1)
 
-    -- Open the file and position cursor at line 3
+    -- Open the file and position cursor at line 10
     h:edit_main()
-    h:set_cursor(3, 0)
+    h:set_cursor(10, 0)
 
     -- Run to cursor
     h:cmd("DapRunToCursor")
 
-    -- Wait for execution to reach line 3
-    h:wait_url("/sessions/threads/stacks/frames(line=3)")
+    -- Wait for execution to reach line 10
+    h:wait_url("/sessions/threads/stacks/frames(line=10)")
     h:wait_url("/sessions/threads/stacks[0]/frames[0]")
     h:cmd("DapFocus /sessions/threads/stacks[0]/frames[0]")
-    MiniTest.expect.equality(h:query_field("@frame", "line"), 3)
+    MiniTest.expect.equality(h:query_field("@frame", "line"), 10)
   end
 
   T["DapRunToCursor removes temporary breakpoint after stop"] = function()
@@ -36,9 +36,9 @@ return harness.integration("dap_run_to_cursor", function(T, ctx)
 
     local bp_count_before = h:query_count("/breakpoints")
 
-    -- Open the file and position cursor at line 3
+    -- Open the file and position cursor at line 10
     h:edit_main()
-    h:set_cursor(3, 0)
+    h:set_cursor(10, 0)
 
     -- Run to cursor
     h:cmd("DapRunToCursor")
@@ -68,19 +68,19 @@ return harness.integration("dap_run_to_cursor", function(T, ctx)
     h:cmd("DapBreakpoint 2")
     h:wait_url("/breakpoints(line=2)/bindings(verified=true)")
 
-    -- Position cursor at line 3
-    h:set_cursor(3, 0)
+    -- Position cursor at line 10
+    h:set_cursor(10, 0)
 
     -- Run to cursor with ignoreBreakpoints - should skip line 2
     h:cmd("DapRunToCursor!")
 
-    -- Wait for stop at line 3
-    h:wait_url("/sessions/threads/stacks/frames(line=3)")
+    -- Wait for stop at line 10
+    h:wait_url("/sessions/threads/stacks/frames(line=10)")
     h:wait_url("/sessions/threads/stacks[0]/frames[0]")
     h:cmd("DapFocus /sessions/threads/stacks[0]/frames[0]")
 
-    -- Should be at line 3, not line 2
-    MiniTest.expect.equality(h:query_field("@frame", "line"), 3)
+    -- Should be at line 10, not line 2
+    MiniTest.expect.equality(h:query_field("@frame", "line"), 10)
   end
 
   T["DapRunToCursor! restores breakpoints after stop"] = function()
@@ -100,8 +100,8 @@ return harness.integration("dap_run_to_cursor", function(T, ctx)
     -- Verify breakpoint exists and is enabled before
     h:wait_url("/breakpoints(line=2,enabled=true)")
 
-    -- Position cursor at line 3
-    h:set_cursor(3, 0)
+    -- Position cursor at line 10
+    h:set_cursor(10, 0)
 
     -- Run to cursor with ignoreBreakpoints
     h:cmd("DapRunToCursor!")

@@ -3,6 +3,7 @@
 
 local a = require("neodap.async")
 local navigate = require("neodap.plugins.utils.navigate")
+local log = require("neodap.logger")
 
 ---@class JumpStopConfig
 ---@field enabled? boolean Initial enabled state (default: true)
@@ -46,6 +47,9 @@ return function(debugger, config)
 
         local top_frame = stack.topFrame:get()
         if top_frame then
+          -- Update focus to the new frame
+          debugger.ctx:focus(top_frame.uri:get())
+
           a.wait(a.main, "jump_stop:schedule")
           navigate.goto_frame(top_frame, {
             pick_window = config.pick_window,
@@ -93,15 +97,15 @@ return function(debugger, config)
     local arg = opts.args:lower()
     if arg == "on" then
       api.enable()
-      vim.notify("DapJumpStop: enabled")
+      log:info("DapJumpStop: enabled")
     elseif arg == "off" then
       api.disable()
-      vim.notify("DapJumpStop: disabled")
+      log:info("DapJumpStop: disabled")
     elseif arg == "status" then
-      vim.notify("DapJumpStop: " .. (enabled and "enabled" or "disabled"))
+      log:info("DapJumpStop", { enabled = enabled })
     else
       local is_enabled = api.toggle()
-      vim.notify("DapJumpStop: " .. (is_enabled and "enabled" or "disabled"))
+      log:info("DapJumpStop", { enabled = is_enabled })
     end
   end, {
     nargs = "?",

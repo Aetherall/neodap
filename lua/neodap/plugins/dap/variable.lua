@@ -9,16 +9,12 @@ local Variable = entities.Variable
 
 local get_dap_session = context.get_dap_session
 
----Fetch child variables
+---Find session by traversing up from variable
+---Handles scope-found, frame-found (expression), and output-found variables
 ---@param self neodap.entities.Variable
-function Variable:fetchChildren()
-  -- Check if children already exist (avoid duplicate fetches)
-  for _ in self.children:iter() do
-    return
-  end
-
-  -- Find session by traversing up from scope
-  -- For child variables, traverse parent chain to find a variable with a scope
+---@return table? session, table? frame
+local function find_session_and_frame(self)
+  -- Try scope path first (scope-found variables)
   local var = self
   local scope = var.scope:get()
   while not scope and var do
@@ -27,11 +23,53 @@ function Variable:fetchChildren()
       scope = var.scope:get()
     end
   end
-  local frame = scope and scope.frame:get()
-  local stack = frame and frame.stack:get()
-  local thread = stack and stack.thread:get()
-  local session = thread and thread.session:get()
 
+  if scope then
+    local frame = scope.frame:get()
+    local stack = frame and frame.stack:get()
+    local thread = stack and stack.thread:get()
+    local session = thread and thread.session:get()
+    return session, frame
+  end
+
+  -- Try frame path (expression-found variables)
+  local frame = self.frame:get()
+  if frame then
+    local stack = frame.stack:get()
+    local thread = stack and stack.thread:get()
+    local session = thread and thread.session:get()
+    return session, frame
+  end
+
+  -- Try output path (variables from console evaluations)
+  local output = self.output:get()
+  if output then
+    local session = output.session:get()
+    return session, nil
+  end
+
+  -- Try parent chain for nested variables
+  var = self.parent:get()
+  while var do
+    local session, frm = find_session_and_frame(var)
+    if session then
+      return session, frm
+    end
+    var = var.parent:get()
+  end
+
+  return nil, nil
+end
+
+---Fetch child variables
+---@param self neodap.entities.Variable
+function Variable:fetchChildren()
+  -- Check if children already exist (avoid duplicate fetches)
+  for _ in self.children:iter() do
+    return
+  end
+
+  local session, _ = find_session_and_frame(self)
   if not session then
     error("No session", 0)
   end
@@ -74,20 +112,11 @@ end
 Variable.fetchChildren = a.memoize(Variable.fetchChildren)
 
 ---Set variable value
+---Uses setExpression if variable has evaluateName, otherwise setVariable
 ---@param self neodap.entities.Variable
----@param value string
-function Variable:setValue(value)
-  local scope = self.scope:get()
-  if not scope then
-    error("No scope", 0)
-  end
-
-  -- Traverse to find session for DAP access
-  local frame = scope.frame:get()
-  local stack = frame and frame.stack:get()
-  local thread = stack and stack.thread:get()
-  local session = thread and thread.session:get()
-
+---@param newValue string
+function Variable:setValue(newValue)
+  local session, frame = find_session_and_frame(self)
   if not session then
     error("No session", 0)
   end
@@ -97,13 +126,54 @@ function Variable:setValue(value)
     error("No DAP session", 0)
   end
 
-  local body = a.wait(function(cb)
-    dap_session.client:request("setVariable", {
-      variablesReference = scope.variablesReference:get(),
-      name = self.name:get(),
-      value = value,
-    }, cb)
-  end, "Variable:setValue")
+  local evaluateName = self.evaluateName:get()
+  local scope = self.scope:get()
+  local parent = self.parent:get()
+
+  local body
+
+  if evaluateName and frame then
+    -- Use setExpression (address by expression)
+    if not dap_session.capabilities or not dap_session.capabilities.supportsSetExpression then
+      error("Adapter does not support setExpression", 0)
+    end
+
+    body = a.wait(function(cb)
+      dap_session.client:request("setExpression", {
+        expression = evaluateName,
+        value = newValue,
+        frameId = frame.frameId:get(),
+      }, cb)
+    end, "Variable:setValue:setExpression")
+
+  elseif scope then
+    -- Use setVariable with scope's variablesReference
+    body = a.wait(function(cb)
+      dap_session.client:request("setVariable", {
+        variablesReference = scope.variablesReference:get(),
+        name = self.name:get(),
+        value = newValue,
+      }, cb)
+    end, "Variable:setValue:setVariable:scope")
+
+  elseif parent then
+    -- Use setVariable with parent's variablesReference
+    local parent_ref = parent.variablesReference:get()
+    if not parent_ref or parent_ref == 0 then
+      error("Parent has no variablesReference", 0)
+    end
+
+    body = a.wait(function(cb)
+      dap_session.client:request("setVariable", {
+        variablesReference = parent_ref,
+        name = self.name:get(),
+        value = newValue,
+      }, cb)
+    end, "Variable:setValue:setVariable:parent")
+
+  else
+    error("Variable is not editable (no evaluateName, scope, or parent)", 0)
+  end
 
   -- Update the variable value
   local updates = { value = body.value }

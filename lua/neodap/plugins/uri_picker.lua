@@ -1,46 +1,6 @@
 -- Plugin: Generic URI picker
 -- Resolves URL patterns to entities with interactive selection when multiple matches exist
 
--- Add format() methods to entity classes for picker display
-local entities = require("neodap.entities")
-local Session = entities.Session
-local Thread = entities.Thread
-local Frame = entities.Frame
-local Scope = entities.Scope
-local Variable = entities.Variable
-
-function Session:format()
-  local root = self:rootAncestor()
-  local root_name = root.name:get()
-  local self_name = self.name:get()
-  local state = self.state:get()
-
-  if root == self then
-    return string.format("%s (%s)", self_name, state)
-  else
-    return string.format("%s › %s (%s)", root_name, self_name, state)
-  end
-end
-
-function Thread:format()
-  local name = self.name:get() or ""
-  return string.format("Thread %d: %s (%s)", self.threadId:get(), name, self.state:get())
-end
-
-function Frame:format()
-  local loc = self:location()
-  local filename = loc and vim.fn.fnamemodify(loc.path or "", ":t") or "?"
-  return string.format("%s @ %s:%d", self.name:get() or "?", filename, loc and loc.line or 0)
-end
-
-function Scope:format()
-  return self.name:get()
-end
-
-function Variable:format()
-  return string.format("%s = %s", self.name:get(), self.value:get())
-end
-
 ---@param debugger neodap.entities.Debugger
 ---@return neodap.plugins.UriPicker
 return function(debugger)
@@ -88,14 +48,9 @@ return function(debugger)
       vim.ui.select(items, {
         prompt = "Select:",
         format_item = function(item)
-          if item.format then
-            return item:format()
-          end
-          -- Fallback for entities without format method
-          if item.uri then
-            return item.uri:get() or tostring(item)
-          end
-          return tostring(item)
+          local text = debugger:render_text(item, { "title", { "state", prefix = " (", suffix = ")" } })
+          if text ~= "" then return text end
+          return item.uri and item.uri:get() or tostring(item)
         end,
       }, function(selected)
         if callback then

@@ -269,12 +269,15 @@ Debugger (singleton root)
 │   │           └── source → Source (reference)
 │   ├── sourceBindings → SourceBinding
 │   ├── outputs → Output
-│   ├── exceptionFilters → ExceptionFilter
+│   ├── exceptionFilterBindings → ExceptionFilterBinding (per-session overrides)
+│   │   └── exceptionFilter → ExceptionFilter (reference)
 │   └── children/parent → Session (hierarchical)
 ├── sources → Source
 │   └── breakpoints → Breakpoint
 │       └── bindings → BreakpointBinding
 ├── breakpoints → Breakpoint (all breakpoints)
+├── exceptionFilters → ExceptionFilter (global, persistent)
+│   └── bindings → ExceptionFilterBinding
 ├── sessionsGroup → Sessions (UI grouping)
 ├── breakpointsGroup → Breakpoints (UI grouping)
 └── targets → Targets (leaf sessions UI grouping)
@@ -413,7 +416,8 @@ M.schema = {
 | **Breakpoint** | Breakpoint definition | `line`, `column`, `condition`, `enabled` |
 | **BreakpointBinding** | Breakpoint per session | `breakpointId`, `verified`, `hit`, `actualLine` |
 | **Output** | Debug output | `text`, `category`, `seq` |
-| **ExceptionFilter** | Exception configuration | `filterId`, `label`, `enabled` |
+| **ExceptionFilter** | Global exception config | `filterId`, `label`, `defaultEnabled` |
+| **ExceptionFilterBinding** | Per-session override | `enabled`, `condition` |
 
 ### 4.3 Entity Creation
 
@@ -1373,7 +1377,7 @@ session.leaf:get()                    -- true if no children
 session.threads:iter()
 session.sourceBindings:iter()
 session.outputs:iter()
-session.exceptionFilters:iter()
+session.exceptionFilterBindings:iter()  -- Per-session exception filter overrides
 session.children:iter()               -- Child sessions
 
 -- Rollups
@@ -2063,47 +2067,104 @@ These shortcut commands leverage the URL system:
 
 When only one entity matches, no picker is shown - the action happens immediately.
 
-### 14.6 Lualine Status Component
+### 14.6 Lualine Status Components
 
-The `lualine.lua` plugin provides a configurable status component for [lualine.nvim](https://github.com/nvim-lualine/lualine.nvim):
+The `lualine.lua` plugin provides multiple configurable status components for [lualine.nvim](https://github.com/nvim-lualine/lualine.nvim):
 
 ```lua
 local neodap = require("neodap")
+neodap.setup()
 
--- Load lualine plugin and get component function
-local lualine_component = neodap.use(require("neodap.plugins.lualine"), {
-  session = true,    -- Show session name (adapter type)
-  thread = true,     -- Show thread state
-  frame = true,      -- Show frame function:line
-  separator = " > ", -- Separator between parts
-  empty = "",        -- Text when no debug session
-})
+-- Load lualine plugin - returns component factory functions
+local lualine = neodap.use(require("neodap.plugins.lualine"))
 
--- Add to lualine configuration
+-- Add components to lualine configuration
 require("lualine").setup({
   sections = {
-    lualine_x = { lualine_component },  -- or any section you prefer
+    lualine_x = {
+      lualine.status(),   -- Icon showing stopped/running/none
+      lualine.session(),  -- Session/adapter name
+      lualine.thread(),   -- Thread name and state
+      lualine.frame(),    -- Function name:line
+    },
   },
 })
 ```
 
-Example output: `python > stopped > main:42`
+**Available Components:**
 
-**Configuration Options:**
+| Component | Description | Default Output |
+|-----------|-------------|----------------|
+| `status()` | Debug state indicator icon | `` (stopped), `` (running), `` (none) |
+| `session()` | Session/adapter name | e.g., "python", "node" |
+| `thread()` | Thread name and state | e.g., "MainThread stopped" |
+| `frame()` | Current frame info | e.g., "main:42" |
+| `context()` | Combined context (legacy) | e.g., "python > stopped > main:42" |
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `session` | boolean | `true` | Show session name (adapter type like "python", "node") |
-| `thread` | boolean | `true` | Show thread state ("running", "stopped") |
-| `frame` | boolean | `true` | Show frame function:line |
-| `separator` | string | `" > "` | Separator between parts |
-| `empty` | string | `""` | Text shown when no debug session |
-| `format` | function | `nil` | Custom format function (overrides defaults) |
+**Component Configuration:**
 
-**Custom Format Function:**
+Each component factory accepts options:
 
 ```lua
-local lualine_component = neodap.use(require("neodap.plugins.lualine"), {
+-- Status with custom icons and labels
+lualine.status({
+  icons = { stopped = "", running = "", none = "" },
+  labels = { stopped = "PAUSED", running = "RUNNING" },
+})
+
+-- Session with full chain for nested sessions
+lualine.session({
+  show_chain = true,    -- Show full session hierarchy
+  show_state = true,    -- Show session state
+  separator = " > ",    -- Chain separator
+})
+
+-- Thread with count
+lualine.thread({
+  show_name = true,     -- Show thread name
+  show_state = true,    -- Show thread state
+  show_count = true,    -- Show thread count when multiple
+})
+
+-- Frame with truncation
+lualine.frame({
+  show_name = true,        -- Show function name
+  show_line = true,        -- Show line number
+  show_index = false,      -- Show frame index in stack
+  max_name_length = 20,    -- Truncate long function names
+})
+
+-- Combined context
+lualine.context({
+  session = true,
+  thread = true,
+  frame = true,
+  separator = " | ",
+  empty = "no debug",
+})
+```
+
+**Legacy API (still supported):**
+
+```lua
+-- Returns a single combined component function
+local component = neodap.use(require("neodap.plugins.lualine"), {
+  session = true,
+  thread = true,
+  frame = true,
+  separator = " > ",
+  empty = "",
+})
+
+require("lualine").setup({
+  sections = { lualine_x = { component } },
+})
+```
+
+**Custom Format Function (legacy API):**
+
+```lua
+local component = neodap.use(require("neodap.plugins.lualine"), {
   format = function(ctx)
     -- ctx.session, ctx.thread, ctx.frame are entity objects or nil
     if not ctx.session then return "" end
@@ -2268,12 +2329,13 @@ Complete entity types defined in the schema:
 10. **Breakpoint** - Breakpoint definition
 11. **BreakpointBinding** - Breakpoint per session
 12. **Output** - Debug output
-13. **ExceptionFilter** - Exception configuration
-14. **Stdio** - Output grouping node
-15. **Sessions** - Session grouping node
-16. **Breakpoints** - Breakpoint grouping node
-17. **Targets** - Leaf session grouping node
-18. **Threads** - Thread grouping node
+13. **ExceptionFilter** - Global exception configuration
+14. **ExceptionFilterBinding** - Per-session exception override
+15. **Stdio** - Output grouping node
+16. **Sessions** - Session grouping node
+17. **Breakpoints** - Breakpoint grouping node
+18. **Targets** - Leaf session grouping node
+19. **Threads** - Thread grouping node
 
 ### 15.5 DAP Event Mapping
 

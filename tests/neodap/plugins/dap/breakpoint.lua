@@ -380,8 +380,8 @@ return harness.integration("breakpoint", function(T, ctx)
     h:edit_main()
     h:cmd("DapBreakpoint 2")
     h:wait_url("/breakpoints(line=2)")
-    h:cmd("DapBreakpoint 3")
-    h:wait_url("/breakpoints(line=3)")
+    h:cmd("DapBreakpoint 10")
+    h:wait_url("/breakpoints(line=10)")
 
     -- Disable the first one
     h:cmd("DapBreakpoint disable 2")
@@ -391,9 +391,9 @@ return harness.integration("breakpoint", function(T, ctx)
     h:cmd("DapLaunch Debug stop")
     h:wait_url("/sessions/threads/stacks[0]/frames[0]")
     h:cmd("DapFocus /sessions/threads/stacks[0]/frames[0]")
-    h:wait_url("/breakpoints(line=3)/bindings(verified=true)")
+    h:wait_url("/breakpoints(line=10)/bindings(verified=true)")
 
-    -- Only the enabled breakpoint (line 3) should have a binding
+    -- Only the enabled breakpoint (line 10) should have a binding
     -- (may be >1 for multi-session adapters like js-debug)
     MiniTest.expect.equality(h:query_count("/breakpoints[0]/bindings"), 0)  -- Disabled - no binding
     MiniTest.expect.equality(h:query_count("/breakpoints[1]/bindings") >= 1, true)  -- Enabled - has binding
@@ -414,6 +414,7 @@ return harness.integration("breakpoint", function(T, ctx)
     h:wait_url("/breakpoints(line=2)/bindings(verified=true)")
     h:cmd("DapBreakpoint disable 2")
     h:wait_url("/breakpoints(line=2,enabled=false)")
+    h:wait(500) -- wait for disable to sync to adapter
 
     -- Add breakpoint on line 3, keep enabled
     h:cmd("DapBreakpoint 3")
@@ -447,7 +448,7 @@ return harness.integration("breakpoint", function(T, ctx)
     h:wait_url("/breakpoints(line=2,enabled=false)")
     -- Wait for binding to be removed by checking count via URL
     h:wait_url("/breakpoints[0]", 5000) -- breakpoint exists
-    h:wait(500) -- wait for bindings to be removed
+    h:wait(1500) -- wait for bindings to be removed (adapter sync)
 
     local count_after_disable = h:query_count("/breakpoints[0]/bindings")
 

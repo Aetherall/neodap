@@ -7,6 +7,7 @@
 --   :Dap step into                           - delegates to :DapStep into
 
 local quickfix = require("neodap.plugins.utils.quickfix")
+local log = require("neodap.logger")
 
 ---@param debugger neodap.entities.Debugger
 ---@return table api Plugin API
@@ -14,7 +15,9 @@ return function(debugger)
   local api = {}
 
   -- Re-export for backwards compatibility
-  api.to_quickfix = quickfix.entry
+  function api.to_quickfix(entity)
+    return quickfix.entry(debugger, entity)
+  end
 
   -- ============================================================================
   -- Quickfix Entity Resolution
@@ -74,7 +77,7 @@ return function(debugger)
     local subcommand = args[1]
 
     if not subcommand then
-      vim.notify("Dap: Missing subcommand", vim.log.levels.ERROR)
+      log:error("Dap: Missing subcommand")
       return
     end
 
@@ -90,7 +93,7 @@ return function(debugger)
       return
     end
 
-    vim.notify("Dap: Unknown subcommand: " .. subcommand, vim.log.levels.ERROR)
+    log:error("Dap: Unknown subcommand", { subcommand = subcommand })
   end, {
     nargs = "+",
     desc = "DAP command router (delegates to Dap<Command>)",

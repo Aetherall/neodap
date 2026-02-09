@@ -26,7 +26,7 @@ return harness.integration("dap_cmd", function(T, ctx)
     local entry = h.child.fn.getqflist()[1]
     MiniTest.expect.equality(entry.filename ~= nil or entry.bufnr ~= nil, true)
     MiniTest.expect.equality(entry.lnum, 2)
-    MiniTest.expect.equality(entry.text:match("%[enabled%]") ~= nil, true)
+    MiniTest.expect.equality(entry.text:match("verified") ~= nil, true)
     MiniTest.expect.equality(entry.user_data ~= nil, true)
   end
 
@@ -71,9 +71,9 @@ return harness.integration("dap_cmd", function(T, ctx)
 
     h:edit_main()
     h:cmd("DapBreakpoint 2")
-    h:cmd("DapBreakpoint 3")
+    h:cmd("DapBreakpoint 10")
     h:wait_url("/breakpoints(line=2)/bindings(verified=true)")
-    h:wait_url("/breakpoints(line=3)/bindings(verified=true)")
+    h:wait_url("/breakpoints(line=10)/bindings(verified=true)")
 
     -- Use :Dap list which delegates to :DapList
     h:cmd("Dap list breakpoints")
@@ -94,9 +94,9 @@ return harness.integration("dap_cmd", function(T, ctx)
 
     h:edit_main()
     h:cmd("DapBreakpoint 2")
-    h:cmd("DapBreakpoint 3")
+    h:cmd("DapBreakpoint 10")
     h:wait_url("/breakpoints(line=2)/bindings(verified=true)")
-    h:wait_url("/breakpoints(line=3)/bindings(verified=true)")
+    h:wait_url("/breakpoints(line=10)/bindings(verified=true)")
 
     -- Disable breakpoint at line 2
     h:cmd("DapBreakpoint disable 2")

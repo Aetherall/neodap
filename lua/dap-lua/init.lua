@@ -4,6 +4,8 @@ require("dap-lua.protocol")
 -- Pre-load vim.lsp.rpc to avoid loading in fast event context
 local _ = vim.lsp.rpc
 
+local log = require("neolog").new("dap-lua")
+
 local M = {}
 
 -- Check if setpriv with pdeathsig is available (Linux only)
@@ -141,7 +143,12 @@ local function create_client(transport, opts)
           if msg.success then
             cb(nil, msg.body)
           else
-            cb(msg.message or "Error", msg.body)
+            -- Extract error message: prefer msg.message, fallback to body.error.format
+            local err_msg = msg.message
+            if (not err_msg or err_msg == "") and msg.body and msg.body.error then
+              err_msg = msg.body.error.format
+            end
+            cb(err_msg or "Unknown error", msg.body)
           end
         end)
       end
@@ -241,6 +248,49 @@ local function create_client(transport, opts)
   }
 end
 
+--- Create a DAP client from a transport (exported for backend integration)
+---@param transport DapTransport
+---@param opts? { on_close?: fun() }
+---@return DapClient
+function M.create_client(transport, opts)
+  return create_client(transport, opts)
+end
+
+--- Create a DAP client from a ProcessHandle (backend abstraction)
+--- This allows using backend-managed processes with the DAP client
+---@param process_handle neodap.ProcessHandle
+---@param opts? { on_close?: fun() }
+---@return DapClient
+function M.create_client_from_process(process_handle, opts)
+  opts = opts or {}
+  local client
+
+  local transport = {
+    write = function(chunk)
+      process_handle.write(chunk)
+    end,
+    close = function()
+      process_handle.kill()
+    end,
+  }
+
+  client = create_client(transport, { on_close = opts.on_close })
+
+  -- Wire up process data to client's read loop
+  process_handle.on_data(function(data)
+    client._on_read(nil, data)
+  end)
+
+  -- Log stderr from the process
+  process_handle.on_stderr(function(data)
+    vim.schedule(function()
+      vim.notify("[DAP stderr] " .. data, vim.log.levels.WARN)
+    end)
+  end)
+
+  return client
+end
+
 --- Start a client via stdio
 ---@param cmd string
 ---@param args? string[]
@@ -258,7 +308,13 @@ local function start_stdio(cmd, args, opts)
         client._on_read(err, data)
       end
     end,
-    stderr = function() end,
+    stderr = function(err, data)
+      if data then
+        vim.schedule(function()
+          vim.notify("[DAP stderr] " .. data, vim.log.levels.WARN)
+        end)
+      end
+    end,
   }, function() end)
 
   local transport = {
@@ -440,12 +496,13 @@ function adapters.server(opts)
     local uv = vim.uv
 
     local stdout_pipe = uv.new_pipe(false)
+    local stderr_pipe = uv.new_pipe(false)
     local spawn_cmd, spawn_args = wrap_pdeathsig(opts.command, opts.args)
     local handle, pid = uv.spawn(spawn_cmd, {
       args = spawn_args,
       cwd = opts.cwd,
       env = opts.env,
-      stdio = { nil, stdout_pipe, nil },
+      stdio = { nil, stdout_pipe, stderr_pipe },
     }, function(code, signal)
       server.obj = nil
       server.port = nil
@@ -457,7 +514,14 @@ function adapters.server(opts)
       return
     end
 
-    server.obj = { handle = handle, stdout = stdout_pipe }
+    server.obj = { handle = handle, stdout = stdout_pipe, stderr = stderr_pipe }
+
+    -- Log stderr from the adapter process (standalone/fallback path)
+    stderr_pipe:read_start(function(err, data)
+      if data then
+        log:warn("Adapter stderr (standalone)", { command = opts.command, data = data })
+      end
+    end)
 
     -- Timeout timer with safe close
     local timeout = uv.new_timer()

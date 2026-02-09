@@ -4,6 +4,7 @@ local uri = require("neodap.uri")
 local a = require("neodap.async")
 local context = require("neodap.plugins.dap.context")
 local utils = require("neodap.plugins.dap.utils")
+local log = require("neodap.logger")
 
 local Source = entities.Source
 local SourceBinding = entities.SourceBinding
@@ -150,6 +151,8 @@ function Source:addBreakpoint(opts)
   if debugger then
     debugger.breakpoints:link(bp)
   end
+
+  log:info("Breakpoint added: " .. bp.uri:get())
 
   return bp
 end

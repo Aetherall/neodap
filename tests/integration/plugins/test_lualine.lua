@@ -132,4 +132,160 @@ return harness.integration("lualine", function(T, ctx)
     local result = h:get("_G.lualine_component()")
     MiniTest.expect.equality(result, "no debug")
   end
+
+  -- New API tests: Individual components
+
+  -- User scenario: Returns table of component factories with new API
+  T["new API returns table of components"] = function()
+    local h = ctx.create()
+
+    h.child.lua([[
+      local lualine = require("neodap.plugins.lualine")
+      _G.lualine = _G.neodap.use(lualine)
+    ]])
+
+    -- Should have individual component factory functions
+    MiniTest.expect.equality(h:get("type(_G.lualine.status)"), "function")
+    MiniTest.expect.equality(h:get("type(_G.lualine.session)"), "function")
+    MiniTest.expect.equality(h:get("type(_G.lualine.thread)"), "function")
+    MiniTest.expect.equality(h:get("type(_G.lualine.frame)"), "function")
+    MiniTest.expect.equality(h:get("type(_G.lualine.context)"), "function")
+
+    -- Calling them should return component functions
+    MiniTest.expect.equality(h:get("type(_G.lualine.status())"), "function")
+  end
+
+  -- User scenario: Status component shows icon for stopped state
+  T["status component shows stopped icon"] = function()
+    local h = ctx.create()
+
+    h:use_plugin("neodap.plugins.focus_cmd")
+    h.child.lua([[
+      local lualine = require("neodap.plugins.lualine")
+      _G.lualine = _G.neodap.use(lualine)
+      _G.status_component = _G.lualine.status()
+    ]])
+
+    h:fixture("simple-vars")
+    h:cmd("DapLaunch Debug stop")
+    h:wait_url("/sessions/threads/stacks[0]/frames[0]")
+    h:cmd("DapFocus /sessions/threads/stacks[0]/frames[0]")
+    h:wait(50)
+
+    -- Status should show stopped icon (default is "")
+    local result = h:get("_G.status_component()")
+    MiniTest.expect.equality(result, "")
+  end
+
+  -- User scenario: Session component shows adapter name
+  T["session component shows adapter name"] = function()
+    local h = ctx.create()
+
+    h:use_plugin("neodap.plugins.focus_cmd")
+    h.child.lua([[
+      local lualine = require("neodap.plugins.lualine")
+      _G.lualine = _G.neodap.use(lualine)
+      _G.session_component = _G.lualine.session()
+    ]])
+
+    h:fixture("simple-vars")
+    h:cmd("DapLaunch Debug stop")
+    h:wait_url("/sessions/threads/stacks[0]/frames[0]")
+    h:cmd("DapFocus /sessions/threads/stacks[0]/frames[0]")
+    h:wait(50)
+
+    -- Session should show the adapter name
+    local result = h:get("_G.session_component()")
+    MiniTest.expect.equality(result ~= "", true)
+  end
+
+  -- User scenario: Thread component shows state
+  T["thread component shows state"] = function()
+    local h = ctx.create()
+
+    h:use_plugin("neodap.plugins.focus_cmd")
+    h.child.lua([[
+      local lualine = require("neodap.plugins.lualine")
+      _G.lualine = _G.neodap.use(lualine)
+      _G.thread_component = _G.lualine.thread()
+    ]])
+
+    h:fixture("simple-vars")
+    h:cmd("DapLaunch Debug stop")
+    h:wait_url("/sessions/threads/stacks[0]/frames[0]")
+    h:cmd("DapFocus /sessions/threads/stacks[0]/frames[0]")
+    h:wait(50)
+
+    -- Thread should include "stopped"
+    local result = h:get("_G.thread_component()")
+    MiniTest.expect.equality(result:match("stopped") ~= nil, true)
+  end
+
+  -- User scenario: Frame component shows function:line
+  T["frame component shows function and line"] = function()
+    local h = ctx.create()
+
+    h:use_plugin("neodap.plugins.focus_cmd")
+    h.child.lua([[
+      local lualine = require("neodap.plugins.lualine")
+      _G.lualine = _G.neodap.use(lualine)
+      _G.frame_component = _G.lualine.frame()
+    ]])
+
+    h:fixture("simple-vars")
+    h:cmd("DapLaunch Debug stop")
+    h:wait_url("/sessions/threads/stacks[0]/frames[0]")
+    h:cmd("DapFocus /sessions/threads/stacks[0]/frames[0]")
+    h:wait(50)
+
+    -- Frame should show function name with line number
+    local result = h:get("_G.frame_component()")
+    MiniTest.expect.equality(result:match(":1") ~= nil or result:match(":2") ~= nil, true)
+  end
+
+  -- User scenario: Table is callable for backward compat
+  T["new API table is callable"] = function()
+    local h = ctx.create()
+
+    h:use_plugin("neodap.plugins.focus_cmd")
+    h.child.lua([[
+      local lualine = require("neodap.plugins.lualine")
+      _G.lualine = _G.neodap.use(lualine)
+      _G.context_component = _G.lualine.context()
+    ]])
+
+    h:fixture("simple-vars")
+    h:cmd("DapLaunch Debug stop")
+    h:wait_url("/sessions/threads/stacks[0]/frames[0]")
+    h:cmd("DapFocus /sessions/threads/stacks[0]/frames[0]")
+    h:wait(50)
+
+    -- Calling the table should return context (same as context component)
+    local call_result = h:get("_G.lualine()")
+    local context_result = h:get("_G.context_component()")
+    MiniTest.expect.equality(call_result, context_result)
+  end
+
+  -- User scenario: Component factory functions accept options
+  T["component factory functions work"] = function()
+    local h = ctx.create()
+
+    h:use_plugin("neodap.plugins.focus_cmd")
+    h.child.lua([[
+      local lualine = require("neodap.plugins.lualine")
+      _G.lualine = _G.neodap.use(lualine)
+      -- Create custom status component with labels
+      _G.custom_status = _G.lualine.status({ labels = { stopped = "PAUSED" } })
+    ]])
+
+    h:fixture("simple-vars")
+    h:cmd("DapLaunch Debug stop")
+    h:wait_url("/sessions/threads/stacks[0]/frames[0]")
+    h:cmd("DapFocus /sessions/threads/stacks[0]/frames[0]")
+    h:wait(50)
+
+    -- Custom status should show our label
+    local result = h:get("_G.custom_status()")
+    MiniTest.expect.equality(result:match("PAUSED") ~= nil, true)
+  end
 end)

@@ -1,4 +1,5 @@
 local Location = require("neodap.location")
+local log = require("neodap.logger")
 
 ---Auto-context plugin for neodap
 ---Automatic focus management based on cursor position and stop events
@@ -16,16 +17,39 @@ local Location = require("neodap.location")
 ---@field debounce_ms? number Cursor debounce (default: 100)
 
 ---Check if a session is in the focused session's tree (same, ancestor, or descendant)
+---or in the same Config as the focused session
 ---@param debugger any Debugger entity
 ---@param session any Session entity to check
 ---@return boolean
-local function is_in_focused_session_tree(debugger, session)
+local function is_in_focused_context(debugger, session)
   local focused = debugger.ctx.session:get()
   -- No focused session - allow any
-  if not focused then return true end
+  if not focused then
+    log:debug("is_in_focused_context: no focused session, allowing", { session = session.uri:get() })
+    return true
+  end
   -- Focused session is terminated - allow any (don't block on dead session)
-  if focused.state:get() == "terminated" then return true end
-  return focused:isInSameTreeAs(session)
+  if focused.state:get() == "terminated" then
+    log:debug("is_in_focused_context: focused session terminated, allowing", { session = session.uri:get(), focused = focused.uri:get() })
+    return true
+  end
+
+  -- Check if in same session tree (DAP parent-child)
+  if focused:isInSameTreeAs(session) then
+    log:debug("is_in_focused_context: same session tree", { session = session.uri:get(), focused = focused.uri:get() })
+    return true
+  end
+
+  -- Check if in same Config
+  local focused_config = focused.config:get()
+  local session_config = session.config:get()
+  if focused_config and session_config and focused_config._id == session_config._id then
+    log:debug("is_in_focused_context: same Config", { session = session.uri:get(), focused = focused.uri:get(), config = focused_config:displayName() })
+    return true
+  end
+
+  log:debug("is_in_focused_context: not related", { session = session.uri:get(), focused = focused.uri:get() })
+  return false
 end
 
 ---@param debugger neodap.entities.Debugger
@@ -105,24 +129,53 @@ local function cursor_focus(debugger, config)
 
   -- Scoped subscriptions - cleanup is automatic via debugger:use()
   debugger.sessions:each(function(session)
-    -- Focus new sessions when they're created
-    -- This ensures the user works with the session they just started
-    debugger.ctx:focus(session.uri:get())
+    -- Only focus new session if there's no currently focused session with stopped threads
+    -- This prevents overwriting focus during compound launches
+    local focused = debugger.ctx.session:get()
+    local should_focus = not focused or focused.state:get() == "terminated"
+
+    if should_focus then
+      log:debug("cursor_focus: session created, focusing (no active focus)", { session = session.uri:get() })
+      debugger.ctx:focus(session.uri:get())
+    else
+      log:debug("cursor_focus: session created, not focusing (has active focus)", { session = session.uri:get(), focused = focused.uri:get() })
+    end
 
     session.threads:each(function(thread)
       -- When thread stops, load stack and focus top frame (if in focused session tree)
       thread:onStopped(function()
         local thread_session = thread.session:get()
-        if not thread_session then return end
+        if not thread_session then
+          log:debug("cursor_focus: thread stopped but no session", { thread = thread.uri:get() })
+          return
+        end
 
-        -- Only auto-focus if thread's session is in the focused tree
-        if not is_in_focused_session_tree(debugger, thread_session) then return end
+        log:debug("cursor_focus: thread stopped", { thread = thread.uri:get(), session = thread_session.uri:get() })
+
+        -- Check if we should auto-focus this thread
+        local focused = debugger.ctx.session:get()
+        local focused_has_stopped = focused and focused.stoppedThreads and focused.stoppedThreads:count() > 0
+
+        -- Focus if: no focus, focused is terminated, focused has no stopped threads, or in same context (tree or Config)
+        if focused and focused.state:get() ~= "terminated" and focused_has_stopped then
+          -- Only skip if focused session already has stopped threads AND this isn't in the same context
+          if not is_in_focused_context(debugger, thread_session) then
+            log:debug("cursor_focus: skipping focus - focused session has stopped threads and different context", { thread = thread.uri:get(), focused = focused.uri:get() })
+            return
+          end
+        else
+          log:debug("cursor_focus: will focus - no competing stopped threads", { thread = thread.uri:get() })
+        end
 
         -- Load stack (awaitable, memoized) and focus top frame
         local stack = thread:loadCurrentStack()
-        if not stack then return end
+        if not stack then
+          log:debug("cursor_focus: no stack loaded", { thread = thread.uri:get() })
+          return
+        end
 
         a.wait(a.main, "auto_context:schedule")
+        log:debug("cursor_focus: focusing thread frame", { thread = thread.uri:get() })
         focus_thread_frame(thread)
       end)
 
@@ -133,7 +186,7 @@ local function cursor_focus(debugger, config)
 
         local thread_session = thread.session:get()
         if not thread_session then return end
-        if not is_in_focused_session_tree(debugger, thread_session) then return end
+        if not is_in_focused_context(debugger, thread_session) then return end
 
         -- Focus top frame on stops change
         a.run(function()

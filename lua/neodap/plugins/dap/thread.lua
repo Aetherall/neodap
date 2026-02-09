@@ -4,6 +4,7 @@ local entities = require("neodap.entities")
 local uri = require("neodap.uri")
 local context = require("neodap.plugins.dap.context")
 local utils = require("neodap.plugins.dap.utils")
+local log = require("neodap.logger")
 
 local Thread = entities.Thread
 local get_dap_session = context.get_dap_session
@@ -82,6 +83,8 @@ function Thread:fetchStackTrace()
   local graph = self._graph
   local stop_count = self.stops:get() or 0
 
+  log:trace("fetchStackTrace: start " .. self.uri:get() .. " stop_count=" .. stop_count)
+
   -- Collect existing stacks first (avoid modifying during iteration)
   local existing_stacks = {}
   for s in self.stacks:iter() do
@@ -91,11 +94,16 @@ function Thread:fetchStackTrace()
   -- Check if we already have a stack for this stop
   -- stops increments on each stop, so stack count should match
   -- Guard: only skip if we actually have stacks and stops is set
-  if stop_count > 0 and #existing_stacks >= stop_count then return end
+  if stop_count > 0 and #existing_stacks >= stop_count then
+    log:trace("fetchStackTrace: skip (have " .. #existing_stacks .. " stacks for stop_count=" .. stop_count .. ")")
+    return
+  end
 
+  log:trace("fetchStackTrace: requesting stackTrace")
   local body = a.wait(function(cb)
     dap_session.client:request("stackTrace", { threadId = self.threadId:get() }, cb)
   end, "fetchStackTrace:request")
+  log:trace("fetchStackTrace: got " .. (body.stackFrames and #body.stackFrames or 0) .. " frames")
 
   local debugger = session.debugger:get()
   local session_id = session.sessionId:get()
@@ -114,6 +122,7 @@ function Thread:fetchStackTrace()
   -- Create new stack with index 0 (latest), seq matches thread's stops
   local stack = entities.Stack.new(graph, { uri = uri.stack(session_id, thread_id, 0), index = 0, seq = stop_count })
   self.stacks:link(stack)
+  log:debug("Stack created: " .. stack.uri:get() .. " seq=" .. stop_count)
 
   for old_stack in self.currentStacks:iter() do
     -- Mark old frames as inactive
@@ -131,6 +140,7 @@ function Thread:fetchStackTrace()
       frameId = frame_data.id, index = i - 1, name = frame_data.name,
       line = frame_data.line, column = frame_data.column,
       active = true,
+      presentationHint = frame_data.presentationHint,
     })
     stack.frames:link(frame)
 
@@ -155,6 +165,7 @@ function Thread:fetchStackTrace()
       end
     end
   end
+  log:trace("fetchStackTrace: complete")
 end
 Thread.fetchStackTrace = a.memoize(Thread.fetchStackTrace)
 

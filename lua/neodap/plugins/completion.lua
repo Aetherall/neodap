@@ -9,6 +9,7 @@
 
 local completion = require("neodap.plugins.utils.completion")
 local type_to_kind = completion.type_to_kind
+local log = require("neodap.logger")
 
 ---@param debugger neodap.entities.Debugger
 return function(debugger)
@@ -73,12 +74,12 @@ return function(debugger)
   -- Create command to set omnifunc in current buffer
   vim.api.nvim_create_user_command("DapCompleteEnable", function()
     vim.bo.omnifunc = "v:lua.dap_complete"
-    vim.notify("DAP completion enabled for this buffer", vim.log.levels.INFO)
+    log:info("DAP completion enabled for this buffer")
   end, { desc = "Enable DAP completion in current buffer" })
 
   vim.api.nvim_create_user_command("DapCompleteDisable", function()
     vim.bo.omnifunc = ""
-    vim.notify("DAP completion disabled for this buffer", vim.log.levels.INFO)
+    log:info("DAP completion disabled for this buffer")
   end, { desc = "Disable DAP completion in current buffer" })
 
   -- Return public API

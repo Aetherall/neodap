@@ -3,14 +3,24 @@ local harness = require("helpers.test_harness")
 -- Common exception filter tests that run on both adapters
 -- Tests basic schema and entity creation from adapter capabilities
 return harness.integration("dap_exception", function(T, ctx)
-  T["exception filters created from capabilities"] = function()
+  T["exception filter bindings created from capabilities"] = function()
     local h = ctx.create()
     h:fixture("simple-vars")
     h:cmd("DapLaunch Debug stop")
     h:wait_url("/sessions/threads/stacks[0]/frames[0]")
     h:cmd("DapFocus /sessions/threads/stacks[0]/frames[0]")
 
-    MiniTest.expect.equality(h:query_count("/sessions[0]/exceptionFilters") > 0, true)
+    MiniTest.expect.equality(h:query_count("/sessions[0]/exceptionFilterBindings") > 0, true)
+  end
+
+  T["global exception filters created from capabilities"] = function()
+    local h = ctx.create()
+    h:fixture("simple-vars")
+    h:cmd("DapLaunch Debug stop")
+    h:wait_url("/sessions/threads/stacks[0]/frames[0]")
+    h:cmd("DapFocus /sessions/threads/stacks[0]/frames[0]")
+
+    MiniTest.expect.equality(h:query_count("/exceptionFilters") > 0, true)
   end
 
   T["exception filter has label"] = function()
@@ -20,7 +30,7 @@ return harness.integration("dap_exception", function(T, ctx)
     h:wait_url("/sessions/threads/stacks[0]/frames[0]")
     h:cmd("DapFocus /sessions/threads/stacks[0]/frames[0]")
 
-    local label = h:query_field("/sessions[0]/exceptionFilters[0]", "label")
+    local label = h:query_field("/exceptionFilters[0]", "label")
     MiniTest.expect.equality(label ~= nil and label ~= "", true)
   end
 

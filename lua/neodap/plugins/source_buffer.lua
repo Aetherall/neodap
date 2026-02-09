@@ -69,8 +69,14 @@ return function(debugger, config)
         vim.bo[bufnr].modified = false
 
         -- Set filetype based on source name/path
-        local name = source.name:get() or source.path:get() or ""
+        local name = source.name:get() or ""
+        local path = source.path:get() or ""
+
+        -- Try filename-based detection first, fall back to adapter hint
         local ft = vim.filetype.match({ filename = name })
+          or vim.filetype.match({ filename = path })
+          or source.fallbackFiletype:get()
+
         if ft then vim.bo[bufnr].filetype = ft end
 
         -- Apply any pending cursor position

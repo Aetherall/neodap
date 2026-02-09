@@ -8,6 +8,7 @@
 
 local entity_buffer = require("neodap.plugins.utils.entity_buffer")
 local a = require("neodap.async")
+local log = require("neodap.logger")
 
 -- Namespace for virtual text
 local ns_id = vim.api.nvim_create_namespace("neodap-input-buffer")
@@ -40,15 +41,7 @@ return function(debugger, config)
     if not frame then
       return "⚠ No frame"
     end
-
-    local name = frame.name:get() or "?"
-    local line = frame.line:get()
-
-    if line then
-      return string.format("→ %s:%d", name, line)
-    else
-      return string.format("→ %s", name)
-    end
+    return "→ " .. debugger:render_text(frame, { "title", { "line", prefix = ":" } })
   end
 
   ---Update virtual text indicator for buffer
@@ -115,7 +108,7 @@ return function(debugger, config)
         return
       end
       if not frame then
-        vim.notify("No frame available for evaluation", vim.log.levels.WARN)
+        log:warn("No frame available for evaluation")
         return
       end
 
@@ -132,7 +125,7 @@ return function(debugger, config)
       end, function(err)
         if err then
           vim.schedule(function()
-            vim.notify("Evaluation error: " .. tostring(err), vim.log.levels.ERROR)
+            log:error("Evaluation error", { error = tostring(err) })
           end)
         end
       end)

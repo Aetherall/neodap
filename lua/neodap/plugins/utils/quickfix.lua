@@ -1,26 +1,41 @@
 -- Shared quickfix utilities for entity display
--- Used by command_router, list_cmd, and other plugins that populate quickfix
-
-local format = require("neodap.plugins.utils.format")
 
 local M = {}
 
+local LAYOUTS = {
+  Session = { "title", { "state", prefix = " " } },
+  Thread = { "title", { "state", prefix = " " }, { "detail", prefix = " " } },
+  Frame = { "index", { "title", prefix = " " } },
+  Breakpoint = { "icon", { "state", prefix = " " }, { "condition", prefix = " " } },
+  Variable = { "title", { "type", prefix = ": " }, { "value", prefix = " = " } },
+  Scope = { "title" },
+  Source = { "title" },
+  ExceptionFilterBinding = { "icon", { "title", prefix = " " }, { "condition", prefix = " " } },
+  ExceptionFilter = { "icon", { "title", prefix = " " } },
+}
+
 ---Convert an entity to a quickfix entry
+---@param debugger any Debugger instance
 ---@param entity any Entity to convert
 ---@return table entry Quickfix entry
-function M.entry(entity)
+function M.entry(debugger, entity)
+  local layout = LAYOUTS[entity:type()]
+  local text
+  if layout then
+    text = debugger:render_text(entity, layout)
+  else
+    text = string.format("%s: %s", entity:type(), entity.uri:get())
+  end
+
   local entry = {
-    -- Store both URI and internal ID to avoid needing a second query
-    -- URI is for display/debugging, ID is for efficient db:get() lookup
     user_data = {
       uri = entity.uri:get(),
       id = entity:id(),
       entity_type = entity:type(),
     },
-    text = format.entity(entity),
+    text = text,
   }
 
-  -- Use :location() method if available (Breakpoint, Frame, Source, Output)
   if type(entity.location) == "function" then
     local loc = entity:location()
     if loc then
@@ -31,17 +46,6 @@ function M.entry(entity)
   end
 
   return entry
-end
-
----Convert array of entities to quickfix entries
----@param entities any[] Array of entities
----@return table[] entries Array of quickfix entries
-function M.entries(entities)
-  local items = {}
-  for _, entity in ipairs(entities) do
-    table.insert(items, M.entry(entity))
-  end
-  return items
 end
 
 return M

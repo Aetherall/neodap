@@ -58,6 +58,26 @@ return function(Frame)
     return thread and thread:isStopped() or false
   end
 
+  ---Should frame be visually de-emphasized?
+  ---@param hints? table<string, boolean> Presentation hints to treat as subtle (default: {subtle=true})
+  ---@return boolean
+  function Frame:isSubtle(hints)
+    hints = hints or { subtle = true }
+    local hint = self.presentationHint:get()
+    if hint == nil or hint == vim.NIL then return false end
+    return hints[hint] == true
+  end
+
+  ---Should frame be hidden from navigation?
+  ---@param hints? table<string, boolean> Presentation hints to treat as skippable (default: {label=true})
+  ---@return boolean
+  function Frame:isSkippable(hints)
+    hints = hints or { label = true }
+    local hint = self.presentationHint:get()
+    if hint == nil or hint == vim.NIL then return false end
+    return hints[hint] == true
+  end
+
   ---Check if frame's session is terminated
   ---Returns true if terminated OR if unable to determine (safe default)
   ---@return boolean

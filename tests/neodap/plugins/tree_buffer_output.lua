@@ -234,6 +234,9 @@ local T = harness.integration("tree_buffer_output", function(T, ctx)
     -- Wait for UI to settle (js-debug output timing)
     h:wait(300)
 
+    -- Clear command line (overseer backend shows task status there)
+    h.child.cmd("echo ''")
+
     -- Screenshot: should show [out] category indicator
     MiniTest.expect.reference_screenshot(h:take_screenshot(), nil, { ignore_attr = true })
   end

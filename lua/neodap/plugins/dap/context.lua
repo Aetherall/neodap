@@ -13,6 +13,24 @@ M.session_entities = setmetatable({}, { __mode = "k" })
 -- Key: session entity, Value: number
 M.output_seqs = setmetatable({}, { __mode = "k" })
 
+-- Session entity → list of TaskHandles from runInTerminal
+-- Each session can have multiple terminal tasks (one per runInTerminal call)
+M.terminal_tasks = setmetatable({}, { __mode = "k" })
+
+-- Set of DapSession instances currently being terminated (not disconnected)
+-- Used to distinguish terminate vs disconnect in the "closing" event handler
+M.terminating_sessions = setmetatable({}, { __mode = "k" })
+
+-- Global output sequence counter (across all sessions for ordering)
+M.global_output_seq = 0
+
+---Get next global output sequence number
+---@return number
+function M.next_global_seq()
+  M.global_output_seq = M.global_output_seq + 1
+  return M.global_output_seq
+end
+
 ---Get the DapSession for a Session entity
 ---@param session neodap.entities.Session
 ---@return DapSession?
@@ -33,6 +51,39 @@ end
 function M.register_session(session, dap_session)
   M.dap_sessions[session] = dap_session
   M.session_entities[dap_session] = session
+end
+
+---Mark a dap_session tree as terminating (not disconnecting)
+---This tells the "closing" handler to kill terminal processes.
+---@param dap_session DapSession
+function M.mark_terminating(dap_session)
+  M.terminating_sessions[dap_session] = true
+  for _, child in ipairs(dap_session.children or {}) do
+    M.mark_terminating(child)
+  end
+end
+
+---Store a terminal task handle for a session
+---@param session neodap.entities.Session
+---@param task neodap.TaskHandle
+function M.add_terminal_task(session, task)
+  if not M.terminal_tasks[session] then
+    M.terminal_tasks[session] = {}
+  end
+  table.insert(M.terminal_tasks[session], task)
+end
+
+---Kill all terminal tasks for a session
+---@param session neodap.entities.Session
+function M.kill_terminal_tasks(session)
+  local tasks = M.terminal_tasks[session]
+  if not tasks then
+    return
+  end
+  for _, task in ipairs(tasks) do
+    task.kill()
+  end
+  M.terminal_tasks[session] = nil
 end
 
 return M

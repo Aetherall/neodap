@@ -31,6 +31,8 @@
             p.lua
           ]))
           pkgs.vimPlugins.luvit-meta
+          # Coverage tooling
+          pkgs.luajitPackages.luacov
         ];
 
         shellHook = let
@@ -42,6 +44,7 @@
           ]);
           # Individual grammar packages for manual registration
           grammars = pkgs.vimPlugins.nvim-treesitter.builtGrammars;
+          luacov = pkgs.luajitPackages.luacov;
         in ''
           export VIMRUNTIME=$(nvim --headless -c "lua print(vim.env.VIMRUNTIME)" -c "q" 2>&1 | tail -1)
           export LUVIT_PATH="${pkgs.vimPlugins.luvit-meta}/library"
@@ -53,12 +56,14 @@
           export TS_PARSER_TYPESCRIPT="${grammars.typescript}/parser"
           export TS_PARSER_PYTHON="${grammars.python}/parser"
           export TS_PARSER_LUA="${grammars.lua}/parser"
+          export LUACOV_PATH="${luacov}/share/lua/5.1"
           echo "neodap dev environment"
           echo "  nvim: $(nvim --version | head -1)"
           echo "  zig:  $(zig version)"
           echo "  js-debug: $JS_DEBUG_PATH"
           echo "  debugpy: $DEBUGPY_PATH"
           echo "  treesitter: $TREESITTER_PATH"
+          echo "  luacov: $LUACOV_PATH"
         '';
       };
     });
