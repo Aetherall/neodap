@@ -11,25 +11,36 @@ return function(Config)
     return string.format("%s #%d", name, index)
   end
 
-  ---Update state based on target (leaf) session states
+  ---Update state based on session states
   ---Call this when session states change
-  ---Uses targetCount/terminatedTargetCount rollups instead of iterating targets
-  ---We only consider targets because some adapters (like js-debug) have
-  ---parent sessions that never terminate properly
+  ---
+  ---Uses target (leaf) rollups for state transitions because some adapters
+  ---(like js-debug) have parent sessions that never terminate properly.
+  ---
+  ---Uses root rollups for stopAll because child processes (auto-attached by
+  ---js-debug) can exit transiently without meaning the debug config itself died.
+  ---stopAll should only cascade when a root session (explicit launch config) terminates.
   function Config:updateState()
+    -- stopAll: check root sessions (the explicitly launched configs)
+    if self.stopAll:get() then
+      local root_total = self.rootCount:get() or 0
+      local root_terminated = self.terminatedRootCount:get() or 0
+      local has_active_root = root_terminated < root_total
+      local has_terminated_root = root_terminated > 0
+
+      if has_terminated_root and has_active_root then
+        -- Avoid re-entry: terminate() will trigger more updateState() calls as sessions die.
+        -- Clear stopAll after first trigger so subsequent calls fall through to normal logic.
+        self:update({ stopAll = false })
+        self:terminate()
+        return
+      end
+    end
+
+    -- State transition: use targets (leaves) because parent sessions may never terminate
     local total = self.targetCount:get() or 0
     local terminated = self.terminatedTargetCount:get() or 0
     local has_active_target = terminated < total
-    local has_terminated_target = terminated > 0
-
-    -- stopAll: if any target terminated and others are still active, terminate them all
-    if self.stopAll:get() and has_terminated_target and has_active_target then
-      -- Avoid re-entry: terminate() will trigger more updateState() calls as sessions die.
-      -- Clear stopAll after first trigger so subsequent calls fall through to normal logic.
-      self:update({ stopAll = false })
-      self:terminate()
-      return
-    end
 
     local new_state = has_active_target and "active" or "terminated"
     if self.state:get() ~= new_state then
