@@ -39,18 +39,7 @@ return function(debugger)
       if f then f:close() end
     end
 
-    local cmd
-    if opts.split == "horizontal" then
-      cmd = "split"
-    elseif opts.split == "vertical" then
-      cmd = "vsplit"
-    elseif opts.split == "tab" then
-      cmd = "tabedit"
-    else
-      cmd = "edit"
-    end
-
-    vim.cmd(cmd .. " " .. vim.fn.fnameescape(path))
+    require("neodap.plugins.utils.open").open(path, opts)
     local bufnr = vim.api.nvim_get_current_buf()
 
     -- Configure buffer
@@ -138,14 +127,18 @@ return function(debugger)
       local session_id = uri:match("dap://output/session:([^/]+)")
       if not session_id then return end
 
-      -- Find session
-      for session in debugger.sessions:iter() do
-        if session.sessionId:get() == session_id then
-          -- Delete the URI buffer and open the actual file
-          vim.api.nvim_buf_delete(ev.buf, { force = true })
-          open_log(session)
-          return
-        end
+      -- Find session by indexed lookup
+      local session
+      for s in debugger.sessions:filter({
+        filters = {{ field = "sessionId", op = "eq", value = session_id }}
+      }):iter() do
+        session = s
+        break
+      end
+      if session then
+        vim.api.nvim_buf_delete(ev.buf, { force = true })
+        open_log(session)
+        return
       end
 
       -- Session not found
@@ -179,6 +172,10 @@ return function(debugger)
     end
     api.open(session)
   end, { desc = "Open output log for focused debug session" })
+
+  function api.cleanup()
+    pcall(vim.api.nvim_del_user_command, "DapOutput")
+  end
 
   return api
 end

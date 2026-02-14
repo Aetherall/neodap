@@ -13,42 +13,38 @@ return function(debugger)
       -- Only process top frame (index 0)
       if frame.index:get() ~= 0 then return end
 
-      -- Get session from frame's stack
-      local stack = frame.stack:get()
-      if not stack then return end
-      local thread = stack.thread:get()
-      if not thread then return end
-      local session = thread.session:get()
+      local session = frame:session()
       if not session then return end
 
       -- Only when session is stopped
       if session.state:get() ~= "stopped" then return end
 
       -- Check if any binding already has hit=true (adapter sent hitBreakpointIds)
-      for sb in session.sourceBindings:iter() do
-        for binding in sb.breakpointBindings:iter() do
-          if binding.hit:get() == true then
-            return -- Adapter already marked hit, no polyfill needed
-          end
+      local has_hit = false
+      session:forEachBreakpointBinding(function(bpb)
+        if bpb.hit:get() == true then
+          has_hit = true
         end
-      end
+      end)
+      if has_hit then return end
 
       local line = frame.line:get()
       if not line then return end
 
       -- Find matching breakpoint binding at this line for this session
-      for bp in source.breakpoints:iter() do
+      -- Uses by_line index on Source.breakpoints for O(1) line lookup
+      for bp in source.breakpoints:filter({
+        filters = {{ field = "line", op = "eq", value = line }}
+      }):iter() do
         if bp:isEnabled() then
-          for binding in bp.bindings:iter() do
-            if binding.verified:get() then
-              local actual_line = binding.actualLine:get() or bp.line:get()
-              if actual_line == line then
-                local sb = binding.sourceBinding:get()
-                if sb and sb.session:get() == session then
-                  binding:update({ hit = true })
-                  return
-                end
-              end
+          -- Uses by_verified index on Breakpoint.bindings
+          for binding in bp.bindings:filter({
+            filters = {{ field = "verified", op = "eq", value = true }}
+          }):iter() do
+            local sb = binding.sourceBinding:get()
+            if sb and sb.session:get() == session then
+              binding:update({ hit = true })
+              return
             end
           end
         end

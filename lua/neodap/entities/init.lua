@@ -40,27 +40,25 @@ for _, class in pairs({
   entity.add_common_methods(class)
 end
 
--- Load entity-specific methods
-require("neodap.entities.debugger")(M.Debugger)
-require("neodap.entities.config")(M.Config)
-require("neodap.entities.source")(M.Source)
-require("neodap.entities.source_binding")(M.SourceBinding)
-require("neodap.entities.breakpoint")(M.Breakpoint)
-require("neodap.entities.breakpoint_binding")(M.BreakpointBinding)
-require("neodap.entities.session")(M.Session)
-require("neodap.entities.thread")(M.Thread)
-require("neodap.entities.stack")(M.Stack)
-require("neodap.entities.frame")(M.Frame)
-require("neodap.entities.scope")(M.Scope)
-require("neodap.entities.variable")(M.Variable)
-require("neodap.entities.output")(M.Output)
-require("neodap.entities.exception_filter")(M.ExceptionFilter)
-require("neodap.entities.exception_filter_binding")(M.ExceptionFilterBinding)
-require("neodap.entities.stdio")(M.Stdio)
-require("neodap.entities.breakpoints")(M.Breakpoints)
-require("neodap.entities.configs")(M.Configs)
-require("neodap.entities.sessions")(M.Sessions)
-require("neodap.entities.targets")(M.Targets)
-require("neodap.entities.exception_filters_group")(M.ExceptionFiltersGroup)
+-- Load entity-specific methods (only for entities that have method files)
+local entity_methods = {
+  { "debugger",                  M.Debugger },
+  { "config",                    M.Config },
+  { "source",                    M.Source },
+  { "breakpoint",               M.Breakpoint },
+  { "breakpoint_binding",       M.BreakpointBinding },
+  { "session",                   M.Session },
+  { "thread",                    M.Thread },
+  { "stack",                     M.Stack },
+  { "frame",                     M.Frame },
+  { "scope",                     M.Scope },
+  { "variable",                  M.Variable },
+  { "output",                    M.Output },
+  { "exception_filter",          M.ExceptionFilter },
+  { "exception_filter_binding",  M.ExceptionFilterBinding },
+}
+for _, spec in ipairs(entity_methods) do
+  require("neodap.entities." .. spec[1])(spec[2])
+end
 
 return M

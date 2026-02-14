@@ -126,8 +126,9 @@ local T = harness.integration("multi_session", function(T, ctx)
     h:cmd("DapContinue")
     h:wait_terminated(10000)
 
-    -- Session state should be terminated (cursor_focus keeps focus)
-    local state = h:query_field("@session", "state")
+    -- Session state should be terminated (use absolute URI since focus clears on termination)
+    local index = h.adapter.name == "javascript" and 1 or 0
+    local state = h:query_field(string.format("/sessions[%d]", index), "state")
     MiniTest.expect.equality(state, "terminated")
   end
 

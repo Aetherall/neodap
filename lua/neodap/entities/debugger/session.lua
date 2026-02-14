@@ -6,11 +6,9 @@
 ---@return boolean
 local function any_session_supports(self, capability)
   for session in self.sessions:iter() do
-    if session.state:get() ~= "terminated" then
-      local method = session[capability]
-      if method and method(session) then
-        return true
-      end
+    local method = session[capability]
+    if session.state:get() ~= "terminated" and method and method(session) then
+      return true
     end
   end
   return false
@@ -29,11 +27,9 @@ local function iter_sessions_supporting(self, capability)
   local session_iter = self.sessions:iter()
   return function()
     for session in session_iter do
-      if session.state:get() ~= "terminated" then
-        local method = session[capability]
-        if method and method(session) then
-          return session
-        end
+      local method = session[capability]
+      if session.state:get() ~= "terminated" and method and method(session) then
+        return session
       end
     end
     return nil
@@ -41,7 +37,6 @@ local function iter_sessions_supporting(self, capability)
 end
 
 return function(Debugger)
-  Debugger.anySessionSupports = any_session_supports
   Debugger.supportsBreakpointLocations = supports_breakpoint_locations
   Debugger.iterSessionsSupporting = iter_sessions_supporting
 end

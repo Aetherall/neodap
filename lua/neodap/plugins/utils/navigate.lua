@@ -13,11 +13,13 @@ local dap_filetypes = {
 ---Check if a window contains a DAP buffer
 ---@param win number Window ID
 ---@return boolean
-local function is_dap_window(win)
+function M.is_dap_window(win)
   local bufnr = vim.api.nvim_win_get_buf(win)
   local ft = vim.bo[bufnr].filetype
   return dap_filetypes[ft] or false
 end
+
+local is_dap_window = M.is_dap_window
 
 ---Get buffer for a file path
 ---@param path string
@@ -100,8 +102,12 @@ local function default_pick_window(path, create_window)
 
   -- Last resort: create a window using the fallback
   local new_win = (create_window or default_create_window)()
-  -- Return to original DAP window after creating
+  -- Return to original DAP window after creating (suppress autocmds for this
+  -- intermediate window switch since goto_location will handle final state)
+  local saved = vim.o.eventignore
+  vim.o.eventignore = "BufEnter,WinEnter,WinLeave,BufLeave"
   vim.api.nvim_set_current_win(current)
+  vim.o.eventignore = saved
   return { win = new_win, focus = false }
 end
 
@@ -155,6 +161,12 @@ function M.goto_location(path, line, column, options)
 
   local current_win = vim.api.nvim_get_current_win()
 
+  -- Suppress autocmds during the multi-step navigation to prevent cascading
+  -- side effects (BufEnter/WinEnter/CursorMoved handlers firing on intermediate
+  -- states before the final cursor position is established).
+  local saved_eventignore = vim.o.eventignore
+  vim.o.eventignore = "BufEnter,WinEnter,WinLeave,BufLeave,CursorMoved"
+
   -- Open file in target window
   vim.api.nvim_set_current_win(win)
   vim.cmd("edit " .. vim.fn.fnameescape(path))
@@ -172,6 +184,12 @@ function M.goto_location(path, line, column, options)
   if not should_focus then
     vim.api.nvim_set_current_win(current_win)
   end
+
+  -- Restore event handling and fire BufEnter for the final target buffer
+  -- so plugins (inline_values, frame_highlights, etc.) can set up for it.
+  vim.o.eventignore = saved_eventignore
+  local target_buf = vim.api.nvim_win_get_buf(win)
+  vim.api.nvim_exec_autocmds("BufEnter", { buffer = target_buf })
 end
 
 ---Jump to a frame's source location

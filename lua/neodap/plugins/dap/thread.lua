@@ -9,6 +9,35 @@ local log = require("neodap.logger")
 local Thread = entities.Thread
 local get_dap_session = context.get_dap_session
 
+---Ensure a source and its session binding exist for a frame's source data.
+---Links the frame to the source and creates a SourceBinding if needed.
+---@param graph table
+---@param debugger neodap.entities.Debugger
+---@param session neodap.entities.Session
+---@param frame_data table DAP stackFrame with .source
+---@param frame neodap.entities.Frame
+local function ensure_source_binding(graph, debugger, session, frame_data, frame)
+  if not frame_data.source then return end
+
+  local source = utils.get_or_create_source(graph, debugger, frame_data.source)
+  if not source then return end
+
+  source.frames:link(frame)
+
+  for binding in source.bindings:iter() do
+    if binding.session:get() == session then return end
+  end
+
+  local session_id = session.sessionId:get()
+  local binding = entities.SourceBinding.new(graph, {
+    uri = uri.sourceBinding(session_id, source.key:get()),
+    sourceReference = frame_data.source.sourceReference or 0,
+  })
+  binding.sources:link(source); binding.sessions:link(session)
+  source.bindings:link(binding); session.sourceBindings:link(binding)
+  binding:syncBreakpoints()
+end
+
 local function get_session_and_client(self)
   local session = self.session:get()
   if not session then error("No session", 0) end
@@ -144,25 +173,8 @@ function Thread:fetchStackTrace()
     })
     stack.frames:link(frame)
 
-    if debugger and frame_data.source then
-      local source = utils.get_or_create_source(graph, debugger, frame_data.source)
-      if source then
-        -- Link from source.frames (where frame_highlights subscribes)
-        source.frames:link(frame)
-        local binding_exists = false
-        for binding in source.bindings:iter() do
-          if binding.session:get() == session then binding_exists = true; break end
-        end
-        if not binding_exists then
-          local binding = entities.SourceBinding.new(graph, {
-            uri = uri.sourceBinding(session_id, source.key:get()),
-            sourceReference = frame_data.source.sourceReference or 0,
-          })
-          binding.sources:link(source); binding.sessions:link(session)
-          source.bindings:link(binding); session.sourceBindings:link(binding)
-          binding:syncBreakpoints()
-        end
-      end
+    if debugger then
+      ensure_source_binding(graph, debugger, session, frame_data, frame)
     end
   end
   log:trace("fetchStackTrace: complete")

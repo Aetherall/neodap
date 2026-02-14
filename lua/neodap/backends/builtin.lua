@@ -47,15 +47,16 @@ function M.connect(opts)
     timeout = opts.timeout,
     on_connect = opts.on_connect,
   })
-  if handle then
-    handle.task_id = next_task_id()
+  if not handle then return nil end
+
+  handle.task_id = next_task_id()
+  if opts.port then
     log:info("Connected to adapter: " .. host .. ":" .. opts.port)
-    -- Register on_close callback for cleanup (e.g., kill server process)
-    if opts.on_close then
-      handle.on_exit(function()
-        opts.on_close()
-      end)
-    end
+  else
+    log:info("Connected to adapter via stdio")
+  end
+  if opts.on_close then
+    handle.on_exit(function() opts.on_close() end)
   end
   return handle
 end

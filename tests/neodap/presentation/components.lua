@@ -41,9 +41,12 @@ return harness.integration("components", function(T, ctx)
   T["session icon terminated"] = function()
     local h = ctx.create()
     launch_and_focus(h)
+    -- Use absolute URL since @session becomes nil when focus is cleared during termination
+    local index = h.adapter.name == "javascript" and 1 or 0
+    local session_url = string.format("/sessions[%d]", index)
     h:cmd("DapTerminate")
-    h:wait_field("@session", "state", "terminated")
-    local icon = h:query_component("icon", "@session")
+    h:wait_field(session_url, "state", "terminated")
+    local icon = h:query_component("icon", session_url)
     MiniTest.expect.equality(icon.text, "⏹")
     MiniTest.expect.equality(icon.hl, "DapTerminated")
   end
@@ -75,9 +78,12 @@ return harness.integration("components", function(T, ctx)
   T["session state terminated"] = function()
     local h = ctx.create()
     launch_and_focus(h)
+    -- Use absolute URL since @session becomes nil when focus is cleared during termination
+    local index = h.adapter.name == "javascript" and 1 or 0
+    local session_url = string.format("/sessions[%d]", index)
     h:cmd("DapTerminate")
-    h:wait_field("@session", "state", "terminated")
-    local state = h:query_component("state", "@session")
+    h:wait_field(session_url, "state", "terminated")
+    local state = h:query_component("state", session_url)
     MiniTest.expect.equality(state.text, "terminated")
     MiniTest.expect.equality(state.hl, "DapTerminated")
   end

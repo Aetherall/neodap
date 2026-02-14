@@ -176,6 +176,68 @@ function Ctx.new(debugger)
   return self
 end
 
+---Get a frame suitable for expression evaluation.
+---Handles stale frames: if the focused frame belongs to a stack that is no
+---longer the thread's current stack, falls back to the current top frame.
+---Returns nil if no stopped frame is available.
+---@return table? frame
+function Ctx:evaluationFrame()
+  local frame = self.frame:get()
+  if not frame then
+    -- No focused frame — try focused thread's top frame
+    local thread = self.thread:get()
+    if not thread or not thread:isStopped() then return nil end
+    local stack = thread.stack:get()
+    return stack and stack.topFrame:get()
+  end
+
+  -- Validate frame belongs to the thread's current stack (not stale)
+  local thread = frame:thread()
+  if thread then
+    local current_stack = thread.stack:get()
+    if current_stack and current_stack ~= frame.stack:get() then
+      -- Frame is stale — use top frame from current stack
+      return current_stack.topFrame:get()
+    end
+  end
+  return frame
+end
+
+---Focus a thread's top frame and return it.
+---Loads the current stack via thread.stack rollup, gets the top frame,
+---and sets focus to it.
+---@param thread table Thread entity
+---@return table? frame The focused frame, or nil if no stack/frame
+function Ctx:focusThread(thread)
+  local stack = thread.stack:get()
+  if not stack then return nil end
+  local frame = stack.topFrame:get()
+  if not frame then return nil end
+  self:focus(frame.uri:get())
+  return frame
+end
+
+---Get the Config entity of the focused session, or nil.
+---@return table? config
+function Ctx:focusedConfig()
+  local session = self.session:get()
+  return session and session.config:get()
+end
+
+---Check if a session is in the focused session's context.
+---Returns true if: no focus, focused is terminated, same session tree, or same Config.
+---@param session table Session entity to check
+---@return boolean
+function Ctx:isInFocusedContext(session)
+  local focused = self.session:get()
+  if not focused then return true end
+  if focused.state:get() == "terminated" then return true end
+  if focused:isInSameTreeAs(session) then return true end
+  local focused_config = focused.config:get()
+  local session_config = session.config:get()
+  return focused_config ~= nil and session_config ~= nil and focused_config == session_config
+end
+
 ---Set focus
 ---Resolves URL to entity, with recursive fallback on failure.
 ---@param url string URL to focus on, or "" to clear
@@ -223,52 +285,33 @@ end
 function Ctx:expand(url)
   local debugger = self._debugger
 
+  local function resolve_marker(marker)
+    if marker == "@session" then return self.session:get() end
+    if marker == "@thread" then return self.thread:get() end
+    if marker == "@frame" then return self.frame:get() end
+    local offset = marker:match("^@frame([%+%-]%d+)$")
+    if not offset then return nil end
+    local frame = self.frame:get()
+    if not frame then return nil end
+    local stack = frame.stack:get()
+    return stack and stack:frameAtIndex(frame.index:get() + tonumber(offset))
+  end
+
   return derive.from({ debugger.focusedUrl }, function()
-    -- Parse @marker and path suffix
     local marker, rest = url:match("^(@[%w%+%-]+)(.*)")
-    if not marker then
-      -- No marker, return as-is
-      return url
-    end
+    if not marker then return url end
 
-    -- Resolve marker to entity
-    local entity
+    -- @debugger is special: expands to debugger URI or root path
     if marker == "@debugger" then
-      -- @debugger expands to debugger URI or root path
-      if rest == "" then
-        return "debugger"
-      end
-      return rest:sub(2) -- Remove leading /
-    elseif marker == "@session" then
-      entity = self.session:get()
-    elseif marker == "@thread" then
-      entity = self.thread:get()
-    elseif marker == "@frame" then
-      entity = self.frame:get()
-    else
-      -- Handle @frame+N / @frame-N
-      local offset = marker:match("^@frame([%+%-]%d+)$")
-      if offset then
-        offset = tonumber(offset)
-        local frame = self.frame:get()
-        if frame then
-          local idx = frame.index:get()
-          local stack = frame.stack:get()
-          entity = stack and stack:frameAtIndex(idx + offset)
-        end
-      end
+      return rest == "" and "debugger" or rest:sub(2)
     end
 
-    if not entity then
-      return nil
-    end
+    local entity = resolve_marker(marker)
+    if not entity then return nil end
 
-    -- Combine entity URI with path suffix
-    local uri = entity.uri:get()
-    if rest and rest ~= "" then
-      return uri .. rest
-    end
-    return uri
+    local entity_uri = entity.uri:get()
+    if rest and rest ~= "" then return entity_uri .. rest end
+    return entity_uri
   end)
 end
 

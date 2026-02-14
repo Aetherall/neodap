@@ -276,18 +276,7 @@ return function(debugger, config)
     ---@param entity_uri string Entity URI to preview
     ---@param opts? { split?: "horizontal"|"vertical"|"tab" }
     open = function(entity_uri, opts)
-      opts = opts or {}
-      local uri = "dap://preview/" .. entity_uri
-
-      if opts.split == "horizontal" then
-        vim.cmd("split " .. vim.fn.fnameescape(uri))
-      elseif opts.split == "vertical" then
-        vim.cmd("vsplit " .. vim.fn.fnameescape(uri))
-      elseif opts.split == "tab" then
-        vim.cmd("tabedit " .. vim.fn.fnameescape(uri))
-      else
-        vim.cmd("edit " .. vim.fn.fnameescape(uri))
-      end
+      require("neodap.plugins.utils.open").open("dap://preview/" .. entity_uri, opts)
     end,
   }
 end

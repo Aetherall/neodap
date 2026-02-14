@@ -9,6 +9,7 @@
 
 local entity_buffer = require("neodap.plugins.utils.entity_buffer")
 local cfg = require("neodap.plugins.tree_buffer.config")
+local utils = require("neodap.utils")
 local edges = require("neodap.plugins.tree_buffer.edges")
 local render = require("neodap.plugins.tree_buffer.render")
 local keybinds = require("neodap.plugins.tree_buffer.keybinds")
@@ -36,16 +37,7 @@ return function(debugger, config)
   end
 
   local function get_prop(item, prop, default)
-    if item[prop] ~= nil then return item[prop] end
-    local node = item.node
-    if not node then return default end
-    if prop == "type" then return node._type or default end
-    local val = node[prop]
-    if val == nil then return default end
-    if type(val) == "table" and type(val.get) == "function" then
-      return val:get() or default
-    end
-    return val
+    return utils.get_prop(item, prop, default)
   end
 
   local function render_console(bufnr)
@@ -122,17 +114,17 @@ return function(debugger, config)
   local function toggle_expand(bufnr)
     local item = get_cursor_item(bufnr)
     if not item then
-      log:info("toggle_expand: no item at cursor")
+      log:trace("toggle_expand: no item at cursor")
       return
     end
     if not item.toggle then
-      log:info("toggle_expand: item has no toggle method", {
+      log:trace("toggle_expand: item has no toggle method", {
         type = item.node and item.node:type() or "?",
         uri = item.node and item.node.uri and item.node.uri:get() or "?",
       })
       return
     end
-    log:info("toggle_expand: toggling", {
+    log:trace("toggle_expand: toggling", {
       type = item.node and item.node:type() or "?",
       expanded_before = item:any_expanded(),
     })
@@ -140,7 +132,7 @@ return function(debugger, config)
     local expanded_after = item:any_expanded()
     local has_node = item.node ~= nil
     local has_fetch = item.node and item.node.fetchChildren ~= nil
-    log:info("toggle_expand: after toggle", {
+    log:trace("toggle_expand: after toggle", {
       expanded_after = expanded_after,
       has_node = has_node,
       has_fetchChildren = has_fetch,
@@ -148,7 +140,7 @@ return function(debugger, config)
     -- Fetch children if expanding
     if expanded_after and has_node and has_fetch then
       local ref = item.node.variablesReference and item.node.variablesReference:get()
-      log:info("toggle_expand: calling fetchChildren", {
+      log:trace("toggle_expand: calling fetchChildren", {
         type = item.node:type(),
         ref = ref,
       })
@@ -281,6 +273,14 @@ return function(debugger, config)
     -- With descending sort, new items appear at offset 0 (top of buffer).
     -- Tailing keeps offset=0 so the latest output is always visible.
     local render_timer = nil
+    local function cancel_render_timer()
+      if render_timer then
+        render_timer:stop()
+        render_timer:close()
+        render_timer = nil
+      end
+    end
+    view_state[bufnr].cancel_render_timer = cancel_render_timer
     local function schedule_render()
       if render_timer then return end
       render_timer = vim.defer_fn(function()
@@ -339,6 +339,9 @@ return function(debugger, config)
   local function cleanup_console(bufnr)
     local state = view_state[bufnr]
     if state then
+      if state.cancel_render_timer then
+        pcall(state.cancel_render_timer)
+      end
       if state.view and state.view.destroy then pcall(state.view.destroy, state.view) end
       for _, unsub in ipairs(state.subscriptions or {}) do pcall(unsub) end
       view_state[bufnr] = nil
@@ -375,18 +378,13 @@ return function(debugger, config)
     optional = true,
     render = function(bufnr, session)
       if not session then return "-- Session not found" end
-      -- Find terminal buffer (check parent sessions too)
-      local current = session
-      while current do
-        local term_bufnr = current.terminalBufnr and current.terminalBufnr:get()
-        if term_bufnr and vim.api.nvim_buf_is_valid(term_bufnr) then
-          vim.schedule(function()
-            vim.api.nvim_buf_delete(bufnr, { force = true })
-            vim.api.nvim_set_current_buf(term_bufnr)
-          end)
-          return ""
-        end
-        current = current.parent and current.parent:get()
+      local term_bufnr = session:findTerminalBufnr()
+      if term_bufnr then
+        vim.schedule(function()
+          vim.api.nvim_buf_delete(bufnr, { force = true })
+          vim.api.nvim_set_current_buf(term_bufnr)
+        end)
+        return ""
       end
       return "-- Session has no terminal (not using integratedTerminal)"
     end,
@@ -395,30 +393,31 @@ return function(debugger, config)
   local api = {}
 
   function api.open(session, opts)
-    opts = opts or {}
-    local uri = "dap://console/session:" .. session.sessionId:get()
-    local cmd = ({ horizontal = "split", vertical = "vsplit", tab = "tabedit" })[opts.split] or "edit"
-    vim.cmd(cmd .. " " .. vim.fn.fnameescape(uri))
+    local open = require("neodap.plugins.utils.open")
+    open.open("dap://console/session:" .. session.sessionId:get(), opts)
   end
 
   function api.open_terminal(session, opts)
-    opts = opts or {}
-    local uri = "dap://terminal/session:" .. session.sessionId:get()
-    local cmd = ({ horizontal = "split", vertical = "vsplit", tab = "tabedit" })[opts.split] or "edit"
-    vim.cmd(cmd .. " " .. vim.fn.fnameescape(uri))
+    local open = require("neodap.plugins.utils.open")
+    open.open("dap://terminal/session:" .. session.sessionId:get(), opts)
   end
 
   vim.api.nvim_create_user_command("DapConsole", function()
     local session = debugger.ctx.session:get()
-    if not session then vim.notify("No focused session", vim.log.levels.WARN); return end
+    if not session then log:warn("No focused session"); return end
     api.open(session)
   end, { desc = "Open console buffer for focused debug session" })
 
   vim.api.nvim_create_user_command("DapTerminal", function()
     local session = debugger.ctx.session:get()
-    if not session then vim.notify("No focused session", vim.log.levels.WARN); return end
+    if not session then log:warn("No focused session"); return end
     api.open_terminal(session)
   end, { desc = "Open terminal buffer for focused debug session" })
+
+  function api.cleanup()
+    pcall(vim.api.nvim_del_user_command, "DapConsole")
+    pcall(vim.api.nvim_del_user_command, "DapTerminal")
+  end
 
   return api
 end

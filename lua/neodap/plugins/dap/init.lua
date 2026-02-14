@@ -2,7 +2,6 @@
 -- This file contains the core session management and event wiring.
 -- Entity methods are split into separate files for maintainability.
 
-local dap = require("dap-lua")
 local DapSession = require("dap-lua.session")
 local entities = require("neodap.entities")
 local neoword = require("neoword")
@@ -40,6 +39,27 @@ local session_entities = context.session_entities
 local output_seqs = context.output_seqs
 local next_global_seq = context.next_global_seq
 
+---Find the SourceBinding for a session within a source's bindings, or create one.
+---@param graph table The neograph instance
+---@param source neodap.entities.Source
+---@param session_entity neodap.entities.Session
+---@return neodap.entities.SourceBinding binding
+---@return boolean created Whether the binding was newly created
+local function find_or_create_binding(graph, source, session_entity)
+  for b in source.bindings:iter() do
+    if b.session:get() == session_entity then
+      return b, false
+    end
+  end
+  local binding = entities.SourceBinding.new(graph, {
+    uri = uri.sourceBinding(session_entity.sessionId:get(), source.key:get()),
+    sourceReference = 0,
+  })
+  source.bindings:link(binding)
+  session_entity.sourceBindings:link(binding)
+  return binding, true
+end
+
 ---Subscribe to DapSession events and update Session entity state
 ---@param session neodap.entities.Session
 ---@param dap_session DapSession
@@ -53,46 +73,39 @@ local function wire_session_events(session, dap_session)
     log:info("Session stopped: " .. session.uri:get())
 
     -- Clear previous hit states for this session's bindings
-    for source_binding in session.sourceBindings:iter() do
-      for bp_binding in source_binding.breakpointBindings:iter() do
-        if bp_binding.hit:get() then
-          bp_binding:update({ hit = false })
-        end
-      end
-    end
+    session:clearHitBreakpoints()
 
     -- Mark hit breakpoints from hitBreakpointIds
-    if body.hitBreakpointIds then
-      for source_binding in session.sourceBindings:iter() do
-        for bp_binding in source_binding.breakpointBindings:iter() do
-          local bp_id = bp_binding.breakpointId:get()
-          for _, hit_id in ipairs(body.hitBreakpointIds) do
-            if bp_id == hit_id then
-              bp_binding:update({ hit = true })
-              log:info("Breakpoint hit: " .. bp_binding.uri:get())
-              break
-            end
-          end
+    if body.hitBreakpointIds and #body.hitBreakpointIds > 0 then
+      local hit_set = {}
+      for _, id in ipairs(body.hitBreakpointIds) do
+        hit_set[id] = true
+      end
+      session:forEachBreakpointBinding(function(bpb)
+        if hit_set[bpb.breakpointId:get()] then
+          bpb:update({ hit = true })
+          log:info("Breakpoint hit: " .. bpb.uri:get())
         end
+      end)
+    end
+
+    -- Helper to update thread when found
+    local function update_thread_stopped(thread)
+      -- Increment stop sequence (new stop = new potential stack)
+      thread:update({ state = "stopped", stops = (thread.stops:get() or 0) + 1 })
+      log:info("Thread stopped: " .. thread.uri:get())
+
+      -- Auto-fetch stack trace if enabled (default: true)
+      if vim.g.neodap__autofetch_stack ~= false then
+        thread:fetchStackTrace()
       end
     end
 
     -- Update thread state if threadId provided
+    local thread = nil
     if body.threadId then
-      -- Helper to update thread when found
-      local function update_thread_stopped(thread)
-        -- Increment stop sequence (new stop = new potential stack)
-        thread:update({ state = "stopped", stops = (thread.stops:get() or 0) + 1 })
-        log:info("Thread stopped: " .. thread.uri:get())
-
-        -- Auto-fetch stack trace if enabled (default: true)
-        if vim.g.neodap__autofetch_stack ~= false then
-          thread:fetchStackTrace()
-        end
-      end
-
       -- Try to update existing thread, or fetch threads first if not found
-      local thread = session:findThreadById(body.threadId)
+      thread = session:findThreadById(body.threadId)
       if thread then
         update_thread_stopped(thread)
       else
@@ -106,6 +119,15 @@ local function wire_session_events(session, dap_session)
         end)
       end
     end
+
+    -- DAP spec: allThreadsStopped means ALL threads should be marked stopped
+    if body.allThreadsStopped then
+      for t in session.threads:iter() do
+        if t ~= thread and t.state:get() ~= "stopped" then
+          update_thread_stopped(t)
+        end
+      end
+    end
   end)
 
   dap_session:on("continued", function(body)
@@ -113,13 +135,7 @@ local function wire_session_events(session, dap_session)
     log:info("Session continued: " .. session.uri:get())
 
     -- Clear hit states when continuing
-    for source_binding in session.sourceBindings:iter() do
-      for bp_binding in source_binding.breakpointBindings:iter() do
-        if bp_binding.hit:get() then
-          bp_binding:update({ hit = false })
-        end
-      end
-    end
+    session:clearHitBreakpoints()
 
     -- Update thread state if threadId provided
     if body.threadId then
@@ -129,38 +145,23 @@ local function wire_session_events(session, dap_session)
         log:info("Thread continued: " .. thread.uri:get())
       end
     end
-  end)
 
-  dap_session:on("terminated", function(body)
-    session:update({ state = "terminated" })
-    log:info("Session terminated: " .. session.uri:get())
-    -- Clear focus if this was the focused session
-    local debugger = session.debugger:get()
-    if debugger then
-      local focused = debugger.ctx.session:get()
-      if focused == session then
-        debugger.ctx:focus("")
+    -- DAP spec: allThreadsContinued means ALL threads should be marked running
+    if body.allThreadsContinued then
+      for thread in session.threads:iter() do
+        if thread.state:get() ~= "running" then
+          thread:update({ state = "running" })
+          log:info("Thread continued (all): " .. thread.uri:get())
+        end
       end
     end
-    -- Update Config state (may become terminated if all sessions are done)
-    local cfg = session.config:get()
-    if cfg then
-      cfg:updateState()
-    end
-    -- Clean up all bindings for this session
-    -- This causes breakpoint signs to update (verified -> unverified)
-    cleanup_session_bindings(session)
-    -- Auto-close transport if adapter terminated unexpectedly (not user-initiated)
-    -- Skip if user called terminate/disconnect (user_closing = true) since
-    -- those methods handle client cleanup themselves
-    if not user_closing and dap_session.client and not dap_session.client.is_closing() then
-      dap_session.client:close()
-    end
   end)
 
-  dap_session:on("exited", function(body)
+  ---Handle session end (shared by terminated and exited events)
+  ---@param reason string "terminated" or "exited"
+  local function handle_session_end(reason)
     session:update({ state = "terminated" })
-    log:info("Session exited: " .. session.uri:get())
+    log:info("Session " .. reason .. ": " .. session.uri:get())
     -- Clear focus if this was the focused session
     local debugger = session.debugger:get()
     if debugger then
@@ -176,18 +177,18 @@ local function wire_session_events(session, dap_session)
     end
     -- Clean up all bindings for this session
     cleanup_session_bindings(session)
-    -- Auto-close transport if debuggee exited unexpectedly (not user-initiated)
-    -- Skip if user called terminate/disconnect (user_closing = true) since
-    -- those methods handle client cleanup themselves
+    -- Auto-close transport if adapter ended unexpectedly (not user-initiated)
     if not user_closing and dap_session.client and not dap_session.client.is_closing() then
       dap_session.client:close()
     end
-  end)
+  end
+
+  dap_session:on("terminated", function() handle_session_end("terminated") end)
+  dap_session:on("exited", function() handle_session_end("exited") end)
 
   -- Closing event fires when disconnect/terminate is called, before actual disconnect
   -- This ensures focus is cleared even if adapter doesn't send terminated event
   dap_session:on("closing", function()
-    -- Mark that user initiated termination so we don't auto-close in terminated/exited handlers
     user_closing = true
     local debugger = session.debugger:get()
     if debugger then
@@ -209,47 +210,45 @@ local function wire_session_events(session, dap_session)
     local graph = session._graph
     local thread_id = body.threadId
 
-    if body.reason == "started" then
-      -- Check if thread already exists
-      local existing = session:findThreadById(thread_id)
-
-      if not existing then
-        -- Create new thread - fetch full info from adapter
-        local session_id = session.sessionId:get()
-        dap_session.client:request("threads", {}, function(err, threads_body)
-          if err then return end
-
-          for _, thread_data in ipairs(threads_body.threads or {}) do
-            if thread_data.id == thread_id then
-              local thread = entities.Thread.new(graph, {
-                uri = uri.thread(session_id, thread_data.id),
-                threadId = thread_data.id,
-                name = thread_data.name,
-                state = "running",
-                stops = 0,
-              })
-              -- Use vim.schedule to ensure edge callbacks fire in the main loop
-              -- IMPORTANT: Only call the forward link (session.threads:link) - neograph-native
-              -- creates the inverse automatically. Calling inverse first would not notify
-              -- forward edge subscribers (neograph-native limitation).
-              vim.schedule(function()
-                session.threads:link(thread)
-                log:info("Thread created: " .. thread.uri:get())
-              end)
-              break
-            end
-          end
-        end)
-      end
-
-    elseif body.reason == "exited" then
-      -- Find and update thread state
+    if body.reason == "exited" then
       local thread = session:findThreadById(thread_id)
       if thread then
         log:info("Thread exited: " .. thread.uri:get())
         thread:update({ state = "exited" })
       end
+      return
     end
+
+    if body.reason ~= "started" then return end
+    if session:findThreadById(thread_id) then return end
+
+    -- Fetch full thread info from adapter
+    local session_id = session.sessionId:get()
+    dap_session.client:request("threads", {}, function(err, threads_body)
+      if err then return end
+      -- Race guard: thread may have been created by a concurrent stopped event
+      if session:findThreadById(thread_id) then return end
+
+      for _, thread_data in ipairs(threads_body.threads or {}) do
+        if thread_data.id == thread_id then
+          local thread = entities.Thread.new(graph, {
+            uri = uri.thread(session_id, thread_data.id),
+            threadId = thread_data.id,
+            name = thread_data.name,
+            state = "running",
+            stops = 0,
+          })
+          -- IMPORTANT: Only call the forward link (session.threads:link) — neograph-native
+          -- creates the inverse automatically. Calling inverse first would not notify
+          -- forward edge subscribers (neograph-native limitation).
+          vim.schedule(function()
+            session.threads:link(thread)
+            log:info("Thread created: " .. thread.uri:get())
+          end)
+          break
+        end
+      end
+    end)
   end)
 
   dap_session:on("loadedSource", function(body)
@@ -266,35 +265,14 @@ local function wire_session_events(session, dap_session)
     local source = get_or_create_source(graph, debugger, dap_source, session)
     if not source then return end
 
-    -- Create SourceBinding for this session if sourceReference is present
+    -- Find or create SourceBinding for this session
     local source_ref = dap_source.sourceReference or 0
+    local binding, created = find_or_create_binding(graph, source, session)
+    binding:update({ sourceReference = source_ref })
 
-    -- Check if binding already exists
-    local binding_exists = false
-    for binding in source.bindings:iter() do
-      local bound_session = binding.session:get()
-      if bound_session == session then
-        -- Update existing binding
-        binding:update({ sourceReference = source_ref })
-        binding_exists = true
-        break
-      end
-    end
-
-    if not binding_exists then
-      -- Create new SourceBinding
-      local binding = entities.SourceBinding.new(graph, {
-        uri = uri.sourceBinding(session.sessionId:get(), source.key:get()),
-        sourceReference = source_ref,
-      })
-      source.bindings:link(binding)
-      session.sourceBindings:link(binding)
-
-      -- Sync any existing breakpoints to this new binding
-      local has_breakpoints = source.breakpoints:iter()() ~= nil
-      if has_breakpoints then
-        binding:syncBreakpoints()
-      end
+    -- Sync any existing breakpoints to a newly created binding
+    if created and (source.breakpointCount:get() or 0) > 0 then
+      binding:syncBreakpoints()
     end
   end)
 
@@ -308,28 +286,23 @@ local function wire_session_events(session, dap_session)
     local best_binding = nil
     local best_distance = math.huge
 
-    -- Search through all sourceBindings to find the best matching breakpointBinding
-    for sourceBinding in session.sourceBindings:iter() do
-      for bpBinding in sourceBinding.breakpointBindings:iter() do
-        if bpBinding.breakpointId:get() == bp_data.id then
-          -- Get the original breakpoint line for this binding
-          local bp = bpBinding.breakpoint:get()
-          local bp_line = bp and bp.line:get()
+    -- Search through all breakpointBindings to find the best match
+    session:forEachBreakpointBinding(function(bpBinding)
+      if bpBinding.breakpointId:get() == bp_data.id then
+        local bp = bpBinding.breakpoint:get()
+        local bp_line = bp and bp.line:get()
 
-          if bp_line and bp_data.line then
-            -- Find binding whose breakpoint line is closest to the event's line
-            local distance = math.abs(bp_line - bp_data.line)
-            if distance < best_distance then
-              best_distance = distance
-              best_binding = bpBinding
-            end
-          elseif not best_binding then
-            -- Fallback: use first match if no line info available
+        if bp_line and bp_data.line then
+          local distance = math.abs(bp_line - bp_data.line)
+          if distance < best_distance then
+            best_distance = distance
             best_binding = bpBinding
           end
+        elseif not best_binding then
+          best_binding = bpBinding
         end
       end
-    end
+    end)
 
     if best_binding then
       best_binding:update({
@@ -348,6 +321,45 @@ local function wire_session_events(session, dap_session)
     if child_session then
       -- Child initialization complete, mark as running
       child_session:update({ state = "running" })
+    end
+  end)
+
+  -- DAP spec: invalidated event signals stale data that should be refetched
+  dap_session:on("invalidated", function(body)
+    local areas = body.areas or {}
+    local thread_id = body.threadId
+
+    -- If specific areas are listed, only refetch those
+    local refetch_stacks = #areas == 0  -- no areas = refetch everything
+    local refetch_variables = #areas == 0
+    for _, area in ipairs(areas) do
+      if area == "stacks" then refetch_stacks = true end
+      if area == "variables" then refetch_variables = true end
+      if area == "all" then
+        refetch_stacks = true
+        refetch_variables = true
+      end
+    end
+
+    if refetch_stacks then
+      -- Refetch stack traces for affected threads
+      if thread_id then
+        local thread = session:findThreadById(thread_id)
+        if thread and thread.state:get() == "stopped" then
+          thread:fetchStackTrace()
+        end
+      else
+        -- Refetch for all stopped threads (uses indexed collection)
+        for thread in session.stoppedThreads:iter() do
+          thread:fetchStackTrace()
+        end
+      end
+    end
+
+    if refetch_variables then
+      log:debug("Invalidated event: variables area (refetch on next expand)")
+      -- Variables will be refetched on next scope expand/variable expand
+      -- No proactive refetch needed since the tree view lazily fetches on expand
     end
   end)
 
@@ -582,55 +594,36 @@ function Debugger:debug(opts)
 
     -- Sync breakpoints before configurationDone
     beforeConfigurationDone = function(dap_session, done)
-      local function sync_breakpoints()
-        -- Session ALWAYS exists (created in onSessionCreated)
-        local current_session = session_entities[dap_session]
-        local current_sessionId = current_session.sessionId:get()
+      -- Session ALWAYS exists (created in onSessionCreated)
+      local current_session = session_entities[dap_session]
+      local current_sessionId = current_session.sessionId:get()
 
-        -- Create exception filters from capabilities (now available)
-        create_exception_filters(graph, self, current_session, dap_session.capabilities)
+      -- Create exception filters from capabilities (now available)
+      create_exception_filters(graph, self, current_session, dap_session.capabilities)
 
-        -- Collect sources that have breakpoints
-        local sources_with_breakpoints = {}
-        for source in self.sources:iter() do
-          for _ in source.breakpoints:iter() do
-            table.insert(sources_with_breakpoints, source)
-            break
-          end
+      -- Collect sources that have breakpoints
+      local sources_with_breakpoints = {}
+      for source in self.sources:iter() do
+        if (source.breakpointCount:get() or 0) > 0 then
+          table.insert(sources_with_breakpoints, source)
         end
+      end
 
-        if #sources_with_breakpoints == 0 then
-          return
-        end
+      if #sources_with_breakpoints == 0 then
+        done()  -- No breakpoints, signal done immediately
+        return
+      end
 
-        -- Sync each source's breakpoints to the session in parallel
-        -- Uses SourceBinding:syncBreakpoints() which handles all the sync logic
+      -- Sync breakpoints async, then signal done
+      a.run(function()
         a.wait_all(vim.tbl_map(function(source)
           return a.run(function()
-            -- Find or create SourceBinding for this session
-            local binding = nil
-            for b in source.bindings:iter() do
-              if b.session:get() == current_session then
-                binding = b
-                break
-              end
-            end
-
-            if not binding then
-              binding = entities.SourceBinding.new(graph, {
-                uri = uri.sourceBinding(current_sessionId, source.key:get()),
-                sourceReference = 0,
-              })
-              source.bindings:link(binding)
-              current_session.sourceBindings:link(binding)
-            end
-
+            local binding = find_or_create_binding(graph, source, current_session)
             binding:syncBreakpoints()
           end)
         end, sources_with_breakpoints), "beforeConfigurationDone:sync")
-      end
-      a.fn(sync_breakpoints)()
-      done()
+        done()
+      end)
     end,
   })
 

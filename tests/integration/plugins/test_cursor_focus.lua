@@ -123,8 +123,9 @@ return harness.integration("cursor_focus", function(T, ctx)
     h:cmd("DapContinue")
     h:wait_terminated(5000)
 
-    -- After termination, session may still be queryable but state is terminated
-    local session_state = h:query_field("@session", "state")
+    -- After termination, use absolute URI since @session becomes nil when focus is cleared
+    local index = h.adapter.name == "javascript" and 1 or 0
+    local session_state = h:query_field(string.format("/sessions[%d]", index), "state")
     MiniTest.expect.equality(session_state, "terminated")
   end
 

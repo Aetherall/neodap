@@ -1,10 +1,7 @@
 -- ExceptionFilterBinding entity methods for neograph-native
+local normalize = require("neodap.utils").normalize
+
 return function(ExceptionFilterBinding)
-  -- Helper to normalize vim.NIL to nil
-  local function normalize(value)
-    if value == vim.NIL then return nil end
-    return value
-  end
 
   ---Get effective enabled state (binding override or global default)
   ---@return boolean
@@ -38,8 +35,8 @@ return function(ExceptionFilterBinding)
   function ExceptionFilterBinding:displayLabel()
     local ef = self.exceptionFilter:get()
     if not ef then return "?" end
-    local label = ef.label:get()
-    if label and label ~= "" and label ~= vim.NIL then return label end
+    local label = normalize(ef.label:get())
+    if label and label ~= "" then return label end
     return ef.filterId:get() or "?"
   end
 

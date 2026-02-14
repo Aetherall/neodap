@@ -2,16 +2,6 @@
 local Location = require("neodap.location")
 
 return function(Breakpoint)
-  function Breakpoint:hasCondition()
-    local cond = self.condition:get()
-    return cond ~= nil and cond ~= ""
-  end
-
-  function Breakpoint:isLogpoint()
-    local msg = self.logMessage:get()
-    return msg ~= nil and msg ~= ""
-  end
-
   function Breakpoint:isEnabled()
     local enabled = self.enabled:get()
     if enabled == nil then return true end
@@ -33,23 +23,7 @@ return function(Breakpoint)
   ---Get location as Location object (supports virtual sources via bufferUri)
   ---@return neodap.Location?
   function Breakpoint:location()
-    -- Use rollup for one-to-one access
-    local source = self.source:get()
-    if not source then return nil end
-    local uri = source:bufferUri()
-    if not uri then return nil end
-    return Location.new(uri, self.line:get(), self.column:get())
-  end
-
-  function Breakpoint:matchKey(key)
-    local line_str, col_str = key:match("^(%d+):(%d+)$")
-    if not line_str then
-      line_str = key:match("^(%d+)$")
-      col_str = "0"
-    end
-    if not line_str then return false end
-    local line, col = tonumber(line_str), tonumber(col_str) or 0
-    return self.line:get() == line and (self.column:get() or 0) == col
+    return Location.fromEntity(self)
   end
 
   ---Sync this breakpoint's source to the debug adapter
@@ -70,18 +44,6 @@ return function(Breakpoint)
     return verified, false
   end
 
-  function Breakpoint:state()
-    local binding, is_hit = self:dominatedBinding()
-    if not binding then return "unbound" end
-    if is_hit then return "hit", binding.actualLine:get(), binding.actualColumn:get() end
-
-    local bp_line, bp_col = self.line:get(), self.column:get()
-    local b_line, b_col = binding.actualLine:get(), binding.actualColumn:get()
-    local adjusted = (b_line and b_line ~= bp_line) or (b_col and b_col ~= bp_col)
-    if adjusted then return "adjusted", b_line, b_col end
-    return "bound"
-  end
-
   ---Get display-oriented state string
   ---Unlike state() which returns "unbound"/"bound", this accounts for enabled status
   ---and uses display-oriented names.
@@ -95,22 +57,6 @@ return function(Breakpoint)
     local b_line = binding.actualLine:get()
     if b_line and b_line ~= bp_line then return "adjusted" end
     return "verified"
-  end
-
-  ---Is execution stopped on this breakpoint?
-  ---@return boolean
-  function Breakpoint:isHit()
-    return self.hitBinding:get() ~= nil
-  end
-
-  ---Did the adapter move this breakpoint from its requested line?
-  ---@return boolean
-  function Breakpoint:isAdjusted()
-    local binding = self.verifiedBinding:get()
-    if not binding then return false end
-    local bp_line = self.line:get()
-    local b_line = binding.actualLine:get()
-    return b_line ~= nil and b_line ~= bp_line
   end
 
   ---Compute current mark state (synchronous, not reactive)

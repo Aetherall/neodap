@@ -17,6 +17,7 @@
 --   :DapRestartRoot                        - restart root session of focused session (within same Config)
 
 local query = require("neodap.plugins.utils.query")
+local apply_to_entities = require("neodap.plugins.utils.apply_to_entities")
 local log = require("neodap.logger")
 
 ---@param debugger neodap.entities.Debugger
@@ -24,125 +25,35 @@ local log = require("neodap.logger")
 return function(debugger)
   local api = {}
 
-  ---Continue execution of threads
-  ---@param url? string Optional URL to query threads
+  ---Query entities, apply method, log result
+  ---@param url? string Optional URL to query
+  ---@param default_fn fun(): table? Fallback entity if no URL
+  ---@param type_name string Entity type to match
+  ---@param method string Method to call
+  ---@param cmd_name string Command name for log messages
   ---@return boolean success
-  function api.continue(url)
-    local entities = query.query_or_default(debugger, url, function()
-      return debugger.ctx.thread:get()
-    end)
-
+  local function query_and_apply(url, default_fn, type_name, method, cmd_name)
+    local entities = query.query_or_default(debugger, url, default_fn)
     if #entities == 0 then
-      log:warn("DapContinue: No thread found")
+      log:warn(cmd_name .. ": No " .. type_name:lower() .. " found")
       return false
     end
-
-    local count = 0
-    for _, entity in ipairs(entities) do
-      if entity:type() == "Thread" and entity.continue then
-        entity:continue()
-        count = count + 1
-      end
-    end
-
+    local count = apply_to_entities(entities, type_name, method)
     if count > 0 then
-      log:info("Continued: " .. (debugger.ctx.session:get() and debugger.ctx.session:get().uri:get() or "all threads"))
       return true
     else
-      log:warn("DapContinue: No threads to continue")
+      log:warn(cmd_name .. ": No " .. type_name:lower() .. "s matched")
       return false
     end
   end
 
-  ---Pause execution of threads
-  ---@param url? string Optional URL to query threads
-  ---@return boolean success
-  function api.pause(url)
-    local entities = query.query_or_default(debugger, url, function()
-      return debugger.ctx.thread:get()
-    end)
+  local function default_thread() return debugger.ctx.thread:get() end
+  local function default_session() return debugger.ctx.session:get() end
 
-    if #entities == 0 then
-      log:warn("DapPause: No thread found")
-      return false
-    end
-
-    local count = 0
-    for _, entity in ipairs(entities) do
-      if entity:type() == "Thread" and entity.pause then
-        entity:pause()
-        count = count + 1
-      end
-    end
-
-    if count > 0 then
-      log:info("Paused: " .. (debugger.ctx.session:get() and debugger.ctx.session:get().uri:get() or "all threads"))
-      return true
-    else
-      log:warn("DapPause: No threads to pause")
-      return false
-    end
-  end
-
-  ---Terminate sessions
-  ---@param url? string Optional URL to query sessions
-  ---@return boolean success
-  function api.terminate(url)
-    local entities = query.query_or_default(debugger, url, function()
-      return debugger.ctx.session:get()
-    end)
-
-    if #entities == 0 then
-      log:warn("DapTerminate: No session found")
-      return false
-    end
-
-    local count = 0
-    for _, entity in ipairs(entities) do
-      if entity:type() == "Session" and entity.terminate then
-        entity:terminate()
-        count = count + 1
-      end
-    end
-
-    if count > 0 then
-      log:info("Terminated sessions")
-      return true
-    else
-      log:warn("DapTerminate: No sessions to terminate")
-      return false
-    end
-  end
-
-  ---Disconnect from sessions (keeps debuggee running)
-  ---@param url? string Optional URL to query sessions
-  ---@return boolean success
-  function api.disconnect(url)
-    local entities = query.query_or_default(debugger, url, function()
-      return debugger.ctx.session:get()
-    end)
-
-    if #entities == 0 then
-      log:warn("DapDisconnect: No session found")
-      return false
-    end
-
-    local count = 0
-    for _, entity in ipairs(entities) do
-      if entity:type() == "Session" and entity.disconnect then
-        entity:disconnect()
-        count = count + 1
-      end
-    end
-
-    if count > 0 then
-      log:info("Disconnected from sessions")
-      return true
-    else
-      log:warn("DapDisconnect: No sessions to disconnect")
-      return false
-    end
-  end
+  function api.continue(url)  return query_and_apply(url, default_thread, "Thread", "continue", "DapContinue") end
+  function api.pause(url)     return query_and_apply(url, default_thread, "Thread", "pause", "DapPause") end
+  function api.terminate(url) return query_and_apply(url, default_session, "Session", "terminate", "DapTerminate") end
+  function api.disconnect(url) return query_and_apply(url, default_session, "Session", "disconnect", "DapDisconnect") end
 
   ---Restart sessions (if adapter supports it)
   ---@param url? string Optional URL to query sessions
@@ -184,18 +95,8 @@ return function(debugger)
   ---Terminate Config (all sessions in the Config)
   ---@return boolean success
   function api.terminate_config()
-    local session = debugger.ctx.session:get()
-    if not session then
-      log:warn("DapTerminateConfig: No focused session")
-      return false
-    end
-
-    local cfg = session.config:get()
-    if not cfg then
-      log:warn("DapTerminateConfig: Session has no Config")
-      return false
-    end
-
+    local cfg = debugger.ctx:focusedConfig()
+    if not cfg then log:warn("DapTerminateConfig: No focused Config"); return false end
     cfg:terminate()
     log:info("Terminated Config: " .. cfg:displayName())
     return true
@@ -204,18 +105,8 @@ return function(debugger)
   ---Restart Config (terminate and relaunch all)
   ---@return boolean success
   function api.restart_config()
-    local session = debugger.ctx.session:get()
-    if not session then
-      log:warn("DapRestartConfig: No focused session")
-      return false
-    end
-
-    local cfg = session.config:get()
-    if not cfg then
-      log:warn("DapRestartConfig: Session has no Config")
-      return false
-    end
-
+    local cfg = debugger.ctx:focusedConfig()
+    if not cfg then log:warn("DapRestartConfig: No focused Config"); return false end
     cfg:restart()
     log:info("Restarting Config: " .. cfg:displayName())
     return true

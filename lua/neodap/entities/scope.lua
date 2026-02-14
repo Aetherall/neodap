@@ -1,28 +1,10 @@
 -- Scope entity methods for neograph-native
 return function(Scope)
-  ---Check if key matches this scope
-  ---@param key string
-  ---@return boolean
-  function Scope:matchKey(key)
-    return self.name:get() == key
-  end
-
-  ---Check if this is an expensive scope
-  ---@return boolean
-  function Scope:isExpensive()
-    return self.expensive:get() == true
-  end
-
-  ---Check if scope has variables to fetch
-  ---@return boolean
-  function Scope:hasVariables()
-    return (self.variablesReference:get() or 0) > 0
-  end
-
-  ---Get display label for this scope
-  ---@return string
-  function Scope:label()
-    return self.name:get() or "Scope"
+  ---Get the session this scope belongs to (Scope → Frame → Stack → Thread → Session)
+  ---@return neodap.entities.Session?
+  function Scope:session()
+    local frame = self.frame:get()
+    return frame and frame:session()
   end
 
   ---Check if scope's session is terminated

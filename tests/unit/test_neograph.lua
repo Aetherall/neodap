@@ -80,8 +80,6 @@ T["rollups"]["property rollup count"] = function()
   debugger.sessions:link(s1)
   debugger.sessions:link(s2)
 
-  -- sessionCount rollup
-  MiniTest.expect.equality(debugger.sessionCount:get(), 2)
 end
 
 T["rollups"]["filtered reference rollup"] = function()
@@ -105,28 +103,7 @@ T["rollups"]["filtered reference rollup"] = function()
   MiniTest.expect.equality(verified.verified:get(), true)
 end
 
-T["rollups"]["property rollup any"] = function()
-  local graph = neo.create(schema.schema)
 
-  local bp = graph:insert("Breakpoint", { uri = "bp:test", line = 10, enabled = true })
-
-  -- No bindings yet
-  MiniTest.expect.equality(bp.hasHitBinding:get(), false)
-  MiniTest.expect.equality(bp.hasVerifiedBinding:get(), false)
-
-  -- Add verified binding
-  local b1 = graph:insert("BreakpointBinding", { uri = "bb:1", verified = true, hit = false })
-  bp.bindings:link(b1)
-
-  MiniTest.expect.equality(bp.hasVerifiedBinding:get(), true)
-  MiniTest.expect.equality(bp.hasHitBinding:get(), false)
-
-  -- Add hit binding
-  local b2 = graph:insert("BreakpointBinding", { uri = "bb:2", verified = true, hit = true })
-  bp.bindings:link(b2)
-
-  MiniTest.expect.equality(bp.hasHitBinding:get(), true)
-end
 
 -- =============================================================================
 -- Entity constructor tests

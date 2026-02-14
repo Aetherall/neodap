@@ -1,6 +1,6 @@
 -- Verify: nodes show consistent icon state
 -- Semantic: A node shows expanded (◉) if any edge is expanded (open).
--- Sessions is collapsed by default, Targets is eager (expanded).
+-- Configs is eager but with no active configs, it should be collapsed.
 
 local MiniTest = require("mini.test")
 local T = MiniTest.new_set()
@@ -15,23 +15,23 @@ T["empty node expansion"]["shows consistent collapsed icon"] = function()
   child.cmd('lua require("neodap").setup()')
   child.cmd('lua require("neodap").use(require("neodap.plugins.tree_buffer"))')
 
-  -- Open tree at debugger - Sessions has eager=true but no sessions
+  -- Open tree at debugger - Configs has eager=true but no active configs
   child.cmd("edit dap://tree/@debugger")
   vim.loop.sleep(100)
 
-  -- Capture the Sessions line multiple times to check consistency
+  -- Capture the Configs line multiple times to check consistency
   local results = {}
   for i = 1, 5 do
     child.cmd("redraw")
     local lines = child.api.nvim_buf_get_lines(0, 0, 5, false)
 
-    -- Find the Sessions line and check its icon
+    -- Find the Configs line and check its icon
     for _, line in ipairs(lines) do
-      if line:match("Sessions") then
-        -- Check for expanded (◉) or collapsed (○) icon before "Sessions"
-        if line:match("◉ Sessions") then
+      if line:match("Configs") then
+        -- Check for expanded (◉) or collapsed (○) icon before "Configs"
+        if line:match("◉ Configs") then
           table.insert(results, "expanded")
-        elseif line:match("○ Sessions") then
+        elseif line:match("○ Configs") then
           table.insert(results, "collapsed")
         else
           table.insert(results, "unknown")
@@ -54,9 +54,9 @@ T["empty node expansion"]["shows consistent collapsed icon"] = function()
         i, state, first, table.concat(results, ", ")))
   end
 
-  -- Sessions is collapsed by default (not eager)
-  MiniTest.expect.equality(first, "collapsed",
-    string.format("Expected 'collapsed' for Sessions (not eager), got %s", first))
+  -- Configs is eagerly expanded (even when empty, the inline edges are expanded)
+  MiniTest.expect.equality(first, "expanded",
+    string.format("Expected 'expanded' for Configs (eager edges), got %s", first))
 end
 
 T["empty node expansion"]["consistent across instances"] = function()
@@ -76,10 +76,10 @@ T["empty node expansion"]["consistent across instances"] = function()
     local lines = child.api.nvim_buf_get_lines(0, 0, 5, false)
 
     for _, line in ipairs(lines) do
-      if line:match("Sessions") then
-        if line:match("◉ Sessions") then
+      if line:match("Configs") then
+        if line:match("◉ Configs") then
           table.insert(results, "expanded")
-        elseif line:match("○ Sessions") then
+        elseif line:match("○ Configs") then
           table.insert(results, "collapsed")
         else
           table.insert(results, "unknown")
@@ -99,9 +99,9 @@ T["empty node expansion"]["consistent across instances"] = function()
         i, state, first, table.concat(results, ", ")))
   end
 
-  -- Sessions is collapsed by default (not eager)
-  MiniTest.expect.equality(first, "collapsed",
-    string.format("Expected 'collapsed' for Sessions (not eager), got %s", first))
+  -- Configs is eagerly expanded (even when empty, the inline edges are expanded)
+  MiniTest.expect.equality(first, "expanded",
+    string.format("Expected 'expanded' for Configs (eager edges), got %s", first))
 end
 
 return T

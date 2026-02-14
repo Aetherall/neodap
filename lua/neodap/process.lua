@@ -51,14 +51,14 @@ function M.spawn(opts)
     cwd = opts.cwd,
     env = opts.env,
     stdin = true,
-    stdout = function(err, data)
+    stdout = function(_err, data)
       if data then
         for _, cb in ipairs(data_callbacks) do
           cb(data)
         end
       end
     end,
-    stderr = function(err, data)
+    stderr = function(_err, data)
       if data then
         for _, cb in ipairs(stderr_callbacks) do
           cb(data)

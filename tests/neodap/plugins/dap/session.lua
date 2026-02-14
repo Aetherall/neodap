@@ -42,10 +42,13 @@ return harness.integration("session", function(T, ctx)
     h:cmd("DapFocus /sessions/threads/stacks[0]/frames[0]")
 
     -- Disconnect/terminate and wait for terminated state
+    -- Use absolute URL since @session becomes nil when focus is cleared during termination
+    local index = h.adapter.name == "javascript" and 1 or 0
+    local session_url = string.format("/sessions[%d]", index)
     h:query_call("@session", "terminate")
-    h:wait_field("@session", "state", "terminated")
+    h:wait_field(session_url, "state", "terminated")
 
-    MiniTest.expect.equality(h:query_field("@session", "state"), "terminated")
+    MiniTest.expect.equality(h:query_field(session_url, "state"), "terminated")
   end
 
   T["session receives stopped event with stopOnEntry"] = function()

@@ -1,15 +1,5 @@
 -- Source entity methods for neograph-native
-local Location = require("neodap.location")
-
 return function(Source)
-  ---Get location as Location object (file-only, no line/column, supports virtual sources)
-  ---@return neodap.Location?
-  function Source:location()
-    local uri = self:bufferUri()
-    if not uri then return nil end
-    return Location.new(uri)
-  end
-
   ---Get display name (name or basename of path)
   ---@return string
   function Source:displayName()
@@ -19,13 +9,6 @@ return function(Source)
     end
     local path = self.path:get() or ""
     return path:match("([^/\\]+)$") or path
-  end
-
-  ---Check if key matches this source
-  ---@param key string
-  ---@return boolean
-  function Source:matchKey(key)
-    return self.key:get() == key
   end
 
   ---Check if this source is virtual (needs to be fetched from debug adapter)
@@ -79,11 +62,8 @@ return function(Source)
   function Source:bindingForContext()
     local debugger = self.debugger:get()
     if not debugger then
-      -- Fall back to first binding
-      for binding in self.bindings:iter() do
-        return binding
-      end
-      return nil
+      -- Fall back to first binding (reference rollup)
+      return self.firstBinding:get()
     end
 
     -- Try focused session first
@@ -93,68 +73,29 @@ return function(Source)
       if binding then return binding end
     end
 
-    -- Fall back to first binding
-    for binding in self.bindings:iter() do
-      return binding
-    end
-    return nil
-  end
-
-  ---Iterate over all frames at this source
-  ---@return fun(): any? iterator
-  function Source:iterFrames()
-    return self.frames:iter()
+    -- Fall back to first binding (reference rollup)
+    return self.firstBinding:get()
   end
 
   ---Iterate over active frames at this source (frames in a stack)
+  ---Uses the pre-materialized activeFrames collection from schema
   ---@return fun(): any? iterator
   function Source:iterActiveFrames()
-    local frame_iter = self.frames:iter()
-    return function()
-      for frame in frame_iter do
-        if frame:isActive() then
-          return frame
-        end
-      end
-      return nil
-    end
-  end
-
-  ---Iterate over top frames at this source (index 0 in active stacks)
-  ---@return fun(): any? iterator
-  function Source:iterTopFrames()
-    local frame_iter = self.frames:iter()
-    return function()
-      for frame in frame_iter do
-        if frame:isActive() and frame:isTop() then
-          return frame
-        end
-      end
-      return nil
-    end
-  end
-
-  ---Get all active frames at a specific line
-  ---@param line number Line number
-  ---@return any[] frames Array of frames at this line
-  function Source:framesAtLine(line)
-    local result = {}
-    for frame in self:iterActiveFrames() do
-      if frame.line:get() == line then
-        table.insert(result, frame)
-      end
-    end
-    return result
+    return self.activeFrames:iter()
   end
 
   ---Check if there are any active frames at a specific line
+  ---Uses by_active_line compound index on Source.frames for O(1) lookup
   ---@param line number Line number
   ---@return boolean
   function Source:hasFrameAtLine(line)
-    for frame in self:iterActiveFrames() do
-      if frame.line:get() == line then
-        return true
-      end
+    for _ in self.frames:filter({
+      filters = {
+        { field = "active", op = "eq", value = true },
+        { field = "line", op = "eq", value = line },
+      }
+    }):iter() do
+      return true
     end
     return false
   end

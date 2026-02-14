@@ -26,13 +26,19 @@ local function setup(api, debugger, await_adjust, candidates_at, disambiguate)
     return a.wait(function(cb) disambiguate(candidates, adj, action, cb) end)
   end
 
-  function api.set_condition(loc, condition)
-    local bp
+  ---Find breakpoint, dispatching sync/async based on location precision
+  ---@param loc neodap.Location
+  ---@param action string
+  ---@return neodap.entities.Breakpoint|nil|false
+  local function find_bp(loc, action)
     if loc:is_point() or not debugger:supportsBreakpointLocations() then
-      bp = find_bp_sync(loc, "set_condition")
-    else
-      bp = find_bp_async(loc, "set_condition")
+      return find_bp_sync(loc, action)
     end
+    return find_bp_async(loc, action)
+  end
+
+  function api.set_condition(loc, condition)
+    local bp = find_bp(loc, "set_condition")
     if bp == false then return end
     if not bp then api.add(loc, { condition = condition }); return end
     bp:update({ condition = condition })
@@ -41,12 +47,7 @@ local function setup(api, debugger, await_adjust, candidates_at, disambiguate)
   api.set_condition = a.fn(api.set_condition)
 
   function api.set_log_message(loc, message)
-    local bp
-    if loc:is_point() or not debugger:supportsBreakpointLocations() then
-      bp = find_bp_sync(loc, "set_log_message")
-    else
-      bp = find_bp_async(loc, "set_log_message")
-    end
+    local bp = find_bp(loc, "set_log_message")
     if bp == false then return end
     if not bp then api.add(loc, { logMessage = message }); return end
     bp:update({ logMessage = message })
@@ -55,12 +56,7 @@ local function setup(api, debugger, await_adjust, candidates_at, disambiguate)
   api.set_log_message = a.fn(api.set_log_message)
 
   function api.enable(loc)
-    local bp
-    if loc:is_point() or not debugger:supportsBreakpointLocations() then
-      bp = find_bp_sync(loc, "enable")
-    else
-      bp = find_bp_async(loc, "enable")
-    end
+    local bp = find_bp(loc, "enable")
     if not bp then return end
     bp:enable()
     bp:sync()
@@ -68,12 +64,7 @@ local function setup(api, debugger, await_adjust, candidates_at, disambiguate)
   api.enable = a.fn(api.enable)
 
   function api.disable(loc)
-    local bp
-    if loc:is_point() or not debugger:supportsBreakpointLocations() then
-      bp = find_bp_sync(loc, "disable")
-    else
-      bp = find_bp_async(loc, "disable")
-    end
+    local bp = find_bp(loc, "disable")
     if not bp then return end
     bp:disable()
     bp:sync()

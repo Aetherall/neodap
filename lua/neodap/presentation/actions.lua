@@ -5,9 +5,28 @@
 -- multi-step operations from keybinds.lua, telescope.lua, and *_cmd.lua.
 
 local navigate = require("neodap.plugins.utils.navigate")
+local normalize = require("neodap.utils").normalize
 local log = require("neodap.logger")
 
 local M = {}
+
+-- Shared helpers to reduce duplication across actions
+
+local function sync_breakpoints(binding)
+  local sb = binding.sourceBinding:get()
+  if sb then sb:syncBreakpoints() end
+end
+
+local function sync_exception_filters(binding)
+  local session = binding.session and binding.session:get()
+  if session then session:syncExceptionFilters() end
+end
+
+local function goto_entity_source(entity)
+  local src = entity.source:get()
+  if not src then return end
+  src:open({ line = entity.line:get() or 1, column = entity.column:get() })
+end
 
 ---@param debugger table
 function M.register(debugger)
@@ -24,22 +43,17 @@ function M.register(debugger)
 
   ra(debugger, "toggle", "BreakpointBinding", function(binding)
     binding:toggle()
-    local sb = binding.sourceBinding:get()
-    if sb then sb:syncBreakpoints() end
+    sync_breakpoints(binding)
   end)
 
   ra(debugger, "toggle", "ExceptionFilterBinding", function(binding)
     binding:toggle()
-    local session = binding.session and binding.session:get()
-    if session then session:syncExceptionFilters() end
+    sync_exception_filters(binding)
   end)
 
   ra(debugger, "toggle", "ExceptionFilter", function(ef)
     ef:toggle()
-    for binding in ef.bindings:iter() do
-      local session = binding.session and binding.session:get()
-      if session then session:syncExceptionFilters() end
-    end
+    ef:syncAllSessions()
   end)
 
   -- ======================================================================
@@ -58,14 +72,12 @@ function M.register(debugger)
 
   ra(debugger, "enable", "ExceptionFilterBinding", function(binding)
     if not binding:getEffectiveEnabled() then binding:toggle() end
-    local session = binding.session and binding.session:get()
-    if session then session:syncExceptionFilters() end
+    sync_exception_filters(binding)
   end)
 
   ra(debugger, "disable", "ExceptionFilterBinding", function(binding)
     if binding:getEffectiveEnabled() then binding:toggle() end
-    local session = binding.session and binding.session:get()
-    if session then session:syncExceptionFilters() end
+    sync_exception_filters(binding)
   end)
 
   -- ======================================================================
@@ -73,7 +85,9 @@ function M.register(debugger)
   -- ======================================================================
 
   ra(debugger, "remove", "Breakpoint", function(bp)
+    local source = bp.source:get()
     bp:remove()
+    if source then source:syncBreakpoints() end
   end)
 
   -- ======================================================================
@@ -90,6 +104,46 @@ function M.register(debugger)
 
   ra(debugger, "focus", "Thread", function(thread)
     debugger.ctx:focus(thread.uri:get())
+  end)
+
+  -- ======================================================================
+  -- goto_source (open source location in a suitable window)
+  -- ======================================================================
+
+  ra(debugger, "goto_source", "Frame", goto_entity_source)
+  ra(debugger, "goto_source", "Breakpoint", goto_entity_source)
+
+  -- ======================================================================
+  -- Thread lifecycle
+  -- ======================================================================
+
+  ra(debugger, "continue", "Thread", function(thread) thread:continue() end)
+  ra(debugger, "pause", "Thread", function(thread) thread:pause() end)
+  ra(debugger, "step_over", "Thread", function(thread) thread:stepOver() end)
+  ra(debugger, "step_in", "Thread", function(thread) thread:stepIn() end)
+  ra(debugger, "step_out", "Thread", function(thread) thread:stepOut() end)
+
+  -- ======================================================================
+  -- Session / Config lifecycle
+  -- ======================================================================
+
+  ra(debugger, "terminate", "Session", function(session) session:terminate() end)
+  ra(debugger, "terminate", "Config", function(config) config:terminate() end)
+  ra(debugger, "disconnect", "Session", function(session) session:disconnect() end)
+
+  -- ======================================================================
+  -- Scope refresh
+  -- ======================================================================
+
+  ra(debugger, "refresh", "Scope", function(scope) scope:fetchVariables() end)
+
+  -- ======================================================================
+  -- Config view mode
+  -- ======================================================================
+
+  ra(debugger, "toggle_view_mode", "Config", function(cfg)
+    local new_mode = cfg:toggleViewMode()
+    vim.notify("Config view: " .. new_mode, vim.log.levels.INFO)
   end)
 
   -- ======================================================================
@@ -134,8 +188,7 @@ function M.register(debugger)
     vim.ui.input({ prompt = "Condition (override): ", default = current }, function(input)
       if input == nil then return end
       binding:update({ condition = input ~= "" and input or vim.NIL })
-      local sb = binding.sourceBinding:get()
-      if sb then sb:syncBreakpoints() end
+      sync_breakpoints(binding)
     end)
   end)
 
@@ -144,13 +197,11 @@ function M.register(debugger)
       log:warn("This filter does not support conditions")
       return
     end
-    local current = binding.condition:get()
-    if current == vim.NIL then current = nil end
+    local current = normalize(binding.condition:get())
     vim.ui.input({ prompt = "Exception condition: ", default = current or "" }, function(input)
       if input == nil then return end
       binding:update({ condition = input ~= "" and input or vim.NIL })
-      local session = binding.session and binding.session:get()
-      if session then session:syncExceptionFilters() end
+      sync_exception_filters(binding)
     end)
   end)
 
@@ -171,8 +222,7 @@ function M.register(debugger)
     vim.ui.input({ prompt = "Hit condition (override): ", default = current }, function(input)
       if input == nil then return end
       binding:update({ hitCondition = input ~= "" and input or vim.NIL })
-      local sb = binding.sourceBinding:get()
-      if sb then sb:syncBreakpoints() end
+      sync_breakpoints(binding)
     end)
   end)
 
@@ -193,8 +243,7 @@ function M.register(debugger)
     vim.ui.input({ prompt = "Log message (override): ", default = current }, function(input)
       if input == nil then return end
       binding:update({ logMessage = input ~= "" and input or vim.NIL })
-      local sb = binding.sourceBinding:get()
-      if sb then sb:syncBreakpoints() end
+      sync_breakpoints(binding)
     end)
   end)
 
@@ -205,15 +254,13 @@ function M.register(debugger)
   ra(debugger, "clear_override", "BreakpointBinding", function(binding)
     if not binding:hasOverride() then return end
     binding:clearOverride()
-    local sb = binding.sourceBinding:get()
-    if sb then sb:syncBreakpoints() end
+    sync_breakpoints(binding)
   end)
 
   ra(debugger, "clear_override", "ExceptionFilterBinding", function(binding)
     if not binding:hasOverride() then return end
     binding:clearOverride()
-    local session = binding.session and binding.session:get()
-    if session then session:syncExceptionFilters() end
+    sync_exception_filters(binding)
   end)
 
   -- ======================================================================

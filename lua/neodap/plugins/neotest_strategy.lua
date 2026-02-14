@@ -9,7 +9,6 @@
 
 local nio = require("nio")
 local dap_context = require("neodap.plugins.dap.context")
-local a = require("neodap.async")
 
 ---@class neodap.plugins.neotest_strategy.Config
 ---@field polyfill? boolean Replace neotest's "dap" strategy with neodap (default: false)

@@ -100,7 +100,7 @@ return function(debugger, config)
     end
 
     -- Write header
-    local config_name = session.configName:get() or "unknown"
+    local config_name = session.name:get() or "unknown"
     file:write(string.format("-- DAP Log for session %s (%s)\n", session_id, config_name))
     file:write(string.format("-- Started: %s\n", timestamp()))
     file:write(string.format("-- Log file: %s\n\n", log_path))
@@ -214,6 +214,10 @@ return function(debugger, config)
     end
     api.open(session)
   end, { desc = "Open DAP protocol log for focused session" })
+
+  function api.cleanup()
+    pcall(vim.api.nvim_del_user_command, "DapLog")
+  end
 
   return api
 end

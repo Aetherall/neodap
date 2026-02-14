@@ -223,6 +223,8 @@ end
 -- Shared helpers
 -- ========================================================================
 
+local unwrap = require("neodap.utils").normalize
+
 ---Helper: count text ` (N)` or ` (enabled/total)`
 local function count_text(count)
   if not count or count == 0 then return nil end
@@ -256,22 +258,20 @@ function M.register(debugger)
     return { text = state, hl = icon.hl }
   end)
 
+  ---Check if session is a child leaf (has parent and is leaf)
+  local function is_child_leaf(session)
+    return (session.parent and session.parent:get()) and (session.leaf and session.leaf:get())
+  end
+
   rc(debugger, "root_session_name", "Session", function(session)
-    local has_parent = session.parent and session.parent:get()
-    local is_leaf = session.leaf and session.leaf:get()
-    if not (has_parent and is_leaf) then return nil end
+    if not is_child_leaf(session) then return nil end
     local root = session:rootAncestor()
     return { text = root and root.name:get() or "?", hl = "DapSession" }
   end)
 
   rc(debugger, "chain_arrow", "Session", function(session)
-    local has_parent = session.parent and session.parent:get()
-    local is_leaf = session.leaf and session.leaf:get()
-    if not (has_parent and is_leaf) then return nil end
-    local depth = 0
-    local s = session
-    while s.parent and s.parent:get() do depth = depth + 1; s = s.parent:get() end
-    return { text = " " .. string.rep(">", depth) .. " ", hl = "DapComment" }
+    if not is_child_leaf(session) then return nil end
+    return { text = " " .. string.rep(">", session:depth()) .. " ", hl = "DapComment" }
   end)
 
   rc(debugger, "session_name", "Session", function(session)
@@ -299,20 +299,21 @@ function M.register(debugger)
   ---Counter showing [index/total] for multi-session debugging
   ---Only shows when there are 2+ stopped sessions
   rc(debugger, "stopped_counter", "Session", function(session)
-    -- Count stopped sessions and find this session's index
-    local stopped_sessions = {}
-    local session_index = 0
-    debugger.sessions:each(function(s)
-      if s.state:get() == "stopped" then
-        table.insert(stopped_sessions, s)
-        if s == session then
-          session_index = #stopped_sessions
-        end
-      end
-    end)
-
-    local total = #stopped_sessions
+    local total = debugger.stoppedSessionCount:get() or 0
     if total <= 1 then return nil end
+
+    -- Find ordinal index of this session among stopped sessions (uses by_state index)
+    local session_index = 0
+    local i = 0
+    for s in debugger.sessions:filter({
+      filters = {{ field = "state", op = "eq", value = "stopped" }}
+    }):iter() do
+      i = i + 1
+      if s == session then
+        session_index = i
+        break
+      end
+    end
 
     local index_str = session_index > 0 and tostring(session_index) or "?"
     return { text = "[" .. index_str .. "/" .. total .. "]", hl = "DapComment" }
@@ -359,8 +360,7 @@ function M.register(debugger)
 
   rc(debugger, "title", "Frame", function(frame)
     local name = frame.name:get() or "?"
-    local hint = frame.presentationHint:get()
-    if hint == vim.NIL then hint = nil end
+    local hint = unwrap(frame.presentationHint:get())
     local focused = frame.focused and frame.focused:get()
     local hl
     if hint and FRAME_HL[hint] then
@@ -384,8 +384,7 @@ function M.register(debugger)
   end)
 
   rc(debugger, "depth_title", "Frame", function(frame)
-    local hint = frame.presentationHint:get()
-    if hint == vim.NIL then hint = nil end
+    local hint = unwrap(frame.presentationHint:get())
     local focused = frame.focused and frame.focused:get()
     local hl
     if hint == "label" then
@@ -405,8 +404,7 @@ function M.register(debugger)
   end)
 
   rc(debugger, "source_name", "Frame", function(frame)
-    local hint = frame.presentationHint:get()
-    if hint == vim.NIL then hint = nil end
+    local hint = unwrap(frame.presentationHint:get())
     if hint == "label" then return nil end
 
     local source = frame.source and frame.source:get()
@@ -416,8 +414,7 @@ function M.register(debugger)
     local name = path and path:match("[^/\\]+$") or (source.name and source.name:get())
     if not name then return nil end
 
-    local src_hint = source.presentationHint and source.presentationHint:get()
-    if src_hint == vim.NIL then src_hint = nil end
+    local src_hint = unwrap(source.presentationHint and source.presentationHint:get())
 
     return { text = name, hl = SOURCE_HL[src_hint] or SOURCE_HL.normal }
   end)
@@ -445,7 +442,7 @@ function M.register(debugger)
   end)
 
   rc(debugger, "value", "Variable", function(var)
-    local val = var:displayValue():gsub("\n", " ")
+    local val = var:displayValue()
     return { text = val, hl = "DapVarValue" }
   end)
 
@@ -517,8 +514,7 @@ function M.register(debugger)
     local verified = binding:isVerified()
     local actual_line = binding.actualLine and binding.actualLine:get()
 
-    local enabled_override = binding.enabled:get()
-    if enabled_override == vim.NIL then enabled_override = nil end
+    local enabled_override = unwrap(binding.enabled:get())
     local has_override = enabled_override ~= nil
 
     local effective_enabled = binding:getEffectiveEnabled()
@@ -581,8 +577,7 @@ function M.register(debugger)
   end)
 
   rc(debugger, "description", "ExceptionFilter", function(ef)
-    local desc = ef.description and ef.description:get()
-    if desc == vim.NIL then desc = nil end
+    local desc = unwrap(ef.description and ef.description:get())
     if not desc or desc == "" then return nil end
     return { text = desc, hl = "DapComment" }
   end)
@@ -614,8 +609,7 @@ function M.register(debugger)
   end)
 
   rc(debugger, "condition", "ExceptionFilterBinding", function(binding)
-    local cond = binding.condition:get()
-    if cond == vim.NIL then cond = nil end
+    local cond = unwrap(binding.condition:get())
     if not cond or cond == "" then return nil end
     return { text = cond, hl = "DapCondition" }
   end)
@@ -628,9 +622,7 @@ function M.register(debugger)
   end)
 
   rc(debugger, "override_hint", "ExceptionFilterBinding", function(binding)
-    local enabled_override = binding.enabled:get()
-    if enabled_override == vim.NIL then enabled_override = nil end
-    if enabled_override == nil then return nil end
+    if unwrap(binding.enabled:get()) == nil then return nil end
     return { text = "(override)", hl = "DapComment" }
   end)
 
@@ -639,16 +631,14 @@ function M.register(debugger)
   -- ======================================================================
 
   rc(debugger, "category", "Output", function(output)
-    local cat = output.category and output.category:get()
-    if cat == vim.NIL then cat = nil end
+    local cat = unwrap(output.category and output.category:get())
     if not CAT_HL[cat] then return nil end
     return { text = "●", hl = CAT_HL[cat] }
   end)
 
   rc(debugger, "title", "Output", function(output)
     local text = (output.text and output.text:get() or ""):gsub("\n", " "):gsub("%s+", " ")
-    local cat = output.category and output.category:get()
-    if cat == vim.NIL then cat = nil end
+    local cat = unwrap(output.category and output.category:get())
     local hl = CAT_TEXT_HL[cat] or "DapComment"
     -- Apply syntax highlighting for stdout/stderr output (not console echo)
     if cat == "stdout" or cat == "stderr" then
@@ -729,7 +719,7 @@ function M.register(debugger)
   end)
   rc(debugger, "count", "Configs", function(configs_group)
     local d = configs_group.debugger and configs_group.debugger:get()
-    return count_text(d and d.activeConfigCount and d.activeConfigCount:get() or 0)
+    return count_text(d and d.configCount and d.configCount:get() or 0)
   end)
 
   -- Legacy: Sessions group
@@ -754,12 +744,14 @@ function M.register(debugger)
     return { text = "Exception Filters", hl = "DapTreeGroup" }
   end)
   rc(debugger, "count", "ExceptionFilterBindings", function(efb_group)
-    local count, enabled = 0, 0
+    local count = efb_group.exceptionFilterBindingCount and efb_group.exceptionFilterBindingCount:get() or 0
+    if count == 0 then return count_text(0) end
+    -- Enabled count requires getEffectiveEnabled() (dynamic method, not filterable)
+    local enabled = 0
     for binding in efb_group.exceptionFilterBindings:iter() do
-      count = count + 1
       if binding:getEffectiveEnabled() then enabled = enabled + 1 end
     end
-    return count_text(count > 0 and (tostring(enabled) .. "/" .. tostring(count)) or 0)
+    return count_text(tostring(enabled) .. "/" .. tostring(count))
   end)
 
   rc(debugger, "title", "ExceptionFilters", function()

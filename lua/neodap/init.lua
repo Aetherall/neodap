@@ -1,6 +1,5 @@
 local neo = require("neograph")
 local scoped = require("neodap.scoped")
-local a = require("neodap.async")
 local schema = require("neodap.schema")
 local entities = require("neodap.entities")
 local uri = require("neodap.uri")
@@ -44,35 +43,16 @@ local function create_debugger_instance(graph, parent_scope)
   -- Attach scope to debugger for cleanup
   debugger._scope = debugger_scope
 
-  -- Create breakpoints group (UI node for breakpoints)
-  local breakpointsGroup = entities.Breakpoints.new(graph, {
-    uri = uri.breakpointsGroup(),
-  })
-  debugger.breakpointsGroups:link(breakpointsGroup)
-
-  -- Create sessions group (UI node for sessions)
-  local sessionsGroup = entities.Sessions.new(graph, {
-    uri = uri.sessionsGroup(),
-  })
-  debugger.sessionsGroups:link(sessionsGroup)
-
-  -- Create targets group (UI node for leaf sessions / debug targets)
-  local targetsGroup = entities.Targets.new(graph, {
-    uri = uri.targets(),
-  })
-  debugger.targets:link(targetsGroup)
-
-  -- Create configs group (UI node for Config instances)
-  local configsGroup = entities.Configs.new(graph, {
-    uri = uri.configsGroup(),
-  })
-  debugger.configsGroups:link(configsGroup)
-
-  -- Create exception filters group (UI node for exception filters)
-  local exceptionFiltersGroup = entities.ExceptionFiltersGroup.new(graph, {
-    uri = uri.exceptionFiltersGroup(),
-  })
-  debugger.exceptionFiltersGroups:link(exceptionFiltersGroup)
+  -- Create UI group entities (one-to-one intermediate nodes for tree display)
+  for _, spec in ipairs({
+    { entities.Breakpoints,           uri.breakpointsGroup(),      "breakpointsGroups" },
+    { entities.Sessions,              uri.sessionsGroup(),         "sessionsGroups" },
+    { entities.Targets,               uri.targets(),               "targets" },
+    { entities.Configs,               uri.configsGroup(),          "configsGroups" },
+    { entities.ExceptionFiltersGroup, uri.exceptionFiltersGroup(), "exceptionFiltersGroups" },
+  }) do
+    debugger[spec[3]]:link(spec[1].new(graph, { uri = spec[2] }))
+  end
 
   ---Use a plugin with this debugger (scoped)
   ---@param plugin neodap.Plugin

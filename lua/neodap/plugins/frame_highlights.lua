@@ -42,9 +42,7 @@ return function(debugger, config)
       return "DapFrameContext"
     end
     local index = math.min(frame.index:get() or 0, config.max_index)
-    local stack = frame.stack:get()
-    local thread = stack and stack.thread:get()
-    local session = thread and thread.session:get()
+    local session = frame:session()
     if context_session and session and session.uri:get() == context_session.uri:get() then
       return "DapFrameSessionTop" .. index
     end
@@ -58,24 +56,16 @@ return function(debugger, config)
     local buf_path = vim.api.nvim_buf_get_name(bufnr)
     if buf_path == "" then return end
 
-    -- Find source matching this buffer
-    local source
-    for s in debugger.sources:iter() do
-      if s:bufferUri() == buf_path then source = s; break end
-    end
+    -- Find source matching this buffer (O(1) indexed lookup)
+    local source = debugger:findSourceByPath(buf_path)
     if not source then return end
 
     vim.b[bufnr].neodap_frame_highlights = true
-    local buffer_scope = scoped.createScope(plugin_scope)
+    local buffer_scope = scoped.bufferScope(bufnr, plugin_scope)
 
     buffer_scope:onCleanup(function()
       pcall(vim.api.nvim_buf_clear_namespace, bufnr, ns, 0, -1)
     end)
-
-    vim.api.nvim_create_autocmd("BufWipeout", {
-      buffer = bufnr, once = true,
-      callback = function() buffer_scope:cancel() end,
-    })
 
     scoped.withScope(buffer_scope, function()
       source.activeFrames:each(function(frame)

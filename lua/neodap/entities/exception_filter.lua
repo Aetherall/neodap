@@ -12,16 +12,15 @@ return function(ExceptionFilter)
     self:update({ defaultEnabled = not self:isEnabled() })
   end
 
-  ---Check if filter supports conditions
-  ---@return boolean
-  function ExceptionFilter:canHaveCondition()
-    return self.supportsCondition:get() == true
-  end
-
-  ---Check if key matches this filter
-  ---@param key string
-  ---@return boolean
-  function ExceptionFilter:matchKey(key)
-    return self.filterId:get() == key
+  ---Sync all sessions that have bindings to this filter
+  ---Iterates through all ExceptionFilterBindings and calls syncExceptionFilters
+  ---on each bound session.
+  function ExceptionFilter:syncAllSessions()
+    for binding in self.bindings:iter() do
+      local session = binding.session and binding.session:get()
+      if session then
+        session:syncExceptionFilters()
+      end
+    end
   end
 end

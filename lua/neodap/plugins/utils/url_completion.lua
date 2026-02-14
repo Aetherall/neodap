@@ -298,7 +298,8 @@ function M.key_completions(debugger, source_type, edge_name)
       end
     end
   elseif source_type == "Stack" then
-    local stack = debugger.ctx.stack:get()
+    local frame = debugger.ctx.frame:get()
+    local stack = frame and frame.stack:get()
     if stack then
       if edge_name == "frames" then
         for frame in stack.frames:iter() do

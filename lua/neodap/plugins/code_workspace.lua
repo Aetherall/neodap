@@ -20,10 +20,10 @@ local neoword = require("neoword")
 ---@return number
 local function get_next_config_index(dbg, name)
   local max_index = 0
-  for cfg in dbg.configs:iter() do
-    if cfg.name:get() == name then
-      max_index = math.max(max_index, cfg.index:get() or 0)
-    end
+  for cfg in dbg.configs:filter({
+    filters = {{ field = "name", op = "eq", value = name }}
+  }):iter() do
+    max_index = math.max(max_index, cfg.index:get() or 0)
   end
   return max_index + 1
 end

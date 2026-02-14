@@ -8,21 +8,13 @@ local Session = entities.Session
 local Debugger = entities.Debugger
 local get_dap_session = context.get_dap_session
 
----Update Config state after session terminates
----@param session neodap.entities.Session
-local function update_config_state(session)
-  local cfg = session.config:get()
-  if cfg then
-    cfg:updateState()
-  end
-end
-
 function Session:disconnect()
   local dap_session = get_dap_session(self)
   if not dap_session then error("No DAP session", 0) end
   a.wait(function(cb) dap_session:disconnect(cb) end)
   self:update({ state = "terminated" })
-  update_config_state(self)
+  local cfg = self.config:get()
+  if cfg then cfg:updateState() end
 end
 Session.disconnect = a.fn(Session.disconnect)
 
@@ -34,9 +26,19 @@ function Session:terminate()
   context.mark_terminating(dap_session)
   a.wait(function(cb) dap_session:terminate(cb) end)
   self:update({ state = "terminated" })
-  update_config_state(self)
+  local cfg = self.config:get()
+  if cfg then cfg:updateState() end
 end
 Session.terminate = a.fn(Session.terminate)
+
+---Clear hit state on all breakpoint bindings for this session
+function Session:clearHitBreakpoints()
+  self:forEachBreakpointBinding(function(bpb)
+    if bpb.hit:get() then
+      bpb:update({ hit = false })
+    end
+  end)
+end
 
 function Session:supportsRestart()
   local dap_session = get_dap_session(self)

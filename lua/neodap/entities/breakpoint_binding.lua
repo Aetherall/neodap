@@ -1,46 +1,21 @@
 -- BreakpointBinding entity methods for neograph-native
-local Location = require("neodap.location")
+local normalize = require("neodap.utils").normalize
 
 return function(BreakpointBinding)
-  -- Helper to normalize vim.NIL to nil
-  local function normalize(value)
-    if value == vim.NIL then return nil end
-    return value
+
+  ---Get effective value for a field: binding override wins, then falls back to breakpoint
+  ---@param self table BreakpointBinding entity
+  ---@param field string Property name (e.g., "condition", "hitCondition", "logMessage")
+  ---@return any?
+  local function getEffective(self, field)
+    local override = normalize(self[field]:get())
+    if override ~= nil then return override end
+    local bp = self.breakpoint:get()
+    return bp and normalize(bp[field]:get()) or nil
   end
 
   function BreakpointBinding:isVerified()
     return self.verified:get() == true
-  end
-
-  function BreakpointBinding:isPending()
-    return self.verified:get() ~= true
-  end
-
-  function BreakpointBinding:isMoved()
-    local actualLine = self.actualLine:get()
-    if not actualLine or actualLine == 0 then return false end
-    -- Use rollup for one-to-one access
-    local breakpoint = self.breakpoint:get()
-    if not breakpoint then return false end
-    return actualLine ~= breakpoint.line:get()
-  end
-
-  ---Get actual location as Location object (supports virtual sources via bufferUri)
-  ---@return neodap.Location?
-  function BreakpointBinding:actualLocation()
-    -- Use rollups for one-to-one access
-    local bp = self.breakpoint:get()
-    if not bp then return nil end
-    local source = bp.source:get()
-    if not source then return nil end
-    local uri = source:bufferUri()
-    if not uri then return nil end
-    return Location.new(uri, self.actualLine:get(), self.actualColumn:get())
-  end
-
-  function BreakpointBinding:matchKey(key)
-    local bp = self.breakpoint:get()
-    return bp and bp:matchKey(key)
   end
 
   ---Get effective enabled state (binding override or global default)
@@ -49,35 +24,13 @@ return function(BreakpointBinding)
     local override = normalize(self.enabled:get())
     if override ~= nil then return override end
     local bp = self.breakpoint:get()
-    return bp and bp:isEnabled() or true
+    if not bp then return true end
+    return bp:isEnabled()
   end
 
-  ---Get effective condition (binding override or global default)
-  ---@return string?
-  function BreakpointBinding:getEffectiveCondition()
-    local override = normalize(self.condition:get())
-    if override ~= nil then return override end
-    local bp = self.breakpoint:get()
-    return bp and normalize(bp.condition:get()) or nil
-  end
-
-  ---Get effective hit condition (binding override or global default)
-  ---@return string?
-  function BreakpointBinding:getEffectiveHitCondition()
-    local override = normalize(self.hitCondition:get())
-    if override ~= nil then return override end
-    local bp = self.breakpoint:get()
-    return bp and normalize(bp.hitCondition:get()) or nil
-  end
-
-  ---Get effective log message (binding override or global default)
-  ---@return string?
-  function BreakpointBinding:getEffectiveLogMessage()
-    local override = normalize(self.logMessage:get())
-    if override ~= nil then return override end
-    local bp = self.breakpoint:get()
-    return bp and normalize(bp.logMessage:get()) or nil
-  end
+  function BreakpointBinding:getEffectiveCondition() return getEffective(self, "condition") end
+  function BreakpointBinding:getEffectiveHitCondition() return getEffective(self, "hitCondition") end
+  function BreakpointBinding:getEffectiveLogMessage() return getEffective(self, "logMessage") end
 
   ---Toggle enabled state (creates override)
   function BreakpointBinding:toggle()

@@ -215,6 +215,17 @@ end
 --- Returns nil if invalid
 ---@param uri string
 ---@return { type: string, components: table }?
+---Parse a location string "path:line:column" from right (path may contain colons)
+---@param str string
+---@return string? path, number? line, number? column
+local function parse_location(str)
+  local parts = vim.split(str, ":", { plain = true })
+  if #parts < 3 then return nil end
+  return table.concat({ unpack(parts, 1, #parts - 2) }, ":"),
+         tonumber(parts[#parts - 1]),
+         tonumber(parts[#parts])
+end
+
 function M.parse(uri)
   local type_end = uri:find(":")
   if not type_end then
@@ -285,24 +296,21 @@ function M.parse(uri)
     result.components.name = table.concat({ unpack(parts, 3) }, ":")
   elseif entity_type == "breakpoint" then
     -- breakpoint:{location} - fixed: 0, free-form: location (path:line:column)
-    -- Parse from right: column, line, then path
-    local parts = vim.split(rest, ":", { plain = true })
-    if #parts < 3 then return nil end
-    result.components.column = tonumber(parts[#parts])
-    result.components.line = tonumber(parts[#parts - 1])
-    result.components.path = table.concat({ unpack(parts, 1, #parts - 2) }, ":")
+    local path, line, col = parse_location(rest)
+    if not path then return nil end
+    result.components.path = path
+    result.components.line = line
+    result.components.column = col
   elseif entity_type == "bpbinding" then
     -- bpbinding:{sessionId}:{location} - fixed: 1, free-form: location
     local sep = rest:find(":")
     if not sep then return nil end
     result.components.sessionId = rest:sub(1, sep - 1)
-    local location = rest:sub(sep + 1)
-    -- Parse location from right
-    local parts = vim.split(location, ":", { plain = true })
-    if #parts < 3 then return nil end
-    result.components.column = tonumber(parts[#parts])
-    result.components.line = tonumber(parts[#parts - 1])
-    result.components.path = table.concat({ unpack(parts, 1, #parts - 2) }, ":")
+    local path, line, col = parse_location(rest:sub(sep + 1))
+    if not path then return nil end
+    result.components.path = path
+    result.components.line = line
+    result.components.column = col
   elseif entity_type == "output" then
     -- output:{sessionId}:{seq} - fixed: 2
     local parts = vim.split(rest, ":", { plain = true })

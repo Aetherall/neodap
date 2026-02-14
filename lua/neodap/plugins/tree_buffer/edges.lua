@@ -146,36 +146,36 @@ local CONFIG_TARGETS = {
 ---@return table CONFIGS_GROUP edges
 local function build_configs_group_edges(debugger)
   -- Determine which edge set to use (majority wins, or default to targets)
+  -- Uses by_viewMode index on Debugger.configs for O(1) check
   local use_roots = false
-  if debugger and debugger.activeConfigs then
-    for config in debugger.activeConfigs:iter() do
-      local mode = config.viewMode and config.viewMode:get()
-      if mode == "roots" then
-        use_roots = true
-        break -- Use roots if any config is in roots mode
-      end
+  if debugger and debugger.configs then
+    for _ in debugger.configs:filter({
+      filters = {{ field = "viewMode", op = "eq", value = "roots" }}
+    }):iter() do
+      use_roots = true
+      break
     end
   end
   
   local config_edges = use_roots and CONFIG_ROOTS or CONFIG_TARGETS
   return { debuggers = { inline = true, eager = true, edges = {
-    activeConfigs = { eager = true, edges = config_edges },
+    configs = { eager = true, edges = config_edges },
   }}}
 end
 
 -- Default Configs group (targets view) - used when debugger is not available
 local CONFIGS_GROUP = { debuggers = { inline = true, eager = true, edges = {
-  activeConfigs = { eager = true, edges = CONFIG_TARGETS },
+  configs = { eager = true, edges = CONFIG_TARGETS },
 }}}
 
 -- Legacy: Sessions group (kept for backwards compatibility)
 local SESSIONS_GROUP = { debuggers = { inline = true, edges = {
-  activeConfigs = { eager = true, edges = CONFIG_ROOTS },
+  configs = { eager = true, edges = CONFIG_ROOTS },
 }}}
 
 -- Legacy: Targets group (kept for backwards compatibility)
 local TARGETS = { debuggers = { inline = true, eager = true, edges = {
-  activeConfigs = { eager = true, edges = CONFIG_TARGETS },
+  configs = { eager = true, edges = CONFIG_TARGETS },
 }}}
 
 local by_type = {

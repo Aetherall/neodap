@@ -126,6 +126,22 @@ function M.createScope(parent)
   return Scope.new(parent or M.root())
 end
 
+---Create a child scope tied to a buffer's lifecycle.
+---The scope is automatically cancelled when the buffer is destroyed.
+---@param bufnr number Buffer number
+---@param parent? table Parent scope (defaults to root)
+---@param events? string|string[] Autocmd events to trigger cleanup (default: "BufWipeout")
+---@return table scope
+function M.bufferScope(bufnr, parent, events)
+  local scope = Scope.new(parent or M.root())
+  vim.api.nvim_create_autocmd(events or "BufWipeout", {
+    buffer = bufnr,
+    once = true,
+    callback = function() scope:cancel() end,
+  })
+  return scope
+end
+
 -- =============================================================================
 -- Graph patching - overwrite signal/edge methods
 -- =============================================================================
@@ -181,24 +197,15 @@ local function patch_signal(signal)
 
     local unsub = original_use(self, wrapped_effect)
 
-    -- Register with current scope
-    if scope then
-      scope:onCleanup(function()
-        run_nested_cleanup()
-        if user_cleanup then pcall(user_cleanup) end
-        unsub()
-      end)
+    local function full_cleanup()
+      run_nested_cleanup()
+      if user_cleanup then pcall(user_cleanup) end
+      unsub()
     end
 
-    -- Also register with parent effect if we're nested
+    if scope then scope:onCleanup(full_cleanup) end
     local parent_unsubs = current_effect_unsubs()
-    if parent_unsubs then
-      table.insert(parent_unsubs, function()
-        run_nested_cleanup()
-        if user_cleanup then pcall(user_cleanup) end
-        unsub()
-      end)
-    end
+    if parent_unsubs then table.insert(parent_unsubs, full_cleanup) end
 
     return unsub
   end
@@ -262,6 +269,8 @@ local function patch_edge(edge)
   return edge
 end
 
+local patch_entity -- forward declaration (defined below, used in install_on_graph closures)
+
 -- Hook into graph to patch signals/edges as they're accessed
 local function install_on_graph(graph)
   if patched_graphs[graph] then return graph end
@@ -289,7 +298,7 @@ local function install_on_graph(graph)
 end
 
 -- Patch an entity's signal/edge properties
-function patch_entity(entity)
+patch_entity = function(entity)
   if rawget(entity, "_scoped_patched") then return entity end
 
   -- We need to patch signals and edges lazily as they're accessed
@@ -310,25 +319,19 @@ function patch_entity(entity)
   end
 
   new_mt.__index = function(self, key)
-    -- Get value from original
     local value
     if type(original_index) == "function" then
       value = original_index(self, key)
     elseif type(original_index) == "table" then
       value = original_index[key]
-    else
-      value = nil
     end
 
-    -- If it's a signal or edge, patch it
-    if value ~= nil and type(value) == "table" then
-      if value.use and value.get and not rawget(value, "_scoped_patched") then
-        -- Looks like a signal
-        patch_signal(value)
-      elseif value.each and value.iter and not rawget(value, "_scoped_patched") then
-        -- Looks like an edge
-        patch_edge(value)
-      end
+    if value == nil or type(value) ~= "table" then return value end
+
+    if value.use and value.get and not rawget(value, "_scoped_patched") then
+      patch_signal(value)
+    elseif value.each and value.iter and not rawget(value, "_scoped_patched") then
+      patch_edge(value)
     end
 
     return value

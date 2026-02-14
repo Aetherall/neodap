@@ -31,6 +31,24 @@ local debugger = nil
 -- Plugin scope (set via init)
 local plugin_scope = nil
 
+-- Forward declarations
+local validate_result
+
+---Check if the resolved entity has changed (by URI comparison for single, always true for many)
+---@param reg table Registration config
+---@param old_entity any Previous entity
+---@param new_entity any New entity
+---@return boolean
+local function has_entity_changed(reg, old_entity, new_entity)
+  if reg.cardinality == "many" then return true end
+  local ok, result = pcall(function()
+    local old_uri = old_entity and old_entity.uri and old_entity.uri:get()
+    local new_uri = new_entity and new_entity.uri and new_entity.uri:get()
+    return old_uri ~= new_uri
+  end)
+  return not ok or result
+end
+
 --------------------------------------------------------------------------------
 -- URI Parsing
 --------------------------------------------------------------------------------
@@ -234,59 +252,28 @@ local function setup_buffer(bufnr, scheme, url, options, reg)
     scoped.withScope(buffer_scope, function()
       local prev_entity = initial_entity
       watch:use(function(new_result)
-        -- Apply resolve transform if provided
+        local function apply_change(new_entity)
+          if not has_entity_changed(reg, prev_entity, new_entity) then return end
+          handle_entity_change(bufnr, reg, new_entity, prev_entity)
+          prev_entity = new_entity
+        end
+
         if reg.opts.resolve then
-          -- Run resolve async
           a.run(function()
             return reg.opts.resolve(new_result, options)
           end, function(err, new_entity)
             vim.schedule(function()
               if not vim.api.nvim_buf_is_valid(bufnr) then return end
-              if err then return end -- Resolution failed - keep stale
-
-              -- Check if entity actually changed
-              local changed = false
-              if reg.cardinality == "many" then
-                changed = true
-              else
-                local ok, result = pcall(function()
-                  local old_uri = prev_entity and prev_entity.uri and prev_entity.uri:get()
-                  local new_uri = new_entity and new_entity.uri and new_entity.uri:get()
-                  return old_uri ~= new_uri
-                end)
-                changed = not ok or result
-              end
-
-              if changed then
-                handle_entity_change(bufnr, reg, new_entity, prev_entity)
-                prev_entity = new_entity
-              end
+              if err then return end
+              apply_change(new_entity)
             end)
           end)
         else
           vim.schedule(function()
             if not vim.api.nvim_buf_is_valid(bufnr) then return end
-
             local new_entity, err = validate_result(new_result, reg)
-            if err then return end -- Entity no longer valid - keep stale
-
-            -- Check if entity actually changed
-            local changed = false
-            if reg.cardinality == "many" then
-              changed = true
-            else
-              local ok, result = pcall(function()
-                local old_uri = prev_entity and prev_entity.uri and prev_entity.uri:get()
-                local new_uri = new_entity and new_entity.uri and new_entity.uri:get()
-                return old_uri ~= new_uri
-              end)
-              changed = not ok or result
-            end
-
-            if changed then
-              handle_entity_change(bufnr, reg, new_entity, prev_entity)
-              prev_entity = new_entity
-            end
+            if err then return end
+            apply_change(new_entity)
           end)
         end
       end)
@@ -380,7 +367,7 @@ end
 ---@param reg table Registration config
 ---@return any entity Valid entity or array
 ---@return string? error Error message if validation failed
-function validate_result(result, reg)
+validate_result = function(result, reg)
   if result == nil then
     if reg.opts.optional then
       return nil, nil -- Allow nil when optional

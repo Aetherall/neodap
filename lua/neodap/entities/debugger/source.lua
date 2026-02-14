@@ -3,38 +3,16 @@
 -- Performance note: Sources are indexed by key in the graph schema.
 -- The `by_key` index on Debugger.sources enables O(1) lookup.
 
-local uri_module = require("neodap.uri")
+local uri = require("neodap.uri")
 
----Find source by location (matches by buffer URI)
+---Find a source by a single indexed field (O(1) lookup)
 ---@param self neodap.entities.Debugger
----@param loc neodap.Location Location with path (buffer URI)
+---@param field string Index field name ("key" or "path")
+---@param value string Value to match
 ---@return neodap.entities.Source?
-local function find(self, loc)
-  for source in self.sources:iter() do
-    if source:bufferUri() == loc.path then return source end
-  end
-end
-
----Find source by key (stable identifier, same as path)
----O(1) lookup using graph index
----@param self neodap.entities.Debugger
----@param key string Source key (path or name)
----@return neodap.entities.Source?
-local function find_by_key(self, key)
-  -- Use graph's by_key index for O(1) lookup
-  for source in self.sources:filter({ filters = {{ field = "key", op = "eq", value = key }} }):iter() do
-    return source  -- Return first match
-  end
-end
-
----Find source by path
----@param self neodap.entities.Debugger
----@param path string Source path
----@return neodap.entities.Source?
-local function find_by_path(self, path)
-  -- Use graph's by_path index for O(1) lookup
-  for source in self.sources:filter({ filters = {{ field = "path", op = "eq", value = path }} }):iter() do
-    return source  -- Return first match
+local function find_source_by(self, field, value)
+  for source in self.sources:filter({ filters = {{ field = field, op = "eq", value = value }} }):iter() do
+    return source
   end
 end
 
@@ -46,7 +24,7 @@ local function create(self, loc)
   -- Require inside function to avoid circular dependency
   local Source = require("neodap.entities").Source
   local source = Source.new(self._graph, {
-    uri = uri_module.source(loc.path),
+    uri = uri.source(loc.path),
     key = loc.path,
     path = loc.path,
     name = vim.fn.fnamemodify(loc.path, ":t"),
@@ -61,13 +39,12 @@ end
 ---@return neodap.entities.Source?
 local function get_or_create(self, loc)
   if not loc or not loc.path then return nil end
-  return find(self, loc) or create(self, loc)
+  -- Use indexed lookups (O(1)) instead of linear scan
+  return find_source_by(self, "path", loc.path) or find_source_by(self, "key", loc.path) or create(self, loc)
 end
 
 return function(Debugger)
-  Debugger.findSource = find
-  Debugger.findSourceByKey = find_by_key
-  Debugger.findSourceByPath = find_by_path
-  Debugger.createSource = create
+  function Debugger:findSourceByKey(key) return find_source_by(self, "key", key) end
+  function Debugger:findSourceByPath(path) return find_source_by(self, "path", path) end
   Debugger.getOrCreateSource = get_or_create
 end

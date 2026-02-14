@@ -89,7 +89,10 @@ return function(debugger, config)
     local expr = history[new_index]
     local lines = vim.split(expr, "\n")
     vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
-    vim.api.nvim_win_set_cursor(0, { #lines, #lines[#lines] })
+    local win = vim.fn.bufwinid(bufnr)
+    if win ~= -1 then
+      vim.api.nvim_win_set_cursor(win, { #lines, #lines[#lines] })
+    end
     local frame = entity_buffer.get_entity(bufnr)
     update_frame_indicator(bufnr, frame)
   end

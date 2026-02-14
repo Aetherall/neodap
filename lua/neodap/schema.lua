@@ -7,8 +7,8 @@ local M = {}
   Naming conventions:
   - Edges are plural: `sessions`, `threads`, `frames`
   - Reference rollups are singular: `session`, `thread`, `frame`
-  - Collection rollups are descriptive: `stoppedThreads`, `enabledBreakpoints`
-  - Property rollups are descriptive: `threadCount`, `hasStoppedThread`
+  - Collection rollups are descriptive: `stoppedThreads`, `activeFrames`
+  - Property rollups are descriptive: `threadCount`, `targetCount`
 ]]
 
 M.schema = {
@@ -44,7 +44,6 @@ M.schema = {
         { name = "default", fields = {} },
         { name = "by_leaf", fields = { { name = "leaf" } } },
         { name = "by_isConfigRoot", fields = { { name = "isConfigRoot" } } },
-        { name = "by_state", fields = { { name = "state" } } },
         { name = "by_leaf_state", fields = { { name = "leaf" }, { name = "state" } } },
       },
     },
@@ -60,22 +59,7 @@ M.schema = {
       edge = "sessions",
       filter = { leaf = true },
     },
-    activeTargets = {
-      type = "collection",
-      edge = "sessions",
-      filters = {
-        { field = "leaf", value = true },
-        { field = "state", value = "terminated", op = "ne" },
-      },
-    },
-    stoppedTargets = {
-      type = "collection",
-      edge = "sessions",
-      filters = {
-        { field = "leaf", value = true },
-        { field = "state", value = "stopped" },
-      },
-    },
+    -- REMOVED: activeTargets, stoppedTargets (unused)
 
     -- Rollups: reference
     debugger = { type = "reference", edge = "debuggers" },
@@ -94,22 +78,22 @@ M.schema = {
     },
 
     -- Rollups: property
-    rootCount = { type = "count", edge = "sessions", filter = { isConfigRoot = true } },
+    -- REMOVED: rootCount, activeTargetCount (unused)
     targetCount = { type = "count", edge = "sessions", filter = { leaf = true } },
-    activeTargetCount = {
-      type = "count",
-      edge = "sessions",
-      filters = {
-        { field = "leaf", value = true },
-        { field = "state", value = "terminated", op = "ne" },
-      },
-    },
     stoppedTargetCount = {
       type = "count",
       edge = "sessions",
       filters = {
         { field = "leaf", value = true },
         { field = "state", value = "stopped" },
+      },
+    },
+    terminatedTargetCount = {
+      type = "count",
+      edge = "sessions",
+      filters = {
+        { field = "leaf", value = true },
+        { field = "state", value = "terminated" },
       },
     },
 
@@ -137,14 +121,14 @@ M.schema = {
       __indexes = {
         { name = "default", fields = {} },
         { name = "by_state", fields = { { name = "state" } } },
-        { name = "by_index", fields = { { name = "index" } } },
         { name = "by_name", fields = { { name = "name" } } },
+        { name = "by_viewMode", fields = { { name = "viewMode" } } },
       },
     },
     activeConfigs = {
       type = "collection",
       edge = "configs",
-      filters = { { field = "state", value = "terminated", op = "ne" } },
+      filter = { state = "active" },
     },
     sessions = {
       type = "edge",
@@ -153,16 +137,12 @@ M.schema = {
       __indexes = {
         { name = "default",      fields = {} },
         { name = "by_sessionId", fields = { { name = "sessionId" } } },
-        { name = "by_state",     fields = { { name = "state" } } },
         { name = "by_leaf",      fields = { { name = "leaf" } } },
+        { name = "by_state",     fields = { { name = "state" } } },
       }
     },
     rootSessions = { type = "edge", target = "Session", reverse = "rootOfs" },
-    leafSessions = {
-      type = "collection",
-      edge = "sessions",
-      filter = { leaf = true }
-    },
+
     sources = {
       type = "edge",
       target = "Source",
@@ -178,13 +158,12 @@ M.schema = {
       target = "Breakpoint",
       reverse = "debuggers",
       __indexes = {
-        { name = "default",         fields = {} },
-        { name = "by_uri",          fields = { { name = "uri" } } },
-        { name = "by_enabled",      fields = { { name = "enabled" } } },
-        { name = "by_condition",    fields = { { name = "condition" } } },
-        { name = "by_line",         fields = { { name = "line" } } },
-        { name = "by_enabled_line", fields = { { name = "enabled" }, { name = "line" } } },
-        { name = "by_line_enabled", fields = { { name = "line" }, { name = "enabled" } } },
+        { name = "default", fields = {} },
+        { name = "by_line", fields = { { name = "line", dir = "asc" } } },
+        { name = "by_enabled", fields = { { name = "enabled" } } },
+        { name = "by_condition", fields = { { name = "condition" } } },
+        { name = "by_enabled_line", fields = { { name = "enabled" }, { name = "line", dir = "asc" } } },
+        { name = "by_line_enabled", fields = { { name = "line", dir = "asc" }, { name = "enabled" } } },
       }
     },
     breakpointsGroups = { type = "edge", target = "Breakpoints", reverse = "debuggers" },
@@ -205,18 +184,20 @@ M.schema = {
 
     -- Rollups: reference
     firstSession = { type = "reference", edge = "sessions" },
-    firstRootSession = { type = "reference", edge = "rootSessions" },
 
     -- Rollups: property
-    sessionCount = { type = "count", edge = "sessions" },
     rootSessionCount = { type = "count", edge = "rootSessions" },
+    stoppedSessionCount = {
+      type = "count",
+      edge = "sessions",
+      filter = { state = "stopped" },
+    },
     leafSessionCount = {
       type = "count",
       edge = "sessions",
       filter = { leaf = true }
     },
     breakpointCount = { type = "count", edge = "breakpoints" },
-    sourceCount = { type = "count", edge = "sources" },
     exceptionFilterCount = { type = "count", edge = "exceptionFilters" },
     enabledExceptionFilterCount = {
       type = "count",
@@ -224,11 +205,6 @@ M.schema = {
       filter = { defaultEnabled = true }
     },
     configCount = { type = "count", edge = "configs" },
-    activeConfigCount = {
-      type = "count",
-      edge = "configs",
-      filters = { { field = "state", value = "terminated", op = "ne" } },
-    },
 
     __indexes = {
       { name = "default", fields = { { name = "uri" } } },
@@ -256,9 +232,8 @@ M.schema = {
       target = "Breakpoint",
       reverse = "sources",
       __indexes = {
-        { name = "default",    fields = {} },
-        { name = "by_line",    fields = { { name = "line", dir = "asc" } } },
-        { name = "by_enabled", fields = { { name = "enabled" } } },
+        { name = "default", fields = {} },
+        { name = "by_line", fields = { { name = "line", dir = "asc" } } },
       }
     },
     frames = {
@@ -268,28 +243,20 @@ M.schema = {
       __indexes = {
         { name = "default",   fields = {} },
         { name = "by_active", fields = { { name = "active" } } },
+        { name = "by_active_line", fields = { { name = "active" }, { name = "line", dir = "asc" } } },
       }
     },
     outputs = { type = "edge", target = "Output", reverse = "sources" },
 
     -- Rollups: reference
     debugger = { type = "reference", edge = "debuggers" },
+    firstBinding = { type = "reference", edge = "bindings" },
 
     -- Rollups: property
     breakpointCount = { type = "count", edge = "breakpoints" },
-    bindingCount = { type = "count", edge = "bindings" },
+    -- REMOVED: bindingCount, breakpointsByLine, enabledBreakpoints (unused)
 
     -- Rollups: collection
-    breakpointsByLine = {
-      type = "collection",
-      edge = "breakpoints",
-      sort = { field = "line", dir = "asc" }
-    },
-    enabledBreakpoints = {
-      type = "collection",
-      edge = "breakpoints",
-      filters = { { field = "enabled", value = true } }
-    },
     activeFrames = {
       type = "collection",
       edge = "frames",
@@ -367,23 +334,7 @@ M.schema = {
       filters = { { field = "verified", value = true } }
     },
 
-    -- Rollups: property
-    bindingCount = { type = "count", edge = "bindings" },
-    hasHitBinding = {
-      type = "any",
-      edge = "bindings",
-      filters = { { field = "hit", value = true } }
-    },
-    hasVerifiedBinding = {
-      type = "any",
-      edge = "bindings",
-      filters = { { field = "verified", value = true } }
-    },
-    verifiedCount = {
-      type = "count",
-      edge = "bindings",
-      filters = { { field = "verified", value = true } }
-    },
+
 
     __indexes = {
       { name = "default",    fields = { { name = "uri" } } },
@@ -446,9 +397,16 @@ M.schema = {
     configs = { type = "edge", target = "Config", reverse = "sessions" },
     debuggers = { type = "edge", target = "Debugger", reverse = "sessions" },
     rootOfs = { type = "edge", target = "Debugger", reverse = "rootSessions" },
-    rootGroups = { type = "edge", target = "Sessions", reverse = "sessions" },
     parents = { type = "edge", target = "Session", reverse = "children" },
-    children = { type = "edge", target = "Session", reverse = "parents" },
+    children = {
+      type = "edge",
+      target = "Session",
+      reverse = "parents",
+      __indexes = {
+        { name = "default", fields = {} },
+        { name = "by_state", fields = { { name = "state" } } },
+      }
+    },
     threads = {
       type = "edge",
       target = "Thread",
@@ -457,8 +415,6 @@ M.schema = {
         { name = "default",     fields = {} },
         { name = "by_threadId", fields = { { name = "threadId" } } },
         { name = "by_state",    fields = { { name = "state" } } },
-        { name = "by_focused",  fields = { { name = "focused" } } },
-        { name = "by_stops",  fields = { { name = "stops" } } },
       }
     },
     sourceBindings = { type = "edge", target = "SourceBinding", reverse = "sessions" },
@@ -468,9 +424,6 @@ M.schema = {
       reverse = "sessions",
       __indexes = {
         { name = "default", fields = {} },
-        { name = "by_seq",      fields = { { name = "seq", dir = "asc" } } },
-        { name = "by_seq_desc", fields = { { name = "seq", dir = "desc" } } },
-        { name = "by_visible", fields = { { name = "visible" } } },
         { name = "by_visible_seq_desc", fields = { { name = "visible" }, { name = "seq", dir = "desc" } } },
       }
     },
@@ -483,9 +436,6 @@ M.schema = {
       reverse = "allSessions",
       __indexes = {
         { name = "default", fields = {} },
-        { name = "by_globalSeq", fields = { { name = "globalSeq", dir = "asc" } } },
-        { name = "by_visible", fields = { { name = "visible" } } },
-        { name = "by_visible_globalSeq", fields = { { name = "visible" }, { name = "globalSeq", dir = "asc" } } },
         { name = "by_visible_matched_globalSeq_desc", fields = { { name = "visible" }, { name = "matched" }, { name = "globalSeq", dir = "desc" } } },
       }
     },
@@ -503,17 +453,8 @@ M.schema = {
     -- Rollups: reference
     config = { type = "reference", edge = "configs" },
     debugger = { type = "reference", edge = "debuggers" },
-    rootOf = { type = "reference", edge = "rootOfs" },
-    rootGroup = { type = "reference", edge = "rootGroups" },
     parent = { type = "reference", edge = "parents" },
-    stdio = { type = "reference", edge = "stdios" },
-    threadGroup = { type = "reference", edge = "threadGroups" },
     firstThread = { type = "reference", edge = "threads" },
-    focusedThread = {
-      type = "reference",
-      edge = "threads",
-      filters = { { field = "focused", value = true } }
-    },
     firstStoppedThread = {
       type = "reference",
       edge = "threads",
@@ -521,18 +462,14 @@ M.schema = {
     },
 
     -- Rollups: property
-    threadCount = { type = "count", edge = "threads" },
-    stoppedThreadCount = {
-      type = "count",
-      edge = "threads",
-      filters = { { field = "state", value = "stopped" } }
-    },
-    hasStoppedThread = {
-      type = "any",
-      edge = "threads",
-      filters = { { field = "state", value = "stopped" } }
-    },
+    exceptionFilterBindingCount = { type = "count", edge = "exceptionFilterBindings" },
     childCount = { type = "count", edge = "children" },
+    terminatedChildCount = {
+      type = "count",
+      edge = "children",
+      filter = { state = "terminated" },
+    },
+    threadCount = { type = "count", edge = "threads" },
     outputCount = {
       type = "count",
       edge = "outputs",
@@ -545,17 +482,7 @@ M.schema = {
       edge = "threads",
       filters = { { field = "state", value = "stopped" } }
     },
-    runningThreads = {
-      type = "collection",
-      edge = "threads",
-      filters = { { field = "state", value = "running" } }
-    },
-    consoleOutputs = {
-      type = "collection",
-      edge = "allOutputs",
-      filters = { { field = "visible", value = true } },
-      sort = { field = "globalSeq", dir = "asc" }
-    },
+    -- REMOVED: runningThreads, consoleOutputs (unused)
 
     __indexes = {
       { name = "default",      fields = { { name = "uri" } } },
@@ -584,7 +511,7 @@ M.schema = {
       reverse = "threads",
       __indexes = {
         { name = "default", fields = { { name = "index", dir = "asc" } } },
-        { name = "by_seq",  fields = { { name = "seq" } } },
+        { name = "by_seq", fields = { { name = "seq" } } },
       }
     },
     currentStacks = {
@@ -593,28 +520,17 @@ M.schema = {
       reverse = "stackOfs",
       __indexes = {
         { name = "default", fields = {} },
-        { name = "by_seq",  fields = { { name = "seq" } } },
       }
     },
 
     -- Rollups: reference
     session = { type = "reference", edge = "sessions" },
-    currentStack = {
-      type = "reference",
-      edge = "stacks",
-      sort = { field = "index", dir = "asc" }
-    },
     stack = { type = "reference", edge = "currentStacks" },
-
-    -- Rollups: property
-    stackCount = { type = "count", edge = "stacks" },
 
     __indexes = {
       { name = "default",     fields = { { name = "uri" } } },
       { name = "by_threadId", fields = { { name = "threadId" } } },
       { name = "by_state",    fields = { { name = "state" } } },
-      { name = "by_focused",  fields = { { name = "focused" } } },
-      { name = "by_stops",  fields = { { name = "stops" } } },
     },
   },
 
@@ -634,36 +550,21 @@ M.schema = {
       target = "Frame",
       reverse = "stacks",
       __indexes = {
-        { name = "default",    fields = {} },
-        { name = "by_frameId", fields = { { name = "frameId" } } },
-        { name = "by_index",   fields = { { name = "index", dir = "asc" } } },
-        { name = "by_focused", fields = { { name = "focused" } } },
-        { name = "by_line",    fields = { { name = "line" } } },
+        { name = "default",  fields = {} },
+        { name = "by_index", fields = { { name = "index", dir = "asc" } } },
+        { name = "by_line",  fields = { { name = "line", dir = "asc" } } },
       }
     },
     stackOfs = { type = "edge", target = "Thread", reverse = "currentStacks" },
 
     -- Rollups: reference
     thread = { type = "reference", edge = "threads" },
-    stackOf = { type = "reference", edge = "stackOfs" },
     topFrame = {
       type = "reference",
       edge = "frames",
       sort = { field = "index", dir = "asc" }
     },
-    focusedFrame = {
-      type = "reference",
-      edge = "frames",
-      filters = { { field = "focused", value = true } }
-    },
-
-    -- Rollups: property
-    frameCount = { type = "count", edge = "frames" },
-    topFrameName = {
-      type = "first",
-      edge = "frames",
-      property = "name"
-    },
+    -- REMOVED: focusedFrame, frameCount, topFrameName (unused)
 
     __indexes = {
       { name = "default",  fields = { { name = "uri" } } },
@@ -695,9 +596,8 @@ M.schema = {
       target = "Scope",
       reverse = "frames",
       __indexes = {
-        { name = "default",             fields = {} },
-        { name = "by_name",             fields = { { name = "name" } } },
-        { name = "by_presentationHint", fields = { { name = "presentationHint" } } },
+        { name = "default", fields = {} },
+        { name = "by_name", fields = { { name = "name" } } },
       }
     },
     variables = {
@@ -713,20 +613,10 @@ M.schema = {
     -- Rollups: reference
     stack = { type = "reference", edge = "stacks" },
     source = { type = "reference", edge = "sources" },
-    localsScope = {
-      type = "reference",
-      edge = "scopes",
-      filters = { { field = "presentationHint", value = "locals" } }
-    },
-
-    -- Rollups: property
-    scopeCount = { type = "count", edge = "scopes" },
 
     __indexes = {
-      { name = "default",    fields = { { name = "uri" } } },
-      { name = "by_frameId", fields = { { name = "frameId" } } },
-      { name = "by_index",   fields = { { name = "index", dir = "asc" } } },
-      { name = "by_focused", fields = { { name = "focused" } } },
+      { name = "default",  fields = { { name = "uri" } } },
+      { name = "by_index", fields = { { name = "index", dir = "asc" } } },
     },
   },
 
@@ -756,8 +646,7 @@ M.schema = {
     -- Rollups: reference
     frame = { type = "reference", edge = "frames" },
 
-    -- Rollups: property
-    variableCount = { type = "count", edge = "variables" },
+    -- REMOVED: variableCount (unused)
 
     __indexes = {
       { name = "default",             fields = { { name = "uri" } } },
@@ -783,7 +672,6 @@ M.schema = {
     parents = { type = "edge", target = "Variable", reverse = "children" },
     outputs = { type = "edge", target = "Output", reverse = "children" },
     frames = { type = "edge", target = "Frame", reverse = "variables" },
-    repl = { type = "edge", target = "Output", reverse = "variables" },
     children = {
       type = "edge",
       target = "Variable",
@@ -800,9 +688,7 @@ M.schema = {
     output = { type = "reference", edge = "outputs" },
     frame = { type = "reference", edge = "frames" },
 
-    -- Rollups: property
-    childCount = { type = "count", edge = "children" },
-    hasChildren = { type = "any", edge = "children" },
+    -- REMOVED: childCount, hasChildren (unused; entity method Variable:hasChildren reads variablesReference instead)
 
     __indexes = {
       { name = "default", fields = { { name = "uri" } } },
@@ -831,7 +717,6 @@ M.schema = {
     sessions = { type = "edge", target = "Session", reverse = "outputs" },
     allSessions = { type = "edge", target = "Session", reverse = "allOutputs" },  -- Sessions where this output is visible
     sources = { type = "edge", target = "Source", reverse = "outputs" },
-    variables = { type = "edge", target = "Variable", reverse = "repl" },
     children = {
       type = "edge",
       target = "Variable",
@@ -845,11 +730,8 @@ M.schema = {
     -- Rollups: reference
     session = { type = "reference", edge = "sessions" },
     source = { type = "reference", edge = "sources" },
-    variable = { type = "reference", edge = "variables" },
 
-    -- Rollups: property
-    childCount = { type = "count", edge = "children" },
-    hasChildren = { type = "any", edge = "children" },
+    -- REMOVED: childCount, hasChildren (unused)
 
     __indexes = {
       { name = "default",     fields = { { name = "uri" } } },
@@ -990,7 +872,7 @@ M.schema = {
   ---------------------------------------------------------------------------
   -- Configs (UI group entity for Config instances)
   -- Primary top-level grouping in debugger tree
-  -- Uses inline hop: Configs → debuggers → Debugger → activeConfigs
+  -- Uses inline hop: Configs → debuggers → Debugger → configs
   ---------------------------------------------------------------------------
   Configs = {
     -- Properties
@@ -1027,7 +909,6 @@ M.schema = {
 
   ---------------------------------------------------------------------------
   -- Targets (UI group entity for leaf sessions) - Legacy
-  -- Uses inline hop: Targets → debuggers → Debugger → leafSessions
   ---------------------------------------------------------------------------
   Targets = {
     -- Properties

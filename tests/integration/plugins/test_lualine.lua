@@ -172,9 +172,9 @@ return harness.integration("lualine", function(T, ctx)
     h:cmd("DapFocus /sessions/threads/stacks[0]/frames[0]")
     h:wait(50)
 
-    -- Status should show stopped icon (default is "")
+    -- Status should show stopped icon (from presentation layer)
     local result = h:get("_G.status_component()")
-    MiniTest.expect.equality(result, "")
+    MiniTest.expect.equality(result, "⏸")
   end
 
   -- User scenario: Session component shows adapter name
@@ -274,8 +274,9 @@ return harness.integration("lualine", function(T, ctx)
     h.child.lua([[
       local lualine = require("neodap.plugins.lualine")
       _G.lualine = _G.neodap.use(lualine)
-      -- Create custom status component with labels
-      _G.custom_status = _G.lualine.status({ labels = { stopped = "PAUSED" } })
+      -- Create status component and frame component with options
+      _G.custom_status = _G.lualine.status()
+      _G.custom_frame = _G.lualine.frame({ show_line = false })
     ]])
 
     h:fixture("simple-vars")
@@ -284,8 +285,12 @@ return harness.integration("lualine", function(T, ctx)
     h:cmd("DapFocus /sessions/threads/stacks[0]/frames[0]")
     h:wait(50)
 
-    -- Custom status should show our label
-    local result = h:get("_G.custom_status()")
-    MiniTest.expect.equality(result:match("PAUSED") ~= nil, true)
+    -- Status should show stopped icon from presentation layer
+    local status_result = h:get("_G.custom_status()")
+    MiniTest.expect.equality(status_result, "⏸")
+
+    -- Frame with show_line=false should not include ":"
+    local frame_result = h:get("_G.custom_frame()")
+    MiniTest.expect.equality(frame_result:match(":") == nil, true)
   end
 end)

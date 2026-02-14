@@ -34,8 +34,11 @@ return function(debugger)
 
     local disabled_breakpoints = {}
     if opts.ignoreBreakpoints then
-      for bp in debugger.breakpoints:iter() do
-        if bp ~= temp_bp and bp:isEnabled() then
+      -- Uses by_enabled index on Debugger.breakpoints
+      for bp in debugger.breakpoints:filter({
+        filters = {{ field = "enabled", op = "eq", value = true }}
+      }):iter() do
+        if bp ~= temp_bp then
           table.insert(disabled_breakpoints, bp)
           bp:disable()
         end

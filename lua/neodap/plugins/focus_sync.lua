@@ -9,31 +9,23 @@
 
 ---@param debugger neodap.entities.Debugger
 return function(debugger)
-  local prev_frame = nil
-  local prev_thread = nil
-
   debugger.ctx.frame:use(function(frame)
-    -- Clear previous
-    if prev_frame then
-      prev_frame:update({ focused = false })
-    end
-    if prev_thread then
-      prev_thread:update({ focused = false })
+    if not frame then return end
+
+    frame:update({ focused = true })
+    local thread = frame:thread()
+    if thread then
+      thread:update({ focused = true })
     end
 
-    -- Set new
-    if frame then
-      frame:update({ focused = true })
-      local stack = frame.stack:get()
-      local thread = stack and stack.thread:get()
-      if thread then
-        thread:update({ focused = true })
+    -- Cleanup: clear focused when focus moves away
+    return function()
+      if not frame:isDeleted() then
+        frame:update({ focused = false })
       end
-      prev_frame = frame
-      prev_thread = thread
-    else
-      prev_frame = nil
-      prev_thread = nil
+      if thread and not thread:isDeleted() then
+        thread:update({ focused = false })
+      end
     end
   end)
 

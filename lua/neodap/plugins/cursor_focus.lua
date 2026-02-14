@@ -1,4 +1,3 @@
-local Location = require("neodap.location")
 local log = require("neodap.logger")
 
 ---Auto-context plugin for neodap
@@ -16,41 +15,7 @@ local log = require("neodap.logger")
 ---@class AutoContextConfig
 ---@field debounce_ms? number Cursor debounce (default: 100)
 
----Check if a session is in the focused session's tree (same, ancestor, or descendant)
----or in the same Config as the focused session
----@param debugger any Debugger entity
----@param session any Session entity to check
----@return boolean
-local function is_in_focused_context(debugger, session)
-  local focused = debugger.ctx.session:get()
-  -- No focused session - allow any
-  if not focused then
-    log:debug("is_in_focused_context: no focused session, allowing", { session = session.uri:get() })
-    return true
-  end
-  -- Focused session is terminated - allow any (don't block on dead session)
-  if focused.state:get() == "terminated" then
-    log:debug("is_in_focused_context: focused session terminated, allowing", { session = session.uri:get(), focused = focused.uri:get() })
-    return true
-  end
 
-  -- Check if in same session tree (DAP parent-child)
-  if focused:isInSameTreeAs(session) then
-    log:debug("is_in_focused_context: same session tree", { session = session.uri:get(), focused = focused.uri:get() })
-    return true
-  end
-
-  -- Check if in same Config
-  local focused_config = focused.config:get()
-  local session_config = session.config:get()
-  if focused_config and session_config and focused_config._id == session_config._id then
-    log:debug("is_in_focused_context: same Config", { session = session.uri:get(), focused = focused.uri:get(), config = focused_config:displayName() })
-    return true
-  end
-
-  log:debug("is_in_focused_context: not related", { session = session.uri:get(), focused = focused.uri:get() })
-  return false
-end
 
 ---@param debugger neodap.entities.Debugger
 ---@param config? AutoContextConfig
@@ -72,7 +37,7 @@ local function cursor_focus(debugger, config)
     local buf_name = vim.api.nvim_buf_get_name(bufnr)
     if buf_name == "" then return end
 
-    local source = debugger:findSource(Location.new(buf_name))
+    local source = debugger:findSourceByPath(buf_name)
     if not source then return end
 
     local cursor_line = vim.api.nvim_win_get_cursor(0)[1]
@@ -102,14 +67,10 @@ local function cursor_focus(debugger, config)
   ---Focus the top frame of a thread's current stack
   ---@param thread any Thread entity
   local function focus_thread_frame(thread)
-    local stack = thread.stack:get()
-    if not stack then return end
-
-    local frame = stack.topFrame:get()
-    if not frame then return end
-
-    debugger.ctx:focus(frame.uri:get())
-    last_focused_line = frame.line:get()
+    local frame = debugger.ctx:focusThread(thread)
+    if frame then
+      last_focused_line = frame.line:get()
+    end
   end
 
   ---Debounced update for cursor movement
@@ -159,7 +120,7 @@ local function cursor_focus(debugger, config)
         -- Focus if: no focus, focused is terminated, focused has no stopped threads, or in same context (tree or Config)
         if focused and focused.state:get() ~= "terminated" and focused_has_stopped then
           -- Only skip if focused session already has stopped threads AND this isn't in the same context
-          if not is_in_focused_context(debugger, thread_session) then
+          if not debugger.ctx:isInFocusedContext(thread_session) then
             log:debug("cursor_focus: skipping focus - focused session has stopped threads and different context", { thread = thread.uri:get(), focused = focused.uri:get() })
             return
           end
@@ -186,7 +147,7 @@ local function cursor_focus(debugger, config)
 
         local thread_session = thread.session:get()
         if not thread_session then return end
-        if not is_in_focused_context(debugger, thread_session) then return end
+        if not debugger.ctx:isInFocusedContext(thread_session) then return end
 
         -- Focus top frame on stops change
         a.run(function()

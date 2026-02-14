@@ -48,169 +48,44 @@ return function(debugger, config)
     callback(nil, nil)
   end
 
-  ---Get expression at cursor position using treesitter
-  ---@param bufnr number
-  ---@param row number 0-indexed
-  ---@param col number 0-indexed
-  ---@return string?
-  local function get_expression_at_position(bufnr, row, col)
-    -- Try treesitter first
-    local ok, node = pcall(vim.treesitter.get_node, { bufnr = bufnr, pos = { row, col } })
-    if ok and node then
-      local expr_types = {
-        identifier = true,
-        member_expression = true,
-        subscript_expression = true,
-        dot_index_expression = true,
-        bracket_index_expression = true,
-        attribute = true,
-        property_identifier = true,
-        field_expression = true,
-      }
-
-      local current = node
-      local best = nil
-
-      while current do
-        local node_type = current:type()
-        if expr_types[node_type] then
-          best = current
-        end
-        if node_type:match("statement") or node_type:match("declaration") then
-          break
-        end
-        current = current:parent()
-      end
-
-      if best then
-        local text = vim.treesitter.get_node_text(best, bufnr)
-        if text and text ~= "" then
-          return text
-        end
-      end
-    end
-
-    -- Fallback: get word at position
-    local lines = vim.api.nvim_buf_get_lines(bufnr, row, row + 1, false)
-    if not lines[1] then return nil end
-
-    local line = lines[1]
-    local start_col = col
-    local end_col = col
-
-    local function is_word_char(c)
-      return c:match("[%w_]")
-    end
-
-    while start_col > 0 and is_word_char(line:sub(start_col, start_col)) do
-      start_col = start_col - 1
-    end
-    start_col = start_col + 1
-
-    while end_col <= #line and is_word_char(line:sub(end_col + 1, end_col + 1)) do
-      end_col = end_col + 1
-    end
-
-    local word = line:sub(start_col, end_col)
-    return word ~= "" and word or nil
-  end
+  local expression_utils = require("neodap.plugins.utils.expression")
 
   ---Evaluate expression and call callback with markdown result
   ---@param expression string
   ---@param callback fun(markdown: string?)
   local function evaluate_for_hover(expression, callback)
-    -- Get thread from context
-    local thread = debugger.ctx.thread:get()
-    if not thread or not thread:isStopped() then
-      log:debug("evaluate_for_hover: thread not stopped")
-      callback(nil)
-      return
-    end
-
-    -- Get current stack and top frame
-    local stack = thread.stack:get()
-    if not stack then
-      log:debug("evaluate_for_hover: no stack")
-      callback(nil)
-      return
-    end
-
-    -- Get the focused frame, or default to top frame
-    local frame = debugger.ctx.frame:get()
+    local frame = debugger.ctx:evaluationFrame()
     if not frame then
-      -- Fallback to top frame from stack
-      for f in stack.frames:iter() do
-        frame = f
-        break
-      end
-    end
-
-    if not frame then
-      log:debug("evaluate_for_hover: no frame")
+      log:debug("evaluate_for_hover: no frame available")
       callback(nil)
       return
     end
 
-    -- Validate frame belongs to current stack (not stale from previous stop)
-    if frame.stack:get() ~= stack then
-      log:debug("evaluate_for_hover: frame is stale, using top frame")
-      -- Frame is stale, fall back to top frame
-      for f in stack.frames:iter() do
-        frame = f
-        break
-      end
-    end
+    log:debug("evaluate_for_hover: evaluating", { expression = expression, frame = frame.uri:get() })
 
-    local session = thread.session:get()
-    if not session then
-      log:debug("evaluate_for_hover: no session")
-      callback(nil)
-      return
-    end
-
-    local context_mod = require("neodap.plugins.dap.context")
-    local dap_session = context_mod.get_dap_session(session)
-    if not dap_session then
-      log:debug("evaluate_for_hover: no dap_session")
-      callback(nil)
-      return
-    end
-
-    local frame_id = frame.frameId:get()
-    log:debug("evaluate_for_hover: sending request", { frameId = frame_id, expression = expression })
-
-    dap_session.client:request("evaluate", {
-      expression = expression,
-      frameId = frame_id,
-      context = "hover",
-    }, function(err, body)
-      if err then
-        log:debug("evaluate_for_hover: DAP error", { err = tostring(err) })
-        callback(nil)
-        return
-      end
-
-      if not body or not body.result then
-        callback(nil)
-        return
-      end
-
-      local result = body.result
-      local vtype = body.type
-      log:debug("evaluate_for_hover: success", { result = result, vtype = vtype })
-
-      -- Format as markdown
-      local lines = {}
-      if vtype and vtype ~= "" then
-        table.insert(lines, string.format("**%s** `%s`", expression, vtype))
-      else
-        table.insert(lines, string.format("**%s**", expression))
-      end
-      table.insert(lines, "```")
-      table.insert(lines, tostring(result))
-      table.insert(lines, "```")
-
-      callback(table.concat(lines, "\n"))
+    -- Use Frame:evaluate with hover context
+    local a = require("neodap.async")
+    a.run(function()
+      local result, _, vtype = frame:evaluate(expression, { context = "hover", silent = true })
+      vim.schedule(function()
+        if not result then
+          callback(nil)
+          return
+        end
+        log:debug("evaluate_for_hover: success", { result = result, vtype = vtype })
+        local lines = {}
+        if vtype and vtype ~= "" then
+          table.insert(lines, string.format("**%s** `%s`", expression, vtype))
+        else
+          table.insert(lines, string.format("**%s**", expression))
+        end
+        table.insert(lines, "```")
+        table.insert(lines, tostring(result))
+        table.insert(lines, "```")
+        callback(table.concat(lines, "\n"))
+      end)
+    end, function()
+      vim.schedule(function() callback(nil) end)
     end)
   end
 
@@ -223,7 +98,7 @@ return function(debugger, config)
     local col = params.position.character
 
     -- Get expression at position
-    local expression = get_expression_at_position(bufnr, row, col)
+    local expression = expression_utils.get_expression_at_position(bufnr, row, col)
     log:debug("Expression at position", { expression = expression, row = row, col = col })
     if not expression then
       log:debug("No expression found, returning nil")

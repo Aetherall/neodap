@@ -18,6 +18,7 @@
 
 local entity_buffer = require("neodap.plugins.utils.entity_buffer")
 local cfg = require("neodap.plugins.tree_buffer.config")
+local utils = require("neodap.utils")
 local log = require("neodap.logger")
 local edges = require("neodap.plugins.tree_buffer.edges")
 local render = require("neodap.plugins.tree_buffer.render")
@@ -41,26 +42,7 @@ return function(debugger, config)
   end
 
   local function get_prop(item, prop, default)
-    if item[prop] ~= nil then
-      return item[prop]
-    end
-    local node = item.node or graph:get(item.id)
-    if not node then
-      return default
-    end
-    if prop == "type" then
-      return node._type or default
-    end
-    local val = node[prop]
-    if val == nil then
-      return default
-    end
-    if type(val) == "table" and type(val.get) == "function" then
-      local signal_val = val:get()
-      if signal_val ~= nil then return signal_val end
-      return default
-    end
-    return val
+    return utils.get_prop(item, prop, default, graph)
   end
 
   local function render_tree(bufnr)
@@ -257,6 +239,9 @@ return function(debugger, config)
   local function cleanup_view(bufnr)
     local state = view_state[bufnr]
     if state then
+      if state.cancel_render_timer then
+        pcall(state.cancel_render_timer)
+      end
       for _, unsub in ipairs(state.subscriptions or {}) do
         pcall(unsub)
       end
@@ -332,6 +317,14 @@ return function(debugger, config)
 
     -- Debounced render to batch rapid updates (16ms = ~60fps)
     local render_timer = nil
+    local function cancel_render_timer()
+      if render_timer then
+        render_timer:stop()
+        render_timer:close()
+        render_timer = nil
+      end
+    end
+    view_state[bufnr].cancel_render_timer = cancel_render_timer
     local function on_change()
       if render_timer then
         return -- Already scheduled

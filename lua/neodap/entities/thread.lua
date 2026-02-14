@@ -7,10 +7,6 @@ return function(Thread)
     return self.state:get() == "stopped"
   end
 
-  function Thread:isRunning()
-    return self.state:get() == "running"
-  end
-
   ---Get display-oriented state string
   ---@return string "running"|"stopped"|"exited"|"unknown"
   function Thread:displayState()
@@ -24,17 +20,6 @@ return function(Thread)
     local session = self.session:get()
     if not session then return true end  -- Can't reach session, assume terminated
     return session:isTerminated()
-  end
-
-  function Thread:matchKey(key)
-    return self.threadId:get() == tonumber(key)
-  end
-
-  ---Get the current/latest stack signal (uses currentStack rollup)
-  ---Returns the signal itself, call :get() to get the entity
-  ---@return table signal Signal that resolves to Stack or nil
-  function Thread:getLatestStack()
-    return self.currentStack
   end
 
   ---Awaitable: blocks until thread enters "stopped" or "exited" state

@@ -14,130 +14,58 @@ return function(debugger)
     return debugger.ctx.session:get() or debugger.firstSession:get()
   end
 
-  ---Find binding for filter ID in session
-  ---@param session neodap.entities.Session
-  ---@param filter_id string
-  ---@return neodap.entities.ExceptionFilterBinding?
-  local function find_binding(session, filter_id)
-    for binding in session.exceptionFilterBindings:iter() do
-      local ef = binding.exceptionFilter:get()
-      if ef and ef.filterId:get() == filter_id then
-        return binding
-      end
-    end
-    return nil
-  end
-
   ---Find global filter by ID
   ---@param filter_id string
   ---@return neodap.entities.ExceptionFilter?
   local function find_global_filter(filter_id)
-    for ef in debugger.exceptionFilters:iter() do
-      if ef.filterId:get() == filter_id then
-        return ef
-      end
+    for ef in debugger.exceptionFilters:filter({
+      filters = {{ field = "filterId", op = "eq", value = filter_id }}
+    }):iter() do
+      return ef
     end
     return nil
   end
 
-  ---Toggle exception filter binding (session override)
-  ---@param filter_id string Filter ID (e.g., "uncaught", "raised")
+  ---Find binding by filter ID, apply mutation, sync.
+  ---@param filter_id string
+  ---@param mutate fun(binding: neodap.entities.ExceptionFilterBinding)
   ---@return boolean success
-  function api.toggle(filter_id)
+  local function with_binding(filter_id, mutate)
     local session = get_session()
     if not session then return false end
-
-    local binding = find_binding(session, filter_id)
-    if binding then
-      binding:toggle()
-      session:syncExceptionFilters()
-      return true
-    end
-    return false
-  end
-
-  ---Toggle global default for filter
-  ---@param filter_id string Filter ID
-  ---@return boolean success
-  function api.toggle_global(filter_id)
-    local ef = find_global_filter(filter_id)
-    if not ef then return false end
-
-    ef:toggle()
-    -- Sync all sessions that have bindings to this filter
-    for binding in ef.bindings:iter() do
-      local session = binding.session and binding.session:get()
-      if session then
-        session:syncExceptionFilters()
-      end
-    end
+    local binding = session:findExceptionFilterBinding(filter_id)
+    if not binding then return false end
+    mutate(binding)
+    session:syncExceptionFilters()
     return true
   end
 
-  ---Enable exception filter by ID (session override)
-  ---@param filter_id string Filter ID
-  ---@param condition? string Optional condition
-  ---@return boolean success
+  function api.toggle(filter_id)
+    return with_binding(filter_id, function(b) b:toggle() end)
+  end
+
+  function api.toggle_global(filter_id)
+    local ef = find_global_filter(filter_id)
+    if not ef then return false end
+    ef:toggle()
+    ef:syncAllSessions()
+    return true
+  end
+
   function api.enable(filter_id, condition)
-    local session = get_session()
-    if not session then return false end
-
-    local binding = find_binding(session, filter_id)
-    if binding then
-      binding:update({ enabled = true, condition = condition })
-      session:syncExceptionFilters()
-      return true
-    end
-    return false
+    return with_binding(filter_id, function(b) b:update({ enabled = true, condition = condition }) end)
   end
 
-  ---Disable exception filter by ID (session override)
-  ---@param filter_id string Filter ID
-  ---@return boolean success
   function api.disable(filter_id)
-    local session = get_session()
-    if not session then return false end
-
-    local binding = find_binding(session, filter_id)
-    if binding then
-      binding:update({ enabled = false })
-      session:syncExceptionFilters()
-      return true
-    end
-    return false
+    return with_binding(filter_id, function(b) b:update({ enabled = false }) end)
   end
 
-  ---Clear session override, revert to global default
-  ---@param filter_id string Filter ID
-  ---@return boolean success
   function api.clear(filter_id)
-    local session = get_session()
-    if not session then return false end
-
-    local binding = find_binding(session, filter_id)
-    if binding then
-      binding:clearOverride()
-      session:syncExceptionFilters()
-      return true
-    end
-    return false
+    return with_binding(filter_id, function(b) b:clearOverride() end)
   end
 
-  ---Set condition on exception filter binding
-  ---@param filter_id string Filter ID
-  ---@param condition string Condition expression
-  ---@return boolean success
   function api.set_condition(filter_id, condition)
-    local session = get_session()
-    if not session then return false end
-
-    local binding = find_binding(session, filter_id)
-    if binding then
-      binding:update({ condition = condition })
-      session:syncExceptionFilters()
-      return true
-    end
-    return false
+    return with_binding(filter_id, function(b) b:update({ condition = condition }) end)
   end
 
   ---List all exception filters for current session

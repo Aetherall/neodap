@@ -74,7 +74,8 @@ return function(debugger, config)
     })
   end
 
-  -- Track which breakpoints have subscriptions (to avoid duplicates on buffer load)
+  -- Track which breakpoints have subscriptions, keyed by bp_id -> bufnr
+  -- This allows re-subscription when a buffer is deleted and reopened with a new number.
   local subscribed = {}
 
   ---Subscribe a breakpoint to rollups for a specific buffer
@@ -82,12 +83,14 @@ return function(debugger, config)
   ---@param bufnr number Buffer number
   local function subscribe_bp_mark(bp, bufnr)
     local bp_id = bp:id()
-    if subscribed[bp_id] then return end
-    subscribed[bp_id] = true
+    -- Skip if already subscribed to this exact buffer
+    if subscribed[bp_id] == bufnr then return end
+    subscribed[bp_id] = bufnr
 
     local current_extmark_id = nil
 
     local function update()
+      if not vim.api.nvim_buf_is_valid(bufnr) then return end
       -- Remove old extmark
       if current_extmark_id then
         pcall(vim.api.nvim_buf_del_extmark, bufnr, ns, current_extmark_id)
@@ -123,6 +126,19 @@ return function(debugger, config)
         binding.actualColumn:use(function() update() end)
       end
     end)
+
+    -- Clean up subscriptions when buffer is deleted/wiped
+    vim.api.nvim_create_autocmd({ "BufDelete", "BufWipeout" }, {
+      buffer = bufnr,
+      once = true,
+      callback = function()
+        -- Clear tracking so re-opening the file triggers re-subscription
+        if subscribed[bp_id] == bufnr then
+          subscribed[bp_id] = nil
+        end
+        current_extmark_id = nil
+      end,
+    })
 
     -- Return cleanup function (called when bp is deleted)
     return function()

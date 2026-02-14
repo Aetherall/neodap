@@ -33,25 +33,18 @@ return function(debugger, config)
       thread:onStopped(function()
         if not enabled then return end
 
-        -- Check if this thread's session is focused (or no focus set)
-        local focused_session = debugger.ctx.session:get()
+        -- Only jump for threads in the focused session context
         local thread_session = thread.session:get()
-
-        if focused_session and thread_session and focused_session ~= thread_session then
-          return -- Different session is focused, don't steal focus
-        end
+        if thread_session and not debugger.ctx:isInFocusedContext(thread_session) then return end
 
         -- Load stack and jump to top frame
         local stack = thread:loadCurrentStack()
         if not stack then return end
 
-        local top_frame = stack.topFrame:get()
-        if top_frame then
-          -- Update focus to the new frame
-          debugger.ctx:focus(top_frame.uri:get())
-
+        local frame = debugger.ctx:focusThread(thread)
+        if frame then
           a.wait(a.main, "jump_stop:schedule")
-          navigate.goto_frame(top_frame, {
+          navigate.goto_frame(frame, {
             pick_window = config.pick_window,
             create_window = config.create_window,
           })

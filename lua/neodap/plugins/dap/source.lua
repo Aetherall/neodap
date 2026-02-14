@@ -3,7 +3,6 @@ local entities = require("neodap.entities")
 local uri = require("neodap.uri")
 local a = require("neodap.async")
 local context = require("neodap.plugins.dap.context")
-local utils = require("neodap.plugins.dap.utils")
 local log = require("neodap.logger")
 
 local Source = entities.Source
@@ -115,12 +114,12 @@ function Source:open(opts)
       vim.b[bufnr].dap_pending_cursor = { line = opts.line, col = opts.column or 0 }
     end
     return bufnr
-  else
-    -- File-based: content is available immediately
-    vim.cmd("edit " .. vim.fn.fnameescape(location))
-    local bufnr = vim.api.nvim_get_current_buf()
-    return position_cursor(bufnr)
   end
+
+  -- File-based: content is available immediately
+  vim.cmd("edit " .. vim.fn.fnameescape(location))
+  local bufnr = vim.api.nvim_get_current_buf()
+  return position_cursor(bufnr)
 end
 Source.open = a.fn(Source.open)
 

@@ -26,7 +26,9 @@ return harness.integration("thread", function(T, ctx)
     -- Wait for session to terminate (program finishes)
     h:wait_terminated(5000)
 
-    MiniTest.expect.equality(h:query_field("@session", "state"), "terminated")
+    -- Use absolute URI since @session becomes nil after focus is cleared
+    local index = h.adapter.name == "javascript" and 1 or 0
+    MiniTest.expect.equality(h:query_field(string.format("/sessions[%d]", index), "state"), "terminated")
   end
 
   T["thread:stepOver() steps to next line"] = function()

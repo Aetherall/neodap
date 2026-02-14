@@ -161,7 +161,6 @@ return function(debugger, config)
           -- === Console output section ===
 
           -- Query recent outputs (newest first via allOutputs sorted by globalSeq desc)
-          local separator_line = #rendered
           local max_outputs = 50
           local count = 0
           for output in session.allOutputs:iter("by_visible_matched_globalSeq_desc") do

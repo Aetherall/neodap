@@ -11,10 +11,15 @@ return harness.integration("dap_continue", function(T, ctx)
 
     MiniTest.expect.equality(h:query_field("@session", "state"), "stopped")
 
+    -- Save session URI before continue (focus clears on termination)
+    local session_uri = h:query_field("@session", "uri")
+
     h:cmd("DapContinue")
 
     h:wait_terminated(10000)
-    MiniTest.expect.equality(h:query_field("@session", "state"), "terminated")
+    -- Use absolute URI since @session becomes nil after focus is cleared
+    local index = h.adapter.name == "javascript" and 1 or 0
+    MiniTest.expect.equality(h:query_field(string.format("/sessions[%d]", index), "state"), "terminated")
   end
 
   T[":DapContinue stops at breakpoint"] = function()
@@ -52,6 +57,8 @@ return harness.integration("dap_continue", function(T, ctx)
     h:cmd("DapTerminate")
 
     h:wait_terminated(10000)
-    MiniTest.expect.equality(h:query_field("@session", "state"), "terminated")
+    -- Use absolute URI since @session becomes nil after focus is cleared
+    local index = h.adapter.name == "javascript" and 1 or 0
+    MiniTest.expect.equality(h:query_field(string.format("/sessions[%d]", index), "state"), "terminated")
   end
 end)

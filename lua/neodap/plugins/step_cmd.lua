@@ -49,6 +49,7 @@ local function parse_args(args, default_granularity)
 end
 
 local query = require("neodap.plugins.utils.query")
+local apply_to_entities = require("neodap.plugins.utils.apply_to_entities")
 local log = require("neodap.logger")
 
 ---@param debugger neodap.entities.Debugger
@@ -81,14 +82,7 @@ return function(debugger, config)
       return false
     end
 
-    local step_opts = { granularity = granularity }
-    local count = 0
-    for _, entity in ipairs(entities) do
-      if entity:type() == "Thread" and entity[step_fn] then
-        entity[step_fn](entity, step_opts)
-        count = count + 1
-      end
-    end
+    local count = apply_to_entities(entities, "Thread", step_fn, { granularity = granularity })
 
     if count > 0 then
       log:info("Step " .. method .. " executed")

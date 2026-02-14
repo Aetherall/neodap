@@ -1,49 +1,31 @@
 -- Session entity methods for neograph-native
+local log = require("neodap.logger")
+local terminate_then = require("neodap.entities.restart")
+
 return function(Session)
-  ---Check if session is running
-  ---@return boolean
-  function Session:isRunning()
-    return self.state:get() == "running"
-  end
-
-  ---Check if session is stopped
-  ---@return boolean
-  function Session:isStopped()
-    return self.state:get() == "stopped"
-  end
-
   ---Check if session is terminated
   ---@return boolean
   function Session:isTerminated()
     return self.state:get() == "terminated"
   end
 
-  ---Check if key matches this session
-  ---@param key string
-  ---@return boolean
-  function Session:matchKey(key)
-    return self.sessionId:get() == key
-  end
-
   ---Check if session has any non-terminated children
+  ---Uses childCount/terminatedChildCount rollups for O(1) check
   ---@return boolean
   function Session:hasActiveChildren()
-    for child in self.children:iter() do
-      if child.state:get() ~= "terminated" then
-        return true
-      end
-    end
-    return false
+    local total = self.childCount:get() or 0
+    local terminated = self.terminatedChildCount:get() or 0
+    return terminated < total
   end
 
   ---Find thread by DAP threadId
   ---@param threadId number DAP thread ID
   ---@return neodap.entities.Thread?
   function Session:findThreadById(threadId)
-    for thread in self.threads:iter() do
-      if thread.threadId:get() == threadId then
-        return thread
-      end
+    for thread in self.threads:filter({
+      filters = {{ field = "threadId", op = "eq", value = threadId }}
+    }):iter() do
+      return thread
     end
   end
 
@@ -91,6 +73,27 @@ return function(Session)
     return self.state:get() or "unknown"
   end
 
+  ---Get the depth of this session in the parent chain (0 for root)
+  ---@return number
+  function Session:depth()
+    local d = 0
+    local s = self.parent:get()
+    while s do d = d + 1; s = s.parent:get() end
+    return d
+  end
+
+  ---Find the nearest terminal buffer number walking up the parent chain.
+  ---Returns the first valid terminalBufnr found, or nil.
+  ---@return number? bufnr
+  function Session:findTerminalBufnr()
+    local current = self
+    while current do
+      local bufnr = current.terminalBufnr and current.terminalBufnr:get()
+      if bufnr and vim.api.nvim_buf_is_valid(bufnr) then return bufnr end
+      current = current.parent and current.parent:get()
+    end
+  end
+
   ---Get the chain of session names from root to this session
   ---Returns something like "root > child > grandchild"
   ---@param separator? string Separator between names (default " > ")
@@ -106,57 +109,57 @@ return function(Session)
     return table.concat(names, separator)
   end
 
-  ---Check if this session is in the same Config as another session
-  ---@param other neodap.entities.Session
-  ---@return boolean
-  function Session:isInSameConfig(other)
-    local my_config = self.config:get()
-    local other_config = other.config:get()
-    if not my_config or not other_config then
-      return false
+  ---Find an ExceptionFilterBinding by its linked ExceptionFilter's filterId
+  ---Reverse lookup: find the ExceptionFilter by filterId (indexed), then find its binding for this session
+  ---@param filterId string The filter ID to search for
+  ---@return neodap.entities.ExceptionFilterBinding?
+  function Session:findExceptionFilterBinding(filterId)
+    local debugger = self.debugger:get()
+    if not debugger then return nil end
+    -- O(1) lookup via by_filterId index on Debugger.exceptionFilters
+    for ef in debugger.exceptionFilters:filter({
+      filters = {{ field = "filterId", op = "eq", value = filterId }}
+    }):iter() do
+      -- Search this filter's bindings for one linked to this session
+      for binding in ef.bindings:iter() do
+        if binding.session:get() == self then
+          return binding
+        end
+      end
     end
-    return my_config._id == other_config._id
+  end
+
+  ---Iterate all BreakpointBindings across all SourceBindings for this session
+  ---Flattens the double-nested sourceBindings → breakpointBindings traversal
+  ---@param callback fun(binding: neodap.entities.BreakpointBinding, sourceBinding: neodap.entities.SourceBinding)
+  function Session:forEachBreakpointBinding(callback)
+    for sb in self.sourceBindings:iter() do
+      for bpb in sb.breakpointBindings:iter() do
+        callback(bpb, sb)
+      end
+    end
   end
 
   ---Restart this session's root: terminate the root tree and relaunch that config
   ---The new session will be linked to the same Config entity
   function Session:restartRoot()
-    local log = require("neodap.logger")
     local root = self:rootAncestor()
     local cfg = self.config:get()
+    if not cfg then log:warn("Session has no Config, cannot restart"); return end
 
-    if not cfg then
-      log:warn("Session has no Config, cannot restart")
-      return
-    end
-
-    -- Find the specification for this root in Config.specifications
     local specs = cfg.specifications:get()
-    if not specs then
-      log:error("Config has no stored specifications")
-      return
-    end
+    if not specs then log:error("Config has no stored specifications"); return end
 
     -- Find matching spec by name
     local root_name = root.name:get()
     local matching_spec = nil
     for _, spec in ipairs(specs) do
-      if spec.name == root_name then
-        matching_spec = spec
-        break
-      end
+      if spec.name == root_name then matching_spec = spec; break end
     end
-
-    if not matching_spec then
-      log:error("Could not find specification for root session: " .. (root_name or "?"))
-      return
-    end
+    if not matching_spec then log:error("Could not find specification for root session: " .. (root_name or "?")); return end
 
     local debugger = self.debugger:get()
-    if not debugger then
-      log:error("Session has no debugger")
-      return
-    end
+    if not debugger then log:error("Session has no debugger"); return end
 
     -- Collect all sessions in this root's tree (to unlink from Config)
     local sessions_to_unlink = {}
@@ -168,31 +171,18 @@ return function(Session)
     end
     collect_tree(root)
 
-    -- Terminate the root session (children die with it)
-    local dap_context = require("neodap.plugins.dap.context")
-    local dap_session = dap_context.dap_sessions[root]
-    if dap_session then
-      -- Mark session tree as terminating so closing handler kills terminal processes
-      dap_context.mark_terminating(dap_session)
-      dap_session:terminate()
-    end
-
-    -- Unlink old sessions from Config before relaunching
-    for _, session in ipairs(sessions_to_unlink) do
-      cfg.sessions:unlink(session)
-      session:update({ isConfigRoot = false })
-    end
-
-    -- Schedule relaunch after termination
-    vim.defer_fn(function()
+    terminate_then(root, function()
       log:info("Restarting root session: " .. (root_name or "?"))
-
+      for _, session in ipairs(sessions_to_unlink) do
+        cfg.sessions:unlink(session)
+        session:update({ isConfigRoot = false })
+      end
       local ok, err = pcall(function()
         debugger:debug({ config = matching_spec, config_entity = cfg })
       end)
       if not ok then
         log:error("Failed to restart session", { name = matching_spec.name, error = tostring(err) })
       end
-    end, 100)
+    end)
   end
 end

@@ -50,4 +50,16 @@ function Location:bufnr()
   return nil
 end
 
+---Create Location from an entity that has source, line, and column properties
+---Works for Frame, Breakpoint, Output, and any entity with the same shape
+---@param entity table Entity with source:get(), line:get(), column:get()
+---@return neodap.Location?
+function Location.fromEntity(entity)
+  local source = entity.source:get()
+  if not source then return nil end
+  local uri = source:bufferUri()
+  if not uri then return nil end
+  return Location.new(uri, entity.line:get(), entity.column:get())
+end
+
 return Location

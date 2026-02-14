@@ -66,22 +66,6 @@ return harness.integration("thread", function(T, ctx)
     MiniTest.expect.equality(h:query_is_nil("@thread/stack/topFrame"), false)
   end
 
-  T["currentStack rollup matches stack"] = function()
-    local h = ctx.create()
-    h:fixture("simple-vars")
-    h:cmd("DapLaunch Debug stop")
-    h:wait_url("/sessions/threads/stacks[0]/frames[0]")
-    h:cmd("DapFocus /sessions/threads/stacks[0]/frames[0]")
-
-    -- currentStack rollup should exist
-    MiniTest.expect.equality(h:query_is_nil("@thread/currentStack"), false)
-
-    -- currentStack and stack should be the same
-    local current_stack_uri = h:query_uri("@thread/currentStack")
-    local stack_uri = h:query_uri("@thread/stack")
-    MiniTest.expect.equality(current_stack_uri, stack_uri)
-  end
-
   -- ==========================================================================
   -- Stack Sorting Tests (from test_edge_sorting.lua)
   -- ==========================================================================

@@ -1,21 +1,7 @@
 -- Keybind handlers for tree buffer
 
--- DAP buffer filetypes that should not be used for source files
-local dap_filetypes = {
-  ["dap-tree"] = true,
-  ["dap-repl"] = true,
-  ["dap-var"] = true,
-  ["dap-input"] = true,
-}
-
----Check if a window contains a DAP buffer
----@param win number Window ID
----@return boolean
-local function is_dap_window(win)
-  local bufnr = vim.api.nvim_win_get_buf(win)
-  local ft = vim.bo[bufnr].filetype
-  return dap_filetypes[ft] or false
-end
+local navigate = require("neodap.plugins.utils.navigate")
+local is_dap_window = navigate.is_dap_window
 
 --- Find or create a window suitable for opening source files
 --- Avoids DAP buffer windows (tree, repl, etc.)
@@ -98,47 +84,21 @@ local function make_defaults(get_state, toggle_expand, render_buffer, show_root)
     ["q"] = function(ctx) vim.api.nvim_buf_delete(ctx.bufnr, { force = true }) end,
     ["R"] = function(ctx) render_buffer(ctx.bufnr) end,
 
-    ["gd"] = {
-      Frame = function(_, ctx)
-        if not ctx.entity then return end
-        local src = ctx.entity.source:get()
-        if src then
-          local win = find_source_window()
-          vim.api.nvim_set_current_win(win)
-          src:open({ line = ctx.entity.line:get() or 1 })
-        end
-      end,
-      Breakpoint = function(_, ctx)
-        if not ctx.entity then return end
-        local src = ctx.entity.source:get()
-        if src then
-          local win = find_source_window()
-          vim.api.nvim_set_current_win(win)
-          src:open({ line = ctx.entity.line:get() or 1 })
-        end
-      end,
-    },
+    ["gd"] = function(ctx)
+      if ctx.entity then
+        local win = find_source_window()
+        vim.api.nvim_set_current_win(win)
+        ctx.debugger:action("goto_source", ctx.entity)
+      end
+    end,
 
-    ["gf"] = {
-      Frame = function(_, ctx)
-        if not ctx.entity then return end
-        local src = ctx.entity.source:get()
-        if src then
-          local win = find_source_window()
-          vim.api.nvim_set_current_win(win)
-          src:open({ line = ctx.entity.line:get() or 1 })
-        end
-      end,
-      Breakpoint = function(_, ctx)
-        if not ctx.entity then return end
-        local src = ctx.entity.source:get()
-        if src then
-          local win = find_source_window()
-          vim.api.nvim_set_current_win(win)
-          src:open({ line = ctx.entity.line:get() or 1 })
-        end
-      end,
-    },
+    ["gf"] = function(ctx)
+      if ctx.entity then
+        local win = find_source_window()
+        vim.api.nvim_set_current_win(win)
+        ctx.debugger:action("goto_source", ctx.entity)
+      end
+    end,
 
     ["<Space>"] = function(ctx)
       if ctx.entity then ctx.debugger:action("focus", ctx.entity) end
@@ -155,34 +115,34 @@ local function make_defaults(get_state, toggle_expand, render_buffer, show_root)
       Stdio = function() vim.cmd("DapReplLine") end,
     },
 
-    -- Thread control
+    -- Thread control (via action registry)
     ["c"] = {
       Thread = function(_, ctx)
-        if ctx.entity then ctx.entity:continue() end
+        if ctx.entity then ctx.debugger:action("continue", ctx.entity) end
       end,
     },
 
     ["p"] = {
       Thread = function(_, ctx)
-        if ctx.entity then ctx.entity:pause() end
+        if ctx.entity then ctx.debugger:action("pause", ctx.entity) end
       end,
     },
 
     ["n"] = {
       Thread = function(_, ctx)
-        if ctx.entity then ctx.entity:stepOver() end
+        if ctx.entity then ctx.debugger:action("step_over", ctx.entity) end
       end,
     },
 
     ["s"] = {
       Thread = function(_, ctx)
-        if ctx.entity then ctx.entity:stepIn() end
+        if ctx.entity then ctx.debugger:action("step_in", ctx.entity) end
       end,
     },
 
     ["S"] = {
       Thread = function(_, ctx)
-        if ctx.entity then ctx.entity:stepOut() end
+        if ctx.entity then ctx.debugger:action("step_out", ctx.entity) end
       end,
     },
 
@@ -192,7 +152,7 @@ local function make_defaults(get_state, toggle_expand, render_buffer, show_root)
         if ctx.entity then
           local win = find_source_window()
           vim.api.nvim_set_current_win(win)
-          ctx.entity:stepOver()
+          ctx.debugger:action("step_over", ctx.entity)
         end
       end,
     },
@@ -202,7 +162,7 @@ local function make_defaults(get_state, toggle_expand, render_buffer, show_root)
         if ctx.entity then
           local win = find_source_window()
           vim.api.nvim_set_current_win(win)
-          ctx.entity:stepIn()
+          ctx.debugger:action("step_in", ctx.entity)
         end
       end,
     },
@@ -212,24 +172,19 @@ local function make_defaults(get_state, toggle_expand, render_buffer, show_root)
         if ctx.entity then
           local win = find_source_window()
           vim.api.nvim_set_current_win(win)
-          ctx.entity:stepOut()
+          ctx.debugger:action("step_out", ctx.entity)
         end
       end,
     },
 
-    -- Session and Config terminate
-    ["X"] = {
-      Session = function(_, ctx)
-        if ctx.entity then ctx.entity:terminate() end
-      end,
-      Config = function(_, ctx)
-        if ctx.entity then ctx.entity:terminate() end
-      end,
-    },
+    -- Session and Config lifecycle (via action registry)
+    ["X"] = function(ctx)
+      if ctx.entity then ctx.debugger:action("terminate", ctx.entity) end
+    end,
 
     ["D"] = {
       Session = function(_, ctx)
-        if ctx.entity then ctx.entity:disconnect() end
+        if ctx.entity then ctx.debugger:action("disconnect", ctx.entity) end
       end,
     },
 
@@ -278,10 +233,10 @@ local function make_defaults(get_state, toggle_expand, render_buffer, show_root)
       end,
     },
 
-    -- Scope actions and Config restart
+    -- Scope refresh and Config restart (via action registry)
     ["r"] = {
       Scope = function(_, ctx)
-        if ctx.entity then ctx.entity:fetchVariables() end
+        if ctx.entity then ctx.debugger:action("refresh", ctx.entity) end
       end,
       Config = function(_, ctx)
         if ctx.entity and ctx.entity.restart then
@@ -290,14 +245,12 @@ local function make_defaults(get_state, toggle_expand, render_buffer, show_root)
       end,
     },
 
-    -- Config view mode toggle (switch between targets and roots view)
+    -- Config view mode toggle (via action registry)
     ["v"] = {
       Config = function(_, ctx)
-        if ctx.entity and ctx.entity.toggleViewMode then
-          local new_mode = ctx.entity:toggleViewMode()
-          vim.notify("Config view: " .. new_mode, vim.log.levels.INFO)
+        if ctx.entity then
+          ctx.debugger:action("toggle_view_mode", ctx.entity)
           -- Refresh buffer to rebuild tree with new view mode
-          -- The tree query is built once, so we need to re-edit to pick up new edges
           vim.schedule(function()
             vim.cmd("edit")
           end)

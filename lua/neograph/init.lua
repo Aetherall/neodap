@@ -1493,7 +1493,8 @@ function neo.Graph:_notify_edge_subs(node_id, edge_name, event, target_id)
   if not callbacks then return end
 
   local target_node = self:get(target_id)
-  for _, cb in ipairs(callbacks) do
+  local snapshot = { unpack(callbacks) }
+  for _, cb in ipairs(snapshot) do
     local ok, err = pcall(cb, target_node)
     if not ok then
       print("Edge callback error:", err)
@@ -1995,7 +1996,8 @@ function neo.Graph:_on_prop_change(id, prop, new_val, old_val)
 
   local node_watchers = self.watchers[id]
   if node_watchers then
-    for _, cb in ipairs(node_watchers) do
+    local snapshot = { unpack(node_watchers) }
+    for _, cb in ipairs(snapshot) do
       cb(id, prop, new_val, old_val)
     end
   end
@@ -3221,20 +3223,6 @@ function neo.View:_expand(path_key, edge_name, context)
 
   self._viewport_dirty = true
 
-  -- Debug: log expansion state for targets path
-  if path_key:match("stdios.*sessions") then
-    neo_log("[_expand] After inline session hop, checking targets expansion:")
-    for pk, exp in pairs(self.expansions) do
-      if pk:match("targets") then
-        local edges = {}
-        for e, v in pairs(exp) do
-          table.insert(edges, e .. "=" .. tostring(v.count))
-        end
-        neo_log("  " .. pk .. " -> " .. table.concat(edges, ", "))
-      end
-    end
-  end
-
   return true
 end
 
@@ -3832,9 +3820,11 @@ function neo.View:_on_change(node, prop, new_val, old_val)
 
   if dominated_by_filter then
     local is_in = node_matches_filters(node, self.filters, self.graph)
-    node[prop] = old_val
-    local was_in_before = node_matches_filters(node, self.filters, self.graph)
-    node[prop] = new_val
+    local data = node._node_data
+    local old_copy = {}
+    for k, v in pairs(data) do old_copy[k] = v end
+    old_copy[prop] = old_val
+    local was_in_before = node_matches_filters(old_copy, self.filters)
 
     local path_key = tostring(node._id)
 

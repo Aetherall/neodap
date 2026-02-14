@@ -2,7 +2,6 @@
 local entities = require("neodap.entities")
 local uri = require("neodap.uri")
 local context = require("neodap.plugins.dap.context")
-local utils = require("neodap.plugins.dap.utils")
 local a = require("neodap.async")
 local log = require("neodap.logger")
 
@@ -12,29 +11,67 @@ local get_dap_session = context.get_dap_session
 local output_seqs = context.output_seqs
 local next_global_seq = context.next_global_seq
 
+---Create an Output entity linked to a session (protected, never throws)
+---@param session neodap.entities.Session
+---@param text string
+---@param category string
+---@param extra? table Additional output fields (variablesReference, etc.)
+local function create_output(session, text, category, extra)
+  pcall(function()
+    local graph = session._graph
+    local session_id = session.sessionId:get()
+    output_seqs[session] = (output_seqs[session] or 0) + 1
+    local seq = output_seqs[session]
+
+    local props = {
+      uri = uri.output(session_id, seq),
+      seq = seq,
+      globalSeq = next_global_seq(),
+      text = text,
+      category = category,
+      visible = true,
+      matched = true,
+    }
+    if extra then
+      for k, v in pairs(extra) do props[k] = v end
+    end
+
+    local output = entities.Output.new(graph, props)
+    session.outputs:link(output)
+    session.allOutputs:link(output)
+
+    local log_dir = session.logDir:get()
+    if log_dir then
+      local f = io.open(log_dir .. "/output.log", "a")
+      if f then
+        f:write(text)
+        f:close()
+      end
+    end
+  end)
+end
+
+---Get the DAP session for this frame (Frame → Session → DapSession)
+---@return DapSession? dap_session, neodap.entities.Session? session
+function Frame:dapSession()
+  local session = self:session()
+  if not session then return nil, nil end
+  return get_dap_session(session), session
+end
+
 ---Fetch scopes and populate Scope entities
 ---@param self neodap.entities.Frame
 function Frame:fetchScopes()
   log:debug("fetchScopes: starting for " .. self.uri:get())
   -- Check if scopes already exist (avoid duplicate fetches)
-  for _ in self.scopes:iter() do
+  if self.scopes:count() > 0 then
     log:debug("fetchScopes: skipping (scopes exist)")
     return
   end
 
-  -- Traverse to find session for DAP access
-  local stack = self.stack:get()
-  local thread = stack and stack.thread:get()
-  local session = thread and thread.session:get()
-
-  if not session then
-    error("No session", 0)
-  end
-
-  local dap_session = get_dap_session(session)
-  if not dap_session then
-    error("No DAP session", 0)
-  end
+  local dap_session, session = self:dapSession()
+  if not session then error("No session", 0) end
+  if not dap_session then error("No DAP session", 0) end
 
   local graph = self._graph
   local frame_id = self.frameId:get()
@@ -47,7 +84,8 @@ function Frame:fetchScopes()
 
   -- Get sessionId and stops for URI
   local session_id = session.sessionId:get()
-  local stop_seq = thread.stops:get() or 0
+  local thread = self:thread()
+  local stop_seq = thread and thread.stops:get() or 0
 
   -- Create Scope entities
   local count = 0
@@ -70,148 +108,40 @@ Frame.fetchScopes = a.memoize(Frame.fetchScopes)
 ---Evaluate expression in frame context
 ---@param self neodap.entities.Frame
 ---@param expression string
----@param opts? { silent?: boolean } Options: silent=true skips output creation
+---@param opts? { silent?: boolean, context?: string } Options: silent=true skips output creation, context defaults to "repl"
 ---@return string result, number? variablesReference
 function Frame:evaluate(expression, opts)
-  -- Traverse to find session for DAP access
-  local stack = self.stack:get()
-  local thread = stack and stack.thread:get()
-  local session = thread and thread.session:get()
+  local dap_session, session = self:dapSession()
+  if not session then error("No session", 0) end
+  if not dap_session then error("No DAP session", 0) end
 
-  if not session then
-    error("No session", 0)
-  end
-
-  local dap_session = get_dap_session(session)
-  if not dap_session then
-    error("No DAP session", 0)
-  end
+  opts = opts or {}
 
   local ok, body = pcall(function()
     return a.wait(function(cb)
       dap_session.client:request("evaluate", {
         expression = expression,
         frameId = self.frameId:get(),
-        context = "repl",
+        context = opts.context or "repl",
       }, cb)
     end, "Frame:evaluate")
   end)
 
-  opts = opts or {}
-
   if not ok then
-    -- Create error output (protected) unless silent
     if not opts.silent then
-      pcall(function()
-        local graph = session._graph
-        local session_id = session.sessionId:get()
-        output_seqs[session] = (output_seqs[session] or 0) + 1
-        local seq = output_seqs[session]
-        local error_text = "❌ " .. tostring(body) .. "\n"
-
-        local output = entities.Output.new(graph, {
-          uri = uri.output(session_id, seq),
-          seq = seq,
-          globalSeq = next_global_seq(),
-          text = error_text,
-          category = "stderr",
-          visible = true,
-          matched = true,
-        })
-        session.outputs:link(output)
-        session.allOutputs:link(output)
-
-        -- Write to log file
-        local log_dir = session.logDir:get()
-        if log_dir then
-          local f = io.open(log_dir .. "/output.log", "a")
-          if f then
-            f:write(error_text)
-            f:close()
-          end
-        end
-      end)
+      create_output(session, "❌ " .. tostring(body) .. "\n", "stderr")
     end
-
     error(body, 0)
   end
 
-  -- Create result output (protected) unless silent
   if not opts.silent then
-    pcall(function()
-      local graph = session._graph
-      local session_id = session.sessionId:get()
-      output_seqs[session] = (output_seqs[session] or 0) + 1
-      local seq = output_seqs[session]
-      local result_text = expression .. " → " .. tostring(body.result) .. "\n"
-
-      local output = entities.Output.new(graph, {
-        uri = uri.output(session_id, seq),
-        seq = seq,
-        globalSeq = next_global_seq(),
-        text = result_text,
-        category = "repl",
-        variablesReference = body.variablesReference,
-        visible = true,
-        matched = true,
-      })
-      session.outputs:link(output)
-      session.allOutputs:link(output)
-
-      -- Write to log file
-      local log_dir = session.logDir:get()
-      if log_dir then
-        local f = io.open(log_dir .. "/output.log", "a")
-        if f then
-          f:write(result_text)
-          f:close()
-        end
-      end
-    end)
+    create_output(session, expression .. " → " .. tostring(body.result) .. "\n", "repl",
+      { variablesReference = body.variablesReference })
   end
 
   return body.result, body.variablesReference, body.type
 end
 Frame.evaluate = a.fn(Frame.evaluate)
-
----Set expression value in frame context
----@param self neodap.entities.Frame
----@param expression string The expression to assign to
----@param value string The new value (as expression string)
----@return string result The new value after assignment
----@return number? variablesReference If > 0, the value is structured
----@return string? type The type of the value
-function Frame:setExpression(expression, value)
-  -- Traverse to find session for DAP access
-  local stack = self.stack:get()
-  local thread = stack and stack.thread:get()
-  local session = thread and thread.session:get()
-
-  if not session then
-    error("No session", 0)
-  end
-
-  local dap_session = get_dap_session(session)
-  if not dap_session then
-    error("No DAP session", 0)
-  end
-
-  -- Check if adapter supports setExpression
-  if not dap_session.capabilities or not dap_session.capabilities.supportsSetExpression then
-    error("Adapter does not support setExpression", 0)
-  end
-
-  local body = a.wait(function(cb)
-    dap_session.client:request("setExpression", {
-      expression = expression,
-      value = value,
-      frameId = self.frameId:get(),
-    }, cb)
-  end, "Frame:setExpression")
-
-  return body.value, body.variablesReference, body.type
-end
-Frame.setExpression = a.fn(Frame.setExpression)
 
 ---Get or create a Variable entity for an expression
 ---Unlike evaluate(), this returns a persistent entity that can be modified
@@ -219,30 +149,23 @@ Frame.setExpression = a.fn(Frame.setExpression)
 ---@param expression string
 ---@return neodap.entities.Variable
 function Frame:variable(expression)
-  -- Traverse to find session for DAP access
-  local stack = self.stack:get()
-  local thread = stack and stack.thread:get()
-  local session = thread and thread.session:get()
-
-  if not session then
-    error("No session", 0)
-  end
+  local dap_session, session = self:dapSession()
+  if not session then error("No session", 0) end
 
   -- Check thread is stopped - frameId is only valid when stopped
-  if not thread:isStopped() then
+  local thread = self:thread()
+  if not thread or not thread:isStopped() then
     error("Thread is not stopped", 0)
   end
 
   -- Check frame's stack is the current stack (not stale from a previous stop)
+  local stack = self.stack:get()
   local current_stack = thread.stack:get()
   if not current_stack or current_stack ~= stack then
     error("Frame is from a previous stop", 0)
   end
 
-  local dap_session = get_dap_session(session)
-  if not dap_session then
-    error("No DAP session", 0)
-  end
+  if not dap_session then error("No DAP session", 0) end
 
   local graph = self._graph
   local session_id = session.sessionId:get()
@@ -300,19 +223,9 @@ Frame.variable = a.fn(Frame.variable)
 ---@param column number 1-indexed column position
 ---@return dap.CompletionItem[] targets
 function Frame:completions(text, column)
-  -- Traverse to find session for DAP access
-  local stack = self.stack:get()
-  local thread = stack and stack.thread:get()
-  local session = thread and thread.session:get()
-
-  if not session then
-    error("No session", 0)
-  end
-
-  local dap_session = get_dap_session(session)
-  if not dap_session then
-    error("No DAP session", 0)
-  end
+  local dap_session, session = self:dapSession()
+  if not session then error("No session", 0) end
+  if not dap_session then error("No DAP session", 0) end
 
   -- Check if adapter supports completions
   if not dap_session.capabilities or not dap_session.capabilities.supportsCompletionsRequest then

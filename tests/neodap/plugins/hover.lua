@@ -120,11 +120,6 @@ local T = harness.integration("hover", function(T, ctx)
   end
 
   T["hover uses focused frame in call stack"] = function()
-    -- Skip for Python - function call syntax differs
-    if ctx.adapter_name == "python" then
-      return
-    end
-
     local h = ctx.create()
     h:init_plugin("neodap.plugins.breakpoint_cmd")
     h:use_plugin("neodap.plugins.hover")
@@ -134,28 +129,28 @@ local T = harness.integration("hover", function(T, ctx)
 
     h:cmd("nnoremap K <cmd>lua vim.lsp.buf.hover()<CR>")
 
-    h:cmd("DapLaunch Debug stop")
-    h:wait_url("/sessions/threads/stacks[0]/frames[0]")
-    h:cmd("DapFocus /sessions/threads/stacks[0]/frames[0]")
-
-    -- Set breakpoint inside inner function (line 2)
+    -- Set breakpoint BEFORE launch so it's synced during beforeConfigurationDone
+    -- Use "Debug" (no stopOnEntry) so the program runs directly to the breakpoint
     h:edit_main()
     h:cmd("DapBreakpoint 2")
-    h:wait_url("/breakpoints(line=2)/bindings(verified=true)")
+    h:wait_url("/breakpoints(line=2)")
 
-    -- Continue to breakpoint - should have multiple frames
-    h:cmd("DapContinue")
+    h:cmd("DapLaunch Debug")
     h:wait_url("/sessions/threads(state=stopped)/stacks[0]/frames(line=2)[0]")
+    h:cmd("DapFocus /sessions/threads(state=stopped)/stacks[0]/frames[0]")
     h:wait(500)
 
-    -- Should have at least 2 frames now
+    -- Should have at least 2 frames now (inner, outer, module)
     local frame_count = h:query_count("@thread/stack/frames")
     MiniTest.expect.equality(frame_count >= 2, true)
 
-    -- Focus inner frame and hover on x (local variable in inner)
+    -- Focus inner frame (top of stack) and hover on x (local variable in inner)
+    -- Python: "    x = 1" -> x at col 4
+    -- JavaScript: "  const x = 1;" -> x at col 8
     h:cmd("DapFocus @thread/stack/frames[0]")
     h:wait(200)
-    h:set_cursor(2, 8) -- const x = 1; -> x at col 8
+    local x_col = ctx.adapter_name == "javascript" and 8 or 4
+    h:set_cursor(2, x_col)
     h.child.type_keys("K")
     h:wait(1000)
 
