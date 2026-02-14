@@ -78,13 +78,15 @@ return function(debugger, config)
             log:info("Running compound postDebugTask: " .. task_name)
             overseer.run_task({ name = task_name }, function(task, err)
               if err or not task then
-                log:error("Compound postDebugTask failed to start", { task = task_name })
-              else
-                task:start()
+                local msg = "postDebugTask '" .. task_name .. "' failed to start"
+                if err then msg = msg .. ": " .. tostring(err) end
+                log:error(msg)
+                vim.notify(msg, vim.log.levels.ERROR)
               end
             end)
           else
             log:warn("overseer.nvim required for postDebugTask support")
+            vim.notify("overseer.nvim is required for postDebugTask support", vim.log.levels.WARN)
           end
           return true -- Unsubscribe
         end
@@ -99,6 +101,7 @@ return function(debugger, config)
         end)
         if not ok then
           log:error("Failed to start session", { name = launch_config.name, error = tostring(err) })
+          vim.notify("Failed to start debug session '" .. (launch_config.name or "?") .. "': " .. tostring(err), vim.log.levels.ERROR)
         end
       end
     end
@@ -107,22 +110,30 @@ return function(debugger, config)
     if compound_meta and compound_meta.preLaunchTask then
       local ok, overseer = pcall(require, "overseer")
       if ok then
-        overseer.run_task({ name = compound_meta.preLaunchTask }, function(task, err)
+        local task_name = compound_meta.preLaunchTask
+        overseer.run_task({ name = task_name }, function(task, err)
           if err or not task then
-            log:error("Compound preLaunchTask failed to start", { task = compound_meta.preLaunchTask })
+            local msg = "preLaunchTask '" .. task_name .. "' failed to start"
+            if err then msg = msg .. ": " .. tostring(err) end
+            log:error(msg)
+            vim.notify(msg .. " — aborting debug launch", vim.log.levels.ERROR)
             return
           end
           task:subscribe("on_complete", function(_, status)
             if status == "SUCCESS" then
-              log:info("preLaunchTask completed: " .. compound_meta.preLaunchTask)
+              log:info("preLaunchTask completed: " .. task_name)
               launch_configs()
             else
-              log:error("Compound preLaunchTask failed, aborting debug", { task = compound_meta.preLaunchTask })
+              local msg = "preLaunchTask '" .. task_name .. "' " .. tostring(status):lower()
+              log:error(msg)
+              vim.notify(msg .. " — aborting debug launch", vim.log.levels.ERROR)
             end
+            return true -- Unsubscribe after first completion
           end)
         end)
       else
         log:warn("overseer.nvim required for preLaunchTask support")
+        vim.notify("overseer.nvim is required for preLaunchTask support, launching without it", vim.log.levels.WARN)
         launch_configs()
       end
     else
