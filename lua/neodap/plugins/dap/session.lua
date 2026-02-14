@@ -14,7 +14,10 @@ function Session:disconnect()
   a.wait(function(cb) dap_session:disconnect(cb) end)
   self:update({ state = "terminated" })
   local cfg = self.config:get()
-  if cfg then cfg:updateState() end
+  if cfg then
+    cfg:checkStopAll()
+    cfg:updateState()
+  end
 end
 Session.disconnect = a.fn(Session.disconnect)
 
@@ -27,7 +30,10 @@ function Session:terminate()
   a.wait(function(cb) dap_session:terminate(cb) end)
   self:update({ state = "terminated" })
   local cfg = self.config:get()
-  if cfg then cfg:updateState() end
+  if cfg then
+    cfg:checkStopAll()
+    cfg:updateState()
+  end
 end
 Session.terminate = a.fn(Session.terminate)
 

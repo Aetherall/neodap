@@ -44,7 +44,6 @@ M.schema = {
         { name = "default", fields = {} },
         { name = "by_leaf", fields = { { name = "leaf" } } },
         { name = "by_isConfigRoot", fields = { { name = "isConfigRoot" } } },
-        { name = "by_isConfigRoot_state", fields = { { name = "isConfigRoot" }, { name = "state" } } },
         { name = "by_leaf_state", fields = { { name = "leaf" }, { name = "state" } } },
       },
     },
@@ -79,15 +78,6 @@ M.schema = {
     },
 
     -- Rollups: property
-    rootCount = { type = "count", edge = "sessions", filter = { isConfigRoot = true } },
-    terminatedRootCount = {
-      type = "count",
-      edge = "sessions",
-      filters = {
-        { field = "isConfigRoot", value = true },
-        { field = "state", value = "terminated" },
-      },
-    },
     targetCount = { type = "count", edge = "sessions", filter = { leaf = true } },
     stoppedTargetCount = {
       type = "count",

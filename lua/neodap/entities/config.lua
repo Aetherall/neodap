@@ -11,33 +11,15 @@ return function(Config)
     return string.format("%s #%d", name, index)
   end
 
-  ---Update state based on session states
+  ---Update state based on target (leaf) session states
   ---Call this when session states change
+  ---Uses target (leaf) rollups because some adapters (like js-debug) have
+  ---parent sessions that never terminate properly.
   ---
-  ---Uses target (leaf) rollups for state transitions because some adapters
-  ---(like js-debug) have parent sessions that never terminate properly.
-  ---
-  ---Uses root rollups for stopAll because child processes (auto-attached by
-  ---js-debug) can exit transiently without meaning the debug config itself died.
-  ---stopAll should only cascade when a root session (explicit launch config) terminates.
+  ---Note: stopAll is NOT checked here. It is handled in Session:terminate()
+  ---and Session:disconnect() so it only triggers on manual stop, not on
+  ---natural process termination.
   function Config:updateState()
-    -- stopAll: check root sessions (the explicitly launched configs)
-    if self.stopAll:get() then
-      local root_total = self.rootCount:get() or 0
-      local root_terminated = self.terminatedRootCount:get() or 0
-      local has_active_root = root_terminated < root_total
-      local has_terminated_root = root_terminated > 0
-
-      if has_terminated_root and has_active_root then
-        -- Avoid re-entry: terminate() will trigger more updateState() calls as sessions die.
-        -- Clear stopAll after first trigger so subsequent calls fall through to normal logic.
-        self:update({ stopAll = false })
-        self:terminate()
-        return
-      end
-    end
-
-    -- State transition: use targets (leaves) because parent sessions may never terminate
     local total = self.targetCount:get() or 0
     local terminated = self.terminatedTargetCount:get() or 0
     local has_active_target = terminated < total
@@ -46,6 +28,15 @@ return function(Config)
     if self.state:get() ~= new_state then
       self:update({ state = new_state })
     end
+  end
+
+  ---Check and trigger stopAll cascade (called from Session:terminate/disconnect)
+  ---Only cascades on manual stop of a root session, not on natural termination.
+  function Config:checkStopAll()
+    if not self.stopAll:get() then return end
+    -- Clear stopAll before cascading to prevent re-entry
+    self:update({ stopAll = false })
+    self:terminate()
   end
 
   ---Terminate all sessions in this config
