@@ -95,6 +95,101 @@ return function(debugger, config)
 
     -- Helper to launch all configs
     local function launch_configs()
+      -- For compounds with server adapters, use the compound supervisor
+      -- so all configs live under one process group (visible in pstree).
+      if is_compound then
+        local neodap_mod = require("neodap")
+        local supervisor = require("neodap.supervisor")
+        local session_mod = require("neodap.session")
+
+        -- Resolve adapters and build compound config specs
+        local compound_specs = {}
+        local adapter_map = {} -- name -> resolved adapter
+        for _, launch_config in ipairs(configs) do
+          local type_name = launch_config.type
+          local adapter_cfg = type_name and neodap_mod.config.adapters[type_name]
+          if adapter_cfg then
+            if type(adapter_cfg) == "function" then
+              adapter_cfg = adapter_cfg(launch_config)
+            end
+            if adapter_cfg.on_config then
+              launch_config = adapter_cfg.on_config(launch_config) or launch_config
+            end
+          end
+
+          if adapter_cfg and adapter_cfg.type == "server" and adapter_cfg.command then
+            table.insert(compound_specs, {
+              name = launch_config.name or launch_config.type or "debug",
+              command = adapter_cfg.command,
+              args = adapter_cfg.args,
+              connect_condition = adapter_cfg.connect_condition,
+            })
+            adapter_map[launch_config.name or launch_config.type or "debug"] = {
+              adapter = adapter_cfg,
+              config = launch_config,
+            }
+          else
+            -- Non-server adapter: launch directly (won't be under compound shim)
+            local ok, err = pcall(function()
+              debugger:debug({ config = launch_config, config_entity = config_entity })
+            end)
+            if not ok then
+              log:error("Failed to start session", { name = launch_config.name, error = tostring(err) })
+              vim.notify("Failed to start debug session '" .. (launch_config.name or "?") .. "': " .. tostring(err), vim.log.levels.ERROR)
+            end
+          end
+        end
+
+        if #compound_specs > 0 then
+          local compound_handle = supervisor.launch_compound({
+            name = config_name,
+            configs = compound_specs,
+          }, function(cfg_name, sup_handle, port, host)
+            -- Config adapter is ready — connect via TCP and create DAP session
+            local entry = adapter_map[cfg_name]
+            if not entry then return end
+
+            host = host or entry.adapter.host or "127.0.0.1"
+            log:info("Compound config ready", { name = cfg_name, port = port, host = host, pid = sup_handle.pid })
+
+            local tcp_handle = session_mod.connect_tcp({
+              host = host,
+              port = port,
+              retries = 5,
+              retry_delay = 100,
+            })
+
+            -- When TCP closes, stop this config's shim
+            tcp_handle.on_exit(function()
+              sup_handle.stop()
+            end)
+
+            local ok, err = pcall(function()
+              debugger:debug({
+                config = entry.config,
+                config_entity = config_entity,
+                process_handle = tcp_handle,
+                child_adapter = { type = "tcp", host = host, port = port },
+                _supervisor_handle = sup_handle,
+              })
+            end)
+            if not ok then
+              log:error("Failed to start session", { name = cfg_name, error = tostring(err) })
+              vim.notify("Failed to start debug session '" .. cfg_name .. "': " .. tostring(err), vim.log.levels.ERROR)
+            end
+          end, function(cfg_name, err)
+            log:error("Config failed", { name = cfg_name, error = err })
+            vim.notify("Debug config '" .. cfg_name .. "' failed: " .. err, vim.log.levels.ERROR)
+          end)
+
+          -- Store compound handle on config entity for lifecycle management
+          config_entity._compound_handle = compound_handle
+        end
+
+        return
+      end
+
+      -- Single config launch (or non-compound)
       for _, launch_config in ipairs(configs) do
         local ok, err = pcall(function()
           debugger:debug({ config = launch_config, config_entity = config_entity })

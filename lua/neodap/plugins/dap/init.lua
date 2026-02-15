@@ -206,6 +206,13 @@ local function wire_session_events(session, dap_session)
     cleanup_session_bindings(session)
   end)
 
+  dap_session:on("process", function(body)
+    if body.systemProcessId then
+      session:update({ pid = body.systemProcessId })
+      log:info("Process started: " .. (body.name or "?") .. " (pid " .. body.systemProcessId .. ")")
+    end
+  end)
+
   dap_session:on("thread", function(body)
     local graph = session._graph
     local thread_id = body.threadId
@@ -438,7 +445,7 @@ end
 
 ---Start a debug session using the backend for process management
 ---@param self neodap.entities.Debugger
----@param opts { adapter?: table, config: table, handlers?: table, config_entity?: table, parent_task_id?: number }
+---@param opts { adapter?: table, config: table, handlers?: table, config_entity?: table, parent_task_id?: number, process_handle?: table, child_adapter?: table, _supervisor_handle?: table }
 ---@return neodap.entities.Session
 function Debugger:debug(opts)
   log:info("debug() called", { name = opts.config and opts.config.name, type = opts.config and opts.config.type })
@@ -472,11 +479,19 @@ function Debugger:debug(opts)
   -- Session will be created in onSessionCreated hook
   local root_session = nil
 
-  -- Track adapter task for the current session being created
-  local current_adapter_task_id = nil
+  -- Track the most recently created dap_session so onAdapterProcess can find its entity.
+  -- onSessionCreated always fires BEFORE onAdapterProcess in dap-lua's M.create():
+  --   1. session object created (line 85)
+  --   2. onSessionCreated(session) fires (line 114)
+  --   3. backend.spawn() / backend.connect() runs (line 424+)
+  --   4. onAdapterProcess(process) fires (line 434/486)
+  -- So by the time onAdapterProcess runs, the entity already exists in session_entities.
+  local last_dap_session = nil
 
   -- Build handlers with backend integration
-  local handlers = vim.tbl_extend("force", opts.handlers or {}, {
+  -- Declare before assignment so closures inside can reference it
+  local handlers
+  handlers = vim.tbl_extend("force", opts.handlers or {}, {
     -- runInTerminal using backend
     runInTerminal = function(dap_session, args, callback)
       local task = backend.run_in_terminal({
@@ -498,14 +513,27 @@ function Debugger:debug(opts)
       callback(nil, { processId = task.pid })
     end,
 
-    -- Called when backend spawns/connects adapter process
+    -- Called when backend spawns/connects adapter process (AFTER onSessionCreated)
     onAdapterProcess = function(process)
-      current_adapter_task_id = process.task_id
+      -- Update the session entity that was just created by onSessionCreated.
+      -- For stdio/server adapters: process.pid is the adapter PID.
+      -- For tcp adapters (child sessions): process.pid is nil (TCP socket, not a process),
+      -- so we skip the update — children inherit adapterPid from parent in onSessionCreated.
+      if process.pid then
+        local session_entity = last_dap_session and session_entities[last_dap_session]
+        if session_entity then
+          session_entity:update({
+            adapterTaskId = process.task_id,
+            adapterPid = process.pid,
+          })
+        end
+      end
     end,
 
     -- Called when a dap_session is created (before initialization)
     -- This fires for ALL sessions (root and child)
     onSessionCreated = function(dap_session)
+      last_dap_session = dap_session
       local parent_session = dap_session.parent and session_entities[dap_session.parent]
 
       local new_sessionId = neoword.generate()
@@ -523,19 +551,25 @@ function Debugger:debug(opts)
         fallback_ft = parent_session.fallbackFiletype:get()
       end
 
+      -- Resolve adapterPid:
+      -- 1. Supervisor path: handlers._supervisor_handle has the shim PID
+      -- 2. Child sessions: inherit from parent
+      -- 3. Backend path: set later by onAdapterProcess
+      local sup = handlers._supervisor_handle
+      local adapter_pid = (sup and sup.pid)
+        or (parent_session and parent_session.adapterPid:get())
+        or nil
+
       local new_session = entities.Session.new(graph, {
         uri = uri.session(new_sessionId),
         sessionId = new_sessionId,
         name = dap_session.config.name or dap_session.config.type or (parent_session and "child" or "session"),
         state = "starting",
         leaf = true,
-        adapterTaskId = current_adapter_task_id,
+        adapterPid = adapter_pid,
         logDir = log_dir,
         fallbackFiletype = fallback_ft,
       })
-
-      -- Reset for next session
-      current_adapter_task_id = nil
 
       -- Create Stdio intermediate node for outputs
       local stdio = entities.Stdio.new(graph, {
@@ -627,14 +661,8 @@ function Debugger:debug(opts)
     end,
   })
 
-  -- Start DAP session with backend for process management
-  -- The backend handles stdio, tcp, and server adapters uniformly
-  DapSession.create({
-    adapter = adapter,
-    config = opts.config,
-    handlers = handlers,
-    backend = backend,
-  }, function(err, dap_session)
+  -- Common callback for DapSession.create
+  local function on_session_created(err, dap_session)
     if err then
       log:error(err)
       if root_session then
@@ -648,7 +676,87 @@ function Debugger:debug(opts)
       root_session:update({ state = "running" })
       log:info("Session started: " .. root_session.uri:get())
     end
-  end)
+  end
+
+  -- Pre-made process handle path: caller already spawned the adapter and connected.
+  -- Used by compound launches where the compound supervisor manages the process tree.
+  if opts.process_handle then
+    -- Store supervisor handle if provided
+    if opts._supervisor_handle then
+      handlers._supervisor_handle = opts._supervisor_handle
+    end
+
+    DapSession.create({
+      process_handle = opts.process_handle,
+      config = opts.config,
+      handlers = handlers,
+      child_adapter = opts.child_adapter,
+      backend = backend,
+    }, on_session_created)
+
+    return root_session
+  end
+
+  -- Server adapters: use supervisor for process group management.
+  -- The supervisor spawns the adapter in a shell shim that owns a process group,
+  -- redirects stdout/stderr to files, and provides signal-based lifecycle control.
+  -- Once the adapter announces its port, we connect via TCP and create the DAP session.
+  if adapter.type == "server" and adapter.command then
+    local supervisor = require("neodap.supervisor")
+    local session_name = opts.config.name or opts.config.type or "debug"
+
+    supervisor.launch_config({
+      name = session_name,
+      command = adapter.command,
+      args = adapter.args,
+      env = adapter.env,
+      cwd = adapter.cwd,
+      connect_condition = adapter.connect_condition,
+    }, function(err, sup_handle, port, host)
+      if err then
+        log:error("Supervisor launch failed: " .. tostring(err))
+        return
+      end
+
+      host = host or adapter.host or "127.0.0.1"
+      log:info("Supervisor: adapter ready", { name = session_name, pid = sup_handle.pid, port = port, host = host })
+
+      -- Store supervisor handle on the handlers for access during session lifecycle
+      handlers._supervisor_handle = sup_handle
+
+      -- Connect to adapter via TCP, then create DAP session.
+      -- Pass child_adapter so startDebugging children connect to the same server.
+      local tcp_handle = require("neodap.session").connect_tcp({
+        host = host,
+        port = port,
+        retries = 5,
+        retry_delay = 100,
+      })
+
+      -- When TCP connection closes, stop the supervisor (kills process group)
+      tcp_handle.on_exit(function()
+        sup_handle.stop()
+      end)
+
+      DapSession.create({
+        process_handle = tcp_handle,
+        config = opts.config,
+        handlers = handlers,
+        child_adapter = { type = "tcp", host = host, port = port },
+        backend = backend,
+      }, on_session_created)
+    end)
+
+    return root_session
+  end
+
+  -- Non-server adapters: use existing backend path (stdio, tcp)
+  DapSession.create({
+    adapter = adapter,
+    config = opts.config,
+    handlers = handlers,
+    backend = backend,
+  }, on_session_created)
 
   return root_session
 end

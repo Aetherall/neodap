@@ -100,6 +100,7 @@ function M.spawn(opts)
   log:debug("Process spawned successfully", { pid = sys_obj.pid })
 
   return {
+    pid = sys_obj.pid,
     write = function(data)
       if not sys_obj:is_closing() then
         sys_obj:write(data)

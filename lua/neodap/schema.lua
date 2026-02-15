@@ -389,6 +389,8 @@ M.schema = {
     adapterTaskId = "number",   -- Backend task ID for adapter process
     sessionTaskId = "number",   -- Backend task ID for session lifecycle
     terminalBufnr = "number",   -- Buffer number for integratedTerminal (nil if using DAP output events)
+    pid = "number",             -- OS process ID of the debuggee (from DAP "process" event)
+    adapterPid = "number",      -- OS process ID of the debug adapter
     logDir = "string",          -- Temp directory for session logs (stdout.log, stderr.log, etc.)
     fallbackFiletype = "string", -- Fallback filetype for virtual sources (from adapter config)
 

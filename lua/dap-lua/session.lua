@@ -72,8 +72,9 @@ function M.create(opts, callback, depth)
     adapter_config = adapter
   end
 
-  -- For child sessions: may be updated to TCP adapter after server connects
-  local child_adapter = adapter
+  -- For child sessions: may be updated to TCP adapter after server connects.
+  -- If caller provides child_adapter explicitly (e.g. supervisor path), use that.
+  local child_adapter = opts.child_adapter or adapter
   local config = opts.config
   local handlers = opts.handlers or {}
   local parent = opts.parent
