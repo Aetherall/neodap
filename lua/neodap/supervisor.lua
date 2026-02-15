@@ -254,15 +254,38 @@ local function wait_for_file(path, callback, timeout)
   end
 end
 
----Send SIGTERM to a process group.
+---Send a signal to a process group.
 ---@param pgid number Process group ID (= shim PID)
+---@param signal? string Signal name (default: "sigterm")
 local function kill_group(pgid, signal)
   signal = signal or "sigterm"
   -- Negative PID = send to process group
   local ok, err = pcall(uv.kill, -pgid, signal)
   if not ok then
-    log:debug("kill_group failed (likely already dead)", { pgid = pgid, error = err })
+    log:debug("kill_group failed (likely already dead)", { pgid = pgid, signal = signal, error = err })
   end
+  return ok
+end
+
+---Send SIGTERM to a process group, then SIGKILL after a delay if still alive.
+---@param pgid number Process group ID (= shim PID)
+---@param escalation_ms? number Delay before SIGKILL (default: 2000)
+local function stop_group(pgid, escalation_ms)
+  escalation_ms = escalation_ms or 2000
+  kill_group(pgid, "sigterm")
+
+  -- Schedule a SIGKILL escalation in case processes ignore SIGTERM
+  local timer = uv.new_timer()
+  timer:start(escalation_ms, 0, function()
+    timer:stop()
+    timer:close()
+    -- Check if any process in the group is still alive
+    local alive = pcall(uv.kill, -pgid, 0)
+    if alive then
+      log:info("Process group still alive after SIGTERM, sending SIGKILL", { pgid = pgid })
+      kill_group(pgid, "sigkill")
+    end
+  end)
 end
 
 ---Launch a single config through a shell shim.
@@ -293,7 +316,7 @@ function M.launch_config(opts, callback)
     port = nil,  ---@type number?
     host = nil,  ---@type string?
     stop = function()
-      kill_group(pid, "sigterm")
+      stop_group(pid)
     end,
     kill = function()
       kill_group(pid, "sigkill")
@@ -426,7 +449,20 @@ function M.launch_compound(opts, on_config_ready, on_config_error)
         if f_pid then
           local cfg_pid = tonumber(f_pid:read("*a"))
           f_pid:close()
-          if cfg_pid then pcall(vim.uv.kill, cfg_pid, "sigterm") end
+          if cfg_pid then
+            pcall(uv.kill, cfg_pid, "sigterm")
+            -- Escalate to SIGKILL after delay
+            local timer = uv.new_timer()
+            timer:start(2000, 0, function()
+              timer:stop()
+              timer:close()
+              local alive = pcall(uv.kill, cfg_pid, 0)
+              if alive then
+                log:info("Config shim still alive after SIGTERM, sending SIGKILL", { pid = cfg_pid, name = cfg.name })
+                pcall(uv.kill, cfg_pid, "sigkill")
+              end
+            end)
+          end
         end
       end,
       kill = function()
@@ -435,7 +471,7 @@ function M.launch_compound(opts, on_config_ready, on_config_error)
         if f_pid then
           local cfg_pid = tonumber(f_pid:read("*a"))
           f_pid:close()
-          if cfg_pid then pcall(vim.uv.kill, cfg_pid, "sigkill") end
+          if cfg_pid then pcall(uv.kill, cfg_pid, "sigkill") end
         end
       end,
       on_stdout = function(cb)
@@ -502,7 +538,7 @@ function M.launch_compound(opts, on_config_ready, on_config_error)
     rundir = rundir,
     configs = config_handles,
     stop = function()
-      kill_group(pid, "sigterm")
+      stop_group(pid)
     end,
     kill = function()
       kill_group(pid, "sigkill")

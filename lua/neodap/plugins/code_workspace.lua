@@ -164,13 +164,15 @@ return function(debugger, config)
               sup_handle.stop()
             end)
 
+            -- Pass the compound handle as the supervisor handle so that disconnecting
+            -- any session in the compound kills the entire compound process group.
             local ok, err = pcall(function()
               debugger:debug({
                 config = entry.config,
                 config_entity = config_entity,
                 process_handle = tcp_handle,
                 child_adapter = { type = "tcp", host = host, port = port },
-                _supervisor_handle = sup_handle,
+                _supervisor_handle = compound_handle,
               })
             end)
             if not ok then

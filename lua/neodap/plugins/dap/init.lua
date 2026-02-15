@@ -202,6 +202,11 @@ local function wire_session_events(session, dap_session)
       context.terminating_sessions[dap_session] = nil
       context.kill_terminal_tasks(session)
     end
+    -- Stop the supervisor process group immediately.
+    -- This fires before the disconnect request is sent, so the adapter gets killed
+    -- and the TCP connection drops — unblocking any pending requests.
+    -- Without this, the disconnect request can hang if the adapter doesn't respond.
+    context.stop_supervisor(session)
     -- Clean up bindings as safety net (in case terminated/exited not received)
     cleanup_session_bindings(session)
   end)
@@ -617,6 +622,16 @@ function Debugger:debug(opts)
       dap_sessions[new_session] = dap_session
       session_entities[dap_session] = new_session
       wire_session_events(new_session, dap_session)
+
+      -- Store supervisor handle for lifecycle management.
+      -- Root sessions get it from handlers._supervisor_handle.
+      -- Child sessions inherit from parent so that disconnecting any session
+      -- in the tree will stop the supervisor (kill the adapter process group).
+      local sup_handle = handlers._supervisor_handle
+        or (parent_session and context.supervisor_handles[parent_session])
+      if sup_handle then
+        context.set_supervisor_handle(new_session, sup_handle)
+      end
 
       log:info("Session created: " .. new_session.uri:get())
 

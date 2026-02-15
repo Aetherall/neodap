@@ -21,6 +21,10 @@ M.terminal_tasks = setmetatable({}, { __mode = "k" })
 -- Used to distinguish terminate vs disconnect in the "closing" event handler
 M.terminating_sessions = setmetatable({}, { __mode = "k" })
 
+-- Session entity → supervisor handle (ConfigHandle or CompoundHandle)
+-- Used to stop the supervisor process group when the session closes
+M.supervisor_handles = setmetatable({}, { __mode = "k" })
+
 -- Global output sequence counter (across all sessions for ordering)
 M.global_output_seq = 0
 
@@ -84,6 +88,23 @@ function M.kill_terminal_tasks(session)
     task.kill()
   end
   M.terminal_tasks[session] = nil
+end
+
+---Store a supervisor handle for a session
+---@param session neodap.entities.Session
+---@param handle neodap.supervisor.ConfigHandle
+function M.set_supervisor_handle(session, handle)
+  M.supervisor_handles[session] = handle
+end
+
+---Stop the supervisor for a session (kills the process group)
+---@param session neodap.entities.Session
+function M.stop_supervisor(session)
+  local handle = M.supervisor_handles[session]
+  if handle then
+    M.supervisor_handles[session] = nil
+    handle.stop()
+  end
 end
 
 return M
