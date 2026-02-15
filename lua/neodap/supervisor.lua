@@ -13,14 +13,18 @@
 --           └── js-debug → rsbuild
 --
 -- Communication is filesystem-based (the tmpdir is the interface):
---   <rundir>/<name>/pid       shim PID (= PGID)
+--   <rundir>/<name>/pid       shim PID (= SID, since shim calls setsid)
 --   <rundir>/<name>/stdout    adapter stdout (nvim watches, parses port)
 --   <rundir>/<name>/stderr    adapter stderr
 --   <rundir>/<name>/exit      exit code (written when adapter dies)
 --
--- Control is signal-based:
---   kill -TERM -<pgid>        stop a config (kills entire process group)
---   kill -TERM -<compound>    stop compound (kills everything)
+-- Control is signal-based via process tree walking:
+--   stop_tree(pid)   collect all descendants, SIGTERM all, SIGKILL after 2s
+--   kill_tree(pid)   collect all descendants, SIGKILL all immediately
+--
+-- We walk /proc/<pid>/task/<tid>/children recursively to find ALL descendants,
+-- because child processes (pnpm, node) may create their own process groups
+-- AND sessions (setsid), making both kill(-pgid) and pkill(-s sid) insufficient.
 
 local log = require("neodap.logger")
 local uv = vim.uv
@@ -43,7 +47,7 @@ end
 -- Arguments: $1 = name, $2 = rundir, rest = adapter command
 -- The shim:
 --   1. Names itself in /proc/self/comm (visible in pstree/ps)
---   2. Writes its PID to the rundir (PID = PGID since we spawn with setsid)
+--   2. Writes its PID to the rundir (PID = SID = PGID since we spawn with setsid)
 --   3. Spawns the adapter with stdout/stderr redirected to files
 --   4. Waits for the adapter to exit
 --   5. Writes exit code to the rundir
@@ -254,36 +258,90 @@ local function wait_for_file(path, callback, timeout)
   end
 end
 
----Send a signal to a process group.
----@param pgid number Process group ID (= shim PID)
----@param signal? string Signal name (default: "sigterm")
-local function kill_group(pgid, signal)
-  signal = signal or "sigterm"
-  -- Negative PID = send to process group
-  local ok, err = pcall(uv.kill, -pgid, signal)
-  if not ok then
-    log:debug("kill_group failed (likely already dead)", { pgid = pgid, signal = signal, error = err })
+---Collect all descendant PIDs of a process by walking /proc/<pid>/task/*/children.
+---This catches ALL descendants regardless of their PGID or SID, including processes
+---that called setsid() (like node/pnpm children).
+---@param root_pid number The root PID to collect descendants for
+---@return number[] pids All descendant PIDs (does NOT include root_pid)
+local function collect_descendants(root_pid)
+  local descendants = {}
+  local queue = { root_pid }
+
+  while #queue > 0 do
+    local pid = table.remove(queue, 1)
+    -- Read children from /proc/<pid>/task/<pid>/children
+    -- (main thread's children file lists direct children)
+    local path = string.format("/proc/%d/task/%d/children", pid, pid)
+    local f = io.open(path, "r")
+    if f then
+      local content = f:read("*a")
+      f:close()
+      for child_pid in content:gmatch("%d+") do
+        local cpid = tonumber(child_pid)
+        if cpid then
+          table.insert(descendants, cpid)
+          table.insert(queue, cpid)
+        end
+      end
+    end
   end
-  return ok
+
+  return descendants
 end
 
----Send SIGTERM to a process group, then SIGKILL after a delay if still alive.
----@param pgid number Process group ID (= shim PID)
----@param escalation_ms? number Delay before SIGKILL (default: 2000)
-local function stop_group(pgid, escalation_ms)
-  escalation_ms = escalation_ms or 2000
-  kill_group(pgid, "sigterm")
+---Kill a process and all its descendants.
+---Collects the full process tree first (before any kills), then signals everything.
+---@param root_pid number The root PID (shim PID)
+---@param signal string Signal name (e.g. "sigterm", "sigkill")
+local function kill_tree(root_pid, signal)
+  -- Collect all descendants BEFORE killing (tree structure is lost after kills)
+  local descendants = collect_descendants(root_pid)
 
-  -- Schedule a SIGKILL escalation in case processes ignore SIGTERM
+  -- Kill root first (stops it from spawning more children)
+  pcall(uv.kill, root_pid, signal)
+
+  -- Kill all descendants
+  for _, pid in ipairs(descendants) do
+    pcall(uv.kill, pid, signal)
+  end
+
+  log:debug("kill_tree", { root = root_pid, signal = signal, descendants = #descendants })
+end
+
+---Stop a process tree: SIGTERM then SIGKILL after a delay.
+---Collects descendants before the first kill to ensure nothing escapes.
+---@param root_pid number The root PID (shim PID)
+---@param escalation_ms? number Delay before SIGKILL (default: 2000)
+local function stop_tree(root_pid, escalation_ms)
+  escalation_ms = escalation_ms or 2000
+
+  -- Collect descendants while tree is still intact
+  local descendants = collect_descendants(root_pid)
+  local all_pids = { root_pid }
+  vim.list_extend(all_pids, descendants)
+
+  log:debug("stop_tree: sending SIGTERM", { root = root_pid, total = #all_pids })
+
+  -- SIGTERM everything
+  for _, pid in ipairs(all_pids) do
+    pcall(uv.kill, pid, "sigterm")
+  end
+
+  -- Schedule SIGKILL escalation
   local timer = uv.new_timer()
   timer:start(escalation_ms, 0, function()
     timer:stop()
     timer:close()
-    -- Check if any process in the group is still alive
-    local alive = pcall(uv.kill, -pgid, 0)
-    if alive then
-      log:info("Process group still alive after SIGTERM, sending SIGKILL", { pgid = pgid })
-      kill_group(pgid, "sigkill")
+    local survivors = 0
+    for _, pid in ipairs(all_pids) do
+      local alive = pcall(uv.kill, pid, 0)
+      if alive then
+        survivors = survivors + 1
+        pcall(uv.kill, pid, "sigkill")
+      end
+    end
+    if survivors > 0 then
+      log:info("stop_tree: SIGKILL escalation", { root = root_pid, survivors = survivors })
     end
   end)
 end
@@ -316,10 +374,10 @@ function M.launch_config(opts, callback)
     port = nil,  ---@type number?
     host = nil,  ---@type string?
     stop = function()
-      stop_group(pid)
+      stop_tree(pid)
     end,
     kill = function()
-      kill_group(pid, "sigkill")
+      kill_tree(pid, "sigkill")
     end,
     on_stdout = function(cb)
       table.insert(stdout_watchers, cb)
@@ -443,13 +501,16 @@ function M.launch_compound(opts, on_config_ready, on_config_error)
       host = nil, ---@type string?
       rundir = config_dir,
       stop = function()
-        -- Kill config shim by PID (sends SIGTERM, trap kills its child)
+        -- Kill config shim by PID (sends SIGTERM to shim, trap kills its child)
         local pid_file = config_dir .. "/pid"
         local f_pid = io.open(pid_file, "r")
         if f_pid then
           local cfg_pid = tonumber(f_pid:read("*a"))
           f_pid:close()
           if cfg_pid then
+            -- Config shims within a compound don't have their own SID
+            -- (they share the compound's SID), so we SIGTERM the shim directly
+            -- and the trap handler kills the adapter child.
             pcall(uv.kill, cfg_pid, "sigterm")
             -- Escalate to SIGKILL after delay
             local timer = uv.new_timer()
@@ -538,10 +599,10 @@ function M.launch_compound(opts, on_config_ready, on_config_error)
     rundir = rundir,
     configs = config_handles,
     stop = function()
-      stop_group(pid)
+      stop_tree(pid)
     end,
     kill = function()
-      kill_group(pid, "sigkill")
+      kill_tree(pid, "sigkill")
     end,
     on_exit = function(cb)
       table.insert(exit_cbs, cb)

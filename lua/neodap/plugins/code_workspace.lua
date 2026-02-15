@@ -141,7 +141,8 @@ return function(debugger, config)
         end
 
         if #compound_specs > 0 then
-          local compound_handle = supervisor.launch_compound({
+          local compound_handle
+          compound_handle = supervisor.launch_compound({
             name = config_name,
             configs = compound_specs,
           }, function(cfg_name, sup_handle, port, host)

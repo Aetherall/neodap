@@ -202,7 +202,7 @@ local function wire_session_events(session, dap_session)
       context.terminating_sessions[dap_session] = nil
       context.kill_terminal_tasks(session)
     end
-    -- Stop the supervisor process group immediately.
+    -- Stop the supervisor process tree immediately.
     -- This fires before the disconnect request is sent, so the adapter gets killed
     -- and the TCP connection drops — unblocking any pending requests.
     -- Without this, the disconnect request can hang if the adapter doesn't respond.
